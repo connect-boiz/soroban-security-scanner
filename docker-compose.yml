@@ -1,0 +1,90 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15
+    container_name: soroban-scanner-db
+    environment:
+      POSTGRES_DB: soroban_scanner
+      POSTGRES_USER: scanner_user
+      POSTGRES_PASSWORD: scanner_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    networks:
+      - soroban-scanner-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: soroban-scanner-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - soroban-scanner-network
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: soroban-scanner-backend
+    environment:
+      DATABASE_URL: postgres://scanner_user:scanner_pass@postgres:5432/soroban_scanner
+      REDIS_URL: redis://redis:6379
+      RUST_LOG: debug
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - soroban-scanner-network
+    volumes:
+      - ./backend:/app
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: soroban-scanner-frontend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8080
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - soroban-scanner-network
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
+  # Core Scanner Service
+  core-scanner:
+    build:
+      context: ./core-scanner
+      dockerfile: Dockerfile
+    container_name: soroban-scanner-core
+    environment:
+      RUST_LOG: debug
+    ports:
+      - "8081:8081"
+    networks:
+      - soroban-scanner-network
+    volumes:
+      - ./core-scanner:/app
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  soroban-scanner-network:
+    driver: bridge
