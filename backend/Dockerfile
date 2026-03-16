@@ -1,43 +1,42 @@
-FROM rust:1.75 as builder
+FROM node:18-alpine AS base
 
+# Install dependencies only when needed
+FROM base AS deps
+RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
-# Copy Cargo files
-COPY Cargo.toml Cargo.lock ./
+# Install dependencies based on the preferred package manager
+COPY package.json package-lock.json* ./
+RUN npm ci
 
-# Create dummy main.rs to build dependencies
-RUN mkdir src && echo "fn main() {}" > src/main.rs
-
-# Build dependencies
-RUN cargo build --release && rm -rf src
-
-# Copy source code
-COPY src ./src
+# Rebuild the source code only when needed
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
 
 # Build the application
-RUN cargo build --release
+RUN npm run build
 
-# Runtime stage
-FROM debian:bookworm-slim
-
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create app user
-RUN useradd -r -s /bin/false appuser
-
+# Production image, copy all the files and run next
+FROM base AS runner
 WORKDIR /app
 
-# Copy binary from builder
-COPY --from=builder /app/target/release/server .
+ENV NODE_ENV production
 
-# Change ownership to appuser
-RUN chown appuser:appuser server
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nodejs
 
-USER appuser
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/tsconfig.json ./tsconfig.json
+COPY --from=builder /app/nest-cli.json ./nest-cli.json
+
+USER nodejs
 
 EXPOSE 8080
 
-CMD ["./server"]
+ENV PORT 8080
+
+CMD ["npm", "run", "start:prod"]

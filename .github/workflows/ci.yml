@@ -51,35 +51,32 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Setup Rust
-      uses: dtolnay/rust-toolchain@stable
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
       with:
-        components: rustfmt, clippy
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: backend/package-lock.json
     
-    - name: Cache Rust dependencies
-      uses: actions/cache@v3
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          backend/target
-        key: ${{ runner.os }}-cargo-${{ hashFiles('backend/Cargo.lock') }}
-    
-    - name: Check formatting
+    - name: Install dependencies
       working-directory: ./backend
-      run: cargo fmt --all -- --check
+      run: npm ci
     
-    - name: Run clippy
+    - name: Run linting
       working-directory: ./backend
-      run: cargo clippy -- -D warnings
+      run: npm run lint
+    
+    - name: Run type checking
+      working-directory: ./backend
+      run: npm run type-check
     
     - name: Run tests
       working-directory: ./backend
-      run: cargo test
+      run: npm test
     
     - name: Build
       working-directory: ./backend
-      run: cargo build --release
+      run: npm run build
 
   # Core Scanner Tests
   core-scanner-tests:
@@ -199,7 +196,7 @@ jobs:
     - name: Install dependencies
       run: |
         cd frontend && npm ci
-        cd ../backend && cargo build
+        cd ../backend && npm ci
         cd ../core-scanner && cargo build
     
     - name: Run database migrations
@@ -209,11 +206,11 @@ jobs:
     - name: Run integration tests
       run: |
         # Start services
-        cd backend && cargo run &
+        cd backend && npm run start:dev &
         sleep 10
         
         # Run integration tests
-        cargo test --test integration
+        npm test -- --testPathPattern=integration
     
     - name: Build Docker images
       run: |

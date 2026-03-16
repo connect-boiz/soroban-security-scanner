@@ -7,7 +7,7 @@ A comprehensive security scanning platform for Soroban smart contracts on the St
 This project uses a microservices architecture with the following components:
 
 - **🌐 Frontend** - Modern web interface built with Next.js
-- **⚙️ Backend** - Rust-based API server with Axum
+- **⚙️ Backend** - Nest.js API server
 - **🔍 Core Scanner** - Security analysis engine
 - **🔒 Smart Contracts** - Soroban contracts for on-chain functionality
 
@@ -15,7 +15,7 @@ This project uses a microservices architecture with the following components:
 
 ### Prerequisites
 - Node.js 18+
-- Rust 1.70+
+- TypeScript
 - Soroban CLI
 - Docker & Docker Compose
 
@@ -35,7 +35,8 @@ npm install
 
 # Backend
 cd ../backend
-cargo build
+npm install
+npm run build
 
 # Smart Contract
 cd ../contracts
@@ -97,8 +98,8 @@ soroban-security-scanner/
 - **HTTP Client**: Axios, SWR
 
 ### Backend
-- **Language**: Rust
-- **Web Framework**: Axum
+- **Language**: Node.js/TypeScript
+- **Web Framework**: Nest.js
 - **Database**: PostgreSQL
 - **Cache**: Redis
 - **Authentication**: JWT
