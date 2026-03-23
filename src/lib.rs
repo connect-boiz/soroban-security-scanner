@@ -9,6 +9,7 @@ pub mod invariants;
 pub mod analysis;
 pub mod report;
 pub mod config;
+pub mod bounty_marketplace;
 
 pub use scanners::{SecurityScanner, InvariantScanner};
 pub use vulnerabilities::VulnerabilityType;
