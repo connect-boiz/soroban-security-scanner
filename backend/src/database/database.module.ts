@@ -4,6 +4,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { User } from '../user/entities/user.entity';
 import { Scan } from '../scan/entities/scan.entity';
 import { Vulnerability } from '../scan/entities/vulnerability.entity';
+import { RiskData } from '../risk/entities/risk-data.entity';
 
 @Module({
   imports: [
@@ -13,7 +14,7 @@ import { Vulnerability } from '../scan/entities/vulnerability.entity';
         type: 'postgres',
         url: configService.get<string>('DATABASE_URL'),
         ssl: configService.get<boolean>('DATABASE_SSL', false),
-        entities: [User, Scan, Vulnerability],
+        entities: [User, Scan, Vulnerability, RiskData],
         synchronize: configService.get<boolean>('DATABASE_SYNCHRONIZE', false),
         logging: configService.get<string>('NODE_ENV') === 'development',
         migrationsRun: true,

@@ -10,6 +10,7 @@ import { ScanModule } from './scan/scan.module';
 import { UserModule } from './user/user.module';
 import { AuthModule } from './auth/auth.module';
 import { DatabaseModule } from './database/database.module';
+import { RiskManagementModule } from './risk/risk-management.module';
 
 @Module({
   imports: [
@@ -59,6 +60,7 @@ import { DatabaseModule } from './database/database.module';
     ScanModule,
     UserModule,
     AuthModule,
+    RiskManagementModule,
   ],
   controllers: [],
   providers: [],
