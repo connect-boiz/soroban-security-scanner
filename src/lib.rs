@@ -9,6 +9,10 @@ pub mod invariants;
 pub mod analysis;
 pub mod report;
 pub mod config;
+pub mod kubernetes;
+pub mod bounty_marketplace;
+pub mod scanner_registry;
+
 
 pub use scanners::{SecurityScanner, InvariantScanner};
 pub use vulnerabilities::VulnerabilityType;
@@ -16,6 +20,8 @@ pub use invariants::InvariantRule;
 pub use analysis::AnalysisResult;
 pub use report::{SecurityReport, ReportFormat};
 pub use config::ScannerConfig;
+pub use kubernetes::{K8sScanManager, ScanPodConfig, ScanAutoScaler};
+pub use scanner_registry::{ScannerRegistry, ScannerVersion, VersionStatus};
 
 #[derive(Debug, Clone)]
 pub struct ScanResult {

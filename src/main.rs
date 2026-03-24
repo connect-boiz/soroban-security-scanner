@@ -2,10 +2,11 @@
 
 use clap::{Parser, Subcommand};
 use colored::*;
-use stellar_security_scanner::{scanners::{SecurityScanner, InvariantScanner}, analysis::AnalysisResult, report::{SecurityReport, ReportFormat}, config::ScannerConfig};
+use stellar_security_scanner::{scanners::{SecurityScanner, InvariantScanner}, analysis::AnalysisResult, report::{SecurityReport, ReportFormat}, config::ScannerConfig, kubernetes::{K8sScanManager, ScanPodConfig, ScanAutoScaler}};
 use std::path::PathBuf;
-use std::time::Instant;
+use std::time::{Instant, Duration};
 use anyhow::Result;
+use uuid;
 
 #[derive(Parser)]
 #[command(name = "stellar-scanner")]
@@ -107,6 +108,61 @@ enum Commands {
         #[arg(short, long)]
         severity: Option<String>,
     },
+    
+    /// Run scan in isolated Kubernetes pod
+    K8sScan {
+        /// Path to scan (default: current directory)
+        #[arg(short, long, default_value = ".")]
+        path: PathBuf,
+        
+        /// Output format (console, json, html, markdown)
+        #[arg(short, long, default_value = "console")]
+        format: String,
+        
+        /// Output file path
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+        
+        /// Configuration file path
+        #[arg(short, long)]
+        config: Option<PathBuf>,
+        
+        /// Verbose output
+        #[arg(short, long)]
+        verbose: bool,
+        
+        /// CPU limit per scan pod
+        #[arg(long, default_value = "1000m")]
+        cpu_limit: String,
+        
+        /// Memory limit per scan pod
+        #[arg(long, default_value = "2Gi")]
+        memory_limit: String,
+        
+        /// Scan timeout in seconds
+        #[arg(long, default_value = "600")]
+        timeout: u64,
+    },
+    
+    /// Manage Kubernetes scan operations
+    K8sManage {
+        #[command(subcommand)]
+        action: K8sAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum K8sAction {
+    /// List all active scans
+    List,
+    /// Cleanup stuck scans older than specified minutes
+    Cleanup {
+        /// Age in minutes for cleanup
+        #[arg(short, long, default_value = "30")]
+        age_minutes: u64,
+    },
+    /// Show current load metrics
+    Status,
 }
 
 fn main() -> Result<()> {
@@ -130,6 +186,12 @@ fn main() -> Result<()> {
         }
         Commands::ListInvariants { severity } => {
             list_invariant_rules(severity)
+        }
+        Commands::K8sScan { path, format, output, config, verbose, cpu_limit, memory_limit, timeout } => {
+            run_k8s_scan(path, format, output, config, verbose, cpu_limit, memory_limit, timeout)
+        }
+        Commands::K8sManage { action } => {
+            run_k8s_management(action)
         }
     }
 }
@@ -424,4 +486,115 @@ fn parse_report_format(format: &str) -> Result<ReportFormat> {
         "markdown" | "md" => Ok(ReportFormat::Markdown),
         _ => anyhow::bail!("Invalid output format: {}. Use: console, json, html, markdown", format),
     }
+}
+
+fn run_k8s_scan(
+    path: PathBuf,
+    format: String,
+    output: Option<PathBuf>,
+    config_path: Option<PathBuf>,
+    verbose: bool,
+    cpu_limit: String,
+    memory_limit: String,
+    timeout: u64,
+) -> Result<()> {
+    println!("{}", "🚀 Starting Kubernetes Isolated Scan".bold().cyan());
+    
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async {
+        // Load configuration
+        let config = load_config(config_path)?;
+        
+        // Setup Kubernetes scan configuration
+        let scan_config = ScanPodConfig {
+            cpu_limit,
+            memory_limit,
+            timeout: Duration::from_secs(timeout),
+            ..Default::default()
+        };
+        
+        if verbose {
+            println!("📊 Scan Configuration:");
+            println!("  CPU Limit: {}", scan_config.cpu_limit);
+            println!("  Memory Limit: {}", scan_config.memory_limit);
+            println!("  Timeout: {} seconds", timeout);
+            println!("  Path: {}", path.display());
+        }
+        
+        // Create Kubernetes manager
+        let manager = K8sScanManager::new(scan_config).await?;
+        
+        // Read contract code
+        let contract_code = std::fs::read(&path)?;
+        
+        // Generate unique scan ID
+        let scan_id = uuid::Uuid::new_v4().to_string();
+        
+        println!("🔍 Starting scan with ID: {}", scan_id);
+        
+        // Execute scan in isolated pod
+        let start_time = std::time::Instant::now();
+        let result = manager.execute_scan(&scan_id, &config, &contract_code).await?;
+        let duration = start_time.elapsed();
+        
+        // Generate and output report
+        let report = SecurityReport::new(result);
+        let report_format = parse_report_format(&format)?;
+        
+        match output {
+            Some(output_path) => {
+                report.save_to_file(&output_path, report_format)?;
+                println!("✅ Scan completed in {:.2}s", duration.as_secs_f64());
+                println!("📄 Report saved to: {}", output_path.display());
+            }
+            None => {
+                report.print(report_format)?;
+                println!("✅ Scan completed in {:.2}s", duration.as_secs_f64());
+            }
+        }
+        
+        Ok::<(), anyhow::Error>(())
+    })
+}
+
+fn run_k8s_management(action: K8sAction) -> Result<()> {
+    println!("{}", "⚙️  Kubernetes Scan Management".bold().cyan());
+    
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async {
+        let manager = K8sScanManager::new(Default::default()).await?;
+        
+        match action {
+            K8sAction::List => {
+                println!("📋 Active Scans:");
+                let active_scans = manager.list_active_scans().await?;
+                
+                if active_scans.is_empty() {
+                    println!("  No active scans found.");
+                } else {
+                    for scan_id in active_scans {
+                        println!("  🔄 {}", scan_id);
+                    }
+                }
+            }
+            K8sAction::Cleanup { age_minutes } => {
+                println!("🧹 Cleaning up scans older than {} minutes...", age_minutes);
+                let cleaned_count = manager.cleanup_stuck_scans(Duration::from_secs(age_minutes * 60)).await?;
+                println!("✅ Cleaned up {} stuck scans", cleaned_count);
+            }
+            K8sAction::Status => {
+                println!("📊 System Status:");
+                
+                let active_scans = manager.list_active_scans().await?;
+                let auto_scaler = ScanAutoScaler::new(manager, 10); // Default max concurrent
+                let (current, max) = auto_scaler.get_load_metrics();
+                
+                println!("  Active Scans: {}", active_scans.len());
+                println!("  Current Load: {}/{}", current, max);
+                println!("  System Health: {}", if current < max { "✅ Healthy" } else { "⚠️  At Capacity" });
+            }
+        }
+        
+        Ok::<(), anyhow::Error>(())
+    })
 }
