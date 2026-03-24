@@ -12,6 +12,7 @@ pub mod config;
 pub mod kubernetes;
 pub mod bounty_marketplace;
 pub mod scanner_registry;
+pub mod audit_proof_of_scan;
 
 
 pub use scanners::{SecurityScanner, InvariantScanner};
@@ -22,6 +23,7 @@ pub use report::{SecurityReport, ReportFormat};
 pub use config::ScannerConfig;
 pub use kubernetes::{K8sScanManager, ScanPodConfig, ScanAutoScaler};
 pub use scanner_registry::{ScannerRegistry, ScannerVersion, VersionStatus};
+pub use audit_proof_of_scan::{AuditProofOfScan, SecurityCertificate, CertificateStatus, RiskScore};
 
 #[derive(Debug, Clone)]
 pub struct ScanResult {
