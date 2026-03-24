@@ -1,0 +1,287 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop, risk-management-system ]
+  pull_request:
+    branches: [ main, develop, risk-management-system ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Frontend Tests
+  frontend-tests:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+    
+    - name: Install dependencies
+      working-directory: ./frontend
+      run: npm ci
+    
+    - name: Run linting
+      working-directory: ./frontend
+      run: npm run lint
+    
+    - name: Run type checking
+      working-directory: ./frontend
+      run: npm run type-check
+    
+    - name: Run tests
+      working-directory: ./frontend
+      run: npm test -- --coverage
+    
+    - name: Build
+      working-directory: ./frontend
+      run: npm run build
+
+  # Backend Tests
+  backend-tests:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: backend/package-lock.json
+    
+    - name: Install dependencies
+      working-directory: ./backend
+      run: npm ci
+    
+    - name: Setup environment variables
+      working-directory: ./backend
+      run: |
+        echo "DATABASE_URL=postgresql://scanner_user:scanner_pass@localhost:5432/soroban_scanner" >> .env.test
+        echo "REDIS_URL=redis://localhost:6379" >> .env.test
+        echo "JWT_SECRET=test_secret" >> .env.test
+        echo "NODE_ENV=test" >> .env.test
+    
+    - name: Run linting
+      working-directory: ./backend
+      run: npm run lint
+    
+    - name: Run type checking
+      working-directory: ./backend
+      run: npm run type-check
+    
+    - name: Run tests
+      working-directory: ./backend
+      run: npm test
+    
+    - name: Build
+      working-directory: ./backend
+      run: npm run build
+
+  # Core Scanner Tests
+  core-scanner-tests:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt, clippy
+    
+    - name: Cache Rust dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          core-scanner/target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('core-scanner/Cargo.lock') }}
+    
+    - name: Check formatting
+      working-directory: ./core-scanner
+      run: cargo fmt --all -- --check
+    
+    - name: Run clippy
+      working-directory: ./core-scanner
+      run: cargo clippy -- -D warnings
+    
+    - name: Run tests
+      working-directory: ./core-scanner
+      run: cargo test
+    
+    - name: Build
+      working-directory: ./core-scanner
+      run: cargo build --release
+
+  # Smart Contract Tests
+  contract-tests:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt, clippy
+    
+    - name: Cache Rust dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          contracts/target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('contracts/Cargo.lock') }}
+    
+    - name: Check formatting
+      working-directory: ./contracts
+      run: cargo fmt --all -- --check
+    
+    - name: Run clippy
+      working-directory: ./contracts
+      run: cargo clippy -- -D warnings
+    
+    - name: Run tests
+      working-directory: ./contracts
+      run: cargo test
+    
+    - name: Build contracts
+      working-directory: ./contracts
+      run: cargo build --release
+
+  # Integration Tests
+  integration-tests:
+    runs-on: ubuntu-latest
+    needs: [frontend-tests, backend-tests, core-scanner-tests, contract-tests]
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: scanner_pass
+          POSTGRES_USER: scanner_user
+          POSTGRES_DB: soroban_scanner
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+    
+    - name: Install dependencies
+      run: |
+        cd frontend && npm ci
+        cd ../backend && npm ci
+        cd ../core-scanner && cargo build
+    
+    - name: Run database migrations
+      run: |
+        PGPASSWORD=scanner_pass psql -h localhost -U scanner_user -d soroban_scanner -c "
+        CREATE TABLE IF NOT EXISTS risk_data (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          user_id VARCHAR NOT NULL,
+          portfolio_id VARCHAR NOT NULL,
+          risk_type VARCHAR(20) NOT NULL,
+          risk_score DECIMAL(10,4) NOT NULL,
+          exposure DECIMAL(15,2),
+          probability DECIMAL(10,4),
+          potential_loss DECIMAL(15,2),
+          severity VARCHAR(20) NOT NULL,
+          metrics JSONB,
+          market_factors JSONB,
+          hedging_info JSONB,
+          description TEXT,
+          mitigation TEXT,
+          status VARCHAR(20) NOT NULL,
+          timestamp TIMESTAMP NOT NULL,
+          created_at TIMESTAMP DEFAULT NOW(),
+          updated_at TIMESTAMP DEFAULT NOW()
+        );
+        "
+    
+    - name: Run integration tests
+      run: |
+        # Start services
+        cd backend && npm run start:dev &
+        sleep 10
+        
+        # Run integration tests
+        npm test -- --testPathPattern=integration
+    
+    - name: Build Docker images
+      run: |
+        docker build -t soroban-scanner-frontend ./frontend
+        docker build -t soroban-scanner-backend ./backend
+        docker build -t soroban-scanner-core ./core-scanner
+
+  # Security Scan
+  security-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+    
+    - name: Upload Trivy scan results
+      uses: github/codeql-action/upload-sarif@v2
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+  # Deploy (only on main branch)
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [integration-tests, security-scan]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Deploy to staging
+      run: |
+        echo "Deploying to staging environment..."
+        # Add deployment logic here
+    
+    - name: Run smoke tests
+      run: |
+        echo "Running smoke tests..."
+        # Add smoke test logic here
