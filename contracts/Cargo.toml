@@ -1,0 +1,29 @@
+[package]
+name = "soroban-security-scanner-contracts"
+version = "0.1.0"
+edition = "2021"
+authors = ["Connect Boiz"]
+description = "Smart contracts for Soroban Security Scanner platform"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+soroban-sdk = { version = "21.0.0-preview.1", features = ["testutils"] }
+
+[dev-dependencies]
+soroban-sdk = { version = "21.0.0-preview.1", features = ["testutils"] }
+
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = 0
+strip = "symbols"
+debug-assertions = false
+panic = "abort"
+codegen-units = 1
+lto = true
+
+[profile.release-with-logs]
+inherits = "release"
+debug-assertions = true

@@ -1,155 +1,88 @@
-# 🌟 Stellar Security Scanner Platform
+# 🌟 Soroban Security Scanner
 
-A comprehensive security scanning platform for Stellar smart contracts, built with a modern microservices architecture. This platform provides developers with the tools they need to build secure and reliable applications on the Stellar network.
+A comprehensive security scanning platform for Soroban smart contracts on the Stellar network. This platform enables invariant-driven development by enforcing core business logic and state consistency properties to prevent logic vulnerabilities.
 
-## 🏗️ Architecture Overview
+## 🏗️ Architecture
 
-The platform is structured as separate, focused repositories:
+This project uses a microservices architecture with the following components:
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Stellar Security Scanner                     │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐ │
-│  │   Frontend      │  │    Backend      │  │     Core        │ │
-│  │   (Next.js)     │  │   (Axum/Rust)  │  │  (Scanner)     │ │
-│  │                 │  │                 │  │                 │ │
-│  │ • Web UI        │  │ • REST API      │  │ • Scan Engine   │ │
-│  │ • Dashboard     │  │ • Auth Service  │  │ • Pattern Match │ │
-│  │ • Reports       │  │ • Database      │  │ • AST Analysis  │ │
-│  └─────────────────┘  └─────────────────┘  └─────────────────┘ │
-│                                                                 │
-│  ┌─────────────────┐                                            │
-│  │   Contracts     │                                            │
-│  │  (Soroban)      │                                            │
-│  │                 │                                            │
-│  │ • Vulnerability  │                                            │
-│  │ • Bounty Mgmt    │                                            │
-│  │ • Reputation     │                                            │
-│  └─────────────────┘                                            │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-## 📦 Repositories
-
-### **🌐 Frontend** - [stellar-security-scanner-frontend](../stellar-security-scanner-frontend/)
-- **Technology**: Next.js, React, Tailwind CSS
-- **Features**: Modern web interface, real-time updates, responsive design
-- **Purpose**: User interface for scanning, reporting, and dashboard
-
-### **⚙️ Backend** - [stellar-security-scanner-backend](../stellar-security-scanner-backend/)
-- **Technology**: Rust, Axum, PostgreSQL, Redis
-- **Features**: RESTful API, authentication, data storage
-- **Purpose**: API service and business logic
-
-### **🔍 Core Scanner** - [stellar-security-scanner-core](../stellar-security-scanner-core/)
-- **Technology**: Rust, AST parsing, pattern matching
-- **Features**: Vulnerability detection, invariant checking
-- **Purpose**: Core scanning engine and analysis
-
-### **🔒 Smart Contracts** - [stellar-security-scanner-contracts](../stellar-security-scanner-contracts/)
-- **Technology**: Soroban, Rust
-- **Features**: Vulnerability reporting, bounty management, reputation
-- **Purpose**: On-chain components and decentralized features
+- **🌐 Frontend** - Modern web interface built with Next.js
+- **⚙️ Backend** - Nest.js API server
+- **🔍 Core Scanner** - Security analysis engine
+- **🔒 Smart Contracts** - Soroban contracts for on-chain functionality
 
 ## 🚀 Quick Start
 
-### **For Users**
+### Prerequisites
+- Node.js 18+
+- TypeScript
+- Soroban CLI
+- Docker & Docker Compose
 
-1. **Visit the Web Platform**
-   ```
-   https://stellar-security-scanner.io
-   ```
+### Installation
 
-2. **Sign Up with GitHub**
-   - OAuth authentication
-   - Free tier available
-   - API key generation
+1. Clone the repository:
+```bash
+git clone https://github.com/connect-boiz/soroban-security-scanner.git
+cd soroban-security-scanner
+```
 
-3. **Start Scanning**
-   - Connect your repository
-   - Choose scan types
-   - View results in real-time
+2. Install dependencies:
+```bash
+# Frontend
+cd frontend
+npm install
 
-### **For Developers**
+# Backend
+cd ../backend
+npm install
+npm run build
 
-1. **Clone All Repositories**
-   ```bash
-   git clone https://github.com/your-org/stellar-security-scanner-frontend.git
-   git clone https://github.com/your-org/stellar-security-scanner-backend.git
-   git clone https://github.com/your-org/stellar-security-scanner-core.git
-   git clone https://github.com/your-org/stellar-security-scanner-contracts.git
-   ```
+# Smart Contract
+cd ../contracts
+cargo build
+```
 
-2. **Set Up Development Environment**
-   ```bash
-   # Backend
-   cd stellar-security-scanner-backend
-   cargo run
-   
-   # Frontend
-   cd ../stellar-security-scanner-frontend
-   npm run dev
-   
-   # Core Scanner
-   cd ../stellar-security-scanner-core
-   cargo test
-   ```
+3. Start the development environment:
+```bash
+docker-compose up -d
+```
 
-3. **Deploy Smart Contracts**
-   ```bash
-   cd stellar-security-scanner-contracts
-   soroban contract deploy --wasm target/wasm32-unknown-unknown/release/*.wasm
-   ```
+## 📦 Repository Structure
 
-## 🎯 Key Features
+```
+soroban-security-scanner/
+├── frontend/                 # Next.js web application
+├── backend/                  # Rust API server
+├── core-scanner/            # Security analysis engine
+├── contracts/               # Soroban smart contracts
+├── docs/                    # Documentation
+├── scripts/                 # Development scripts
+├── docker-compose.yml       # Development environment
+└── README.md               # This file
+```
 
-### **🔍 Security Scanning**
-- **Vulnerability Detection**: 25+ vulnerability patterns
-- **Invariant Checking**: Mathematical validation
-- **Stellar-Specific**: Soroban and Stellar network patterns
-- **Real-time Analysis**: Live scanning results
+## 🔍 Supported Vulnerability Types
 
-### **📊 Reporting & Analytics**
-- **Detailed Reports**: Comprehensive vulnerability reports
-- **Interactive Dashboard**: Real-time metrics and trends
-- **Export Options**: PDF, JSON, CSV formats
-- **Historical Tracking**: Scan history and progress
-
-### **🏆 Community & Rewards**
-- **Bounty Programs**: Automated bounty distribution
-- **Reputation System**: On-chain reputation tracking
-- **Leaderboards**: Top security researchers
-- **Achievement Badges**: NFT-based rewards
-
-### **🔧 Developer Tools**
-- **API Access**: RESTful API for integration
-- **CLI Tools**: Command-line interface
-- **CI/CD Integration**: GitHub Actions, GitLab CI
-- **IDE Plugins**: VS Code, IntelliJ extensions
-
-## 📋 Supported Vulnerability Types
-
-### **Access Control**
+### Access Control
 - Missing Access Control
 - Weak Access Control
 - Unauthorized Mint/Burn
 - Admin Function Exposure
 
-### **Token Economics**
+### Token Economics
 - Infinite Mint
 - Inflation Bugs
 - Reentrancy Attacks
 - Integer Overflow/Underflow
 
-### **Logic Vulnerabilities**
+### Logic Vulnerabilities
 - Frozen Funds
 - Broken Invariants
 - Race Conditions
 - Front-running Susceptibility
 
-### **Stellar-Specific**
+### Stellar-Specific
 - Insufficient Fee Bump
 - Invalid Time Bounds
 - Weak Signature Verification
@@ -157,33 +90,33 @@ The platform is structured as separate, focused repositories:
 
 ## 🛠️ Technology Stack
 
-### **Frontend**
+### Frontend
 - **Framework**: Next.js 14
 - **UI Library**: React 18
 - **Styling**: Tailwind CSS
 - **State Management**: Zustand
 - **HTTP Client**: Axios, SWR
 
-### **Backend**
-- **Language**: Rust
-- **Web Framework**: Axum
+### Backend
+- **Language**: Node.js/TypeScript
+- **Web Framework**: Nest.js
 - **Database**: PostgreSQL
 - **Cache**: Redis
 - **Authentication**: JWT
 
-### **Core Scanner**
+### Core Scanner
 - **Language**: Rust
 - **Parsing**: Syn (Rust AST)
 - **Pattern Matching**: Regex, Custom Engine
 - **Analysis**: Static Analysis, AST Traversal
 
-### **Smart Contracts**
+### Smart Contracts
 - **Platform**: Soroban
 - **Language**: Rust
 - **Network**: Stellar Testnet/Mainnet
 - **Features**: Custom Contracts
 
-### **Infrastructure**
+### Infrastructure
 - **Containerization**: Docker
 - **Orchestration**: Kubernetes
 - **CI/CD**: GitHub Actions
@@ -191,14 +124,14 @@ The platform is structured as separate, focused repositories:
 
 ## 📊 Platform Statistics
 
-### **Current Metrics**
+### Current Metrics
 - **Active Users**: 1,000+
 - **Scans Performed**: 50,000+
 - **Vulnerabilities Found**: 5,000+
 - **Bounties Paid**: $100,000+
 - **Supported Languages**: Rust, Soroban
 
-### **Performance**
+### Performance
 - **Scan Speed**: ~1000 lines/second
 - **API Response Time**: <200ms
 - **Uptime**: 99.9%
@@ -206,13 +139,13 @@ The platform is structured as separate, focused repositories:
 
 ## 🔒 Security & Trust
 
-### **Platform Security**
+### Platform Security
 - **Regular Audits**: Quarterly security audits
 - **Penetration Testing**: Annual penetration tests
 - **Bug Bounty**: Active bug bounty program
 - **Compliance**: SOC 2 Type II certified
 
-### **Data Protection**
+### Data Protection
 - **Encryption**: AES-256 encryption
 - **Privacy**: GDPR compliant
 - **Access Control**: Role-based permissions
@@ -222,25 +155,25 @@ The platform is structured as separate, focused repositories:
 
 We welcome contributions from the community! Here's how you can get involved:
 
-### **For Security Researchers**
+### For Security Researchers
 - **Find Vulnerabilities**: Submit new vulnerability patterns
 - **Improve Detection**: Enhance existing detection logic
 - **Write Rules**: Create custom scanning rules
 - **Earn Bounties**: Get rewarded for your contributions
 
-### **For Developers**
+### For Developers
 - **Build Features**: Add new platform features
 - **Fix Bugs**: Help improve platform stability
 - **Write Documentation**: Improve user guides
 - **Create Tools**: Build integrations and plugins
 
-### **For Community Members**
+### For Community Members
 - **Report Issues**: Help us find and fix bugs
 - **Share Feedback**: Provide product feedback
 - **Spread the Word**: Help grow the community
 - **Translate**: Help with localization
 
-### **Getting Started**
+### Getting Started
 1. **Join Discord**: [Community Server](https://discord.gg/stellar-security)
 2. **Read Guidelines**: [Contributing Guide](CONTRIBUTING.md)
 3. **Pick an Issue**: Browse [good first issues](https://github.com/your-org/stellar-security-scanner/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
@@ -252,13 +185,13 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support & Community
 
-### **Get Help**
+### Get Help
 - **Documentation**: [docs.stellar-security-scanner.io](https://docs.stellar-security-scanner.io)
 - **Support**: support@stellar-security-scanner.io
 - **Discord**: [Community Server](https://discord.gg/stellar-security)
 - **Twitter**: [@StellarSecurity](https://twitter.com/StellarSecurity)
 
-### **Stay Updated**
+### Stay Updated
 - **Blog**: [blog.stellar-security-scanner.io](https://blog.stellar-security-scanner.io)
 - **Newsletter**: [Subscribe for updates](https://stellar-security-scanner.io/newsletter)
 - **GitHub**: [Follow on GitHub](https://github.com/your-org/stellar-security-scanner)
