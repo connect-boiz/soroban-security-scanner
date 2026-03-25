@@ -17,10 +17,10 @@ export class Scan {
 
   @Column({
     type: 'enum',
-    enum: ['pending', 'running', 'completed', 'failed'],
+    enum: ['pending', 'queued', 'running', 'completed', 'failed'],
     default: 'pending',
   })
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  status: 'pending' | 'queued' | 'running' | 'completed' | 'failed';
 
   @Column('jsonb', { nullable: true })
   metrics: {
@@ -41,10 +41,10 @@ export class Scan {
 
   @Column({
     type: 'enum',
-    enum: ['uploading', 'parsing', 'fuzzing', 'analysis', 'reporting', 'completed', 'error'],
+    enum: ['uploading', 'queued', 'parsing', 'fuzzing', 'analysis', 'reporting', 'completed', 'error'],
     nullable: true,
   })
-  currentStep: 'uploading' | 'parsing' | 'fuzzing' | 'analysis' | 'reporting' | 'completed' | 'error';
+  currentStep: 'uploading' | 'queued' | 'parsing' | 'fuzzing' | 'analysis' | 'reporting' | 'completed' | 'error';
 
   @Column('integer', { nullable: true, default: 0 })
   progress: number;

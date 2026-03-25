@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { RedisModule } from '@nestjs/redis';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { JwtModule } from '@nestjs/jwt';
+import { BullModule } from '@nestjs/bullmq';
 
 import { HealthModule } from './health/health.module';
 import { ScanModule } from './scan/scan.module';
@@ -31,6 +32,18 @@ import { ApiKeyModule } from './api-key/api-key.module';
         config: {
           url: configService.get<string>('REDIS_URL', 'redis://localhost:6379'),
           keyPrefix: configService.get<string>('REDIS_KEY_PREFIX', 'soroban_scanner:'),
+        },
+      }),
+      inject: [ConfigService],
+    }),
+
+    // BullMQ Queueing
+    BullModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: async (configService: ConfigService) => ({
+        connection: {
+          host: configService.get<string>('REDIS_HOST', 'localhost'),
+          port: configService.get<number>('REDIS_PORT', 6379),
         },
       }),
       inject: [ConfigService],

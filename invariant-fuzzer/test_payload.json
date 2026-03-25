@@ -1,0 +1,6 @@
+{
+  "wasm_base64": "AGFzbQEAAAABBQFgAAF7AwIBAAcHAQZfX21haW4AAAoGAQQAQcl/Cx8EbW9kZQE=",
+  "function": "_start",
+  "iterations": 100,
+  "arg_count": 2
+}
