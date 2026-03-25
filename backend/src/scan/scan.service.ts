@@ -105,6 +105,7 @@ export class ScanService {
     vulnerabilities: any[];
     metrics: any;
     scanTime: number;
+    sarifReport?: any;
   }> {
     const startTime = Date.now();
     this.logger.log(`Starting scan analysis for scan ${scan.id}`);
@@ -115,6 +116,9 @@ export class ScanService {
     // Calculate metrics
     const metrics = this.calculateMetrics(vulnerabilities, scan.code);
     
+    // Generate SARIF report
+    const sarifReport = this.generateSarifReport(vulnerabilities, scan);
+    
     const scanTime = Date.now() - startTime;
 
     this.logger.log(`Scan analysis completed for scan ${scan.id}, found ${vulnerabilities.length} vulnerabilities`);
@@ -123,6 +127,7 @@ export class ScanService {
       vulnerabilities,
       metrics,
       scanTime,
+      sarifReport,
     };
   }
 
@@ -192,5 +197,100 @@ export class ScanService {
       riskScore,
       linesOfCode,
     };
+  }
+
+  private generateSarifReport(vulnerabilities: any[], scan: Scan): any {
+    const sarifReport = {
+      version: '2.1.0',
+      $schema: 'https://json.schemastore.org/sarif-2.1.0',
+      runs: [{
+        tool: {
+          driver: {
+            name: 'Soroban Security Scanner',
+            version: '1.0.0',
+            rules: this.generateSarifRules(vulnerabilities)
+          }
+        },
+        results: vulnerabilities.map(vuln => this.convertVulnerabilityToSarifResult(vuln)),
+        artifacts: [{
+          location: {
+            uri: 'contract.rs'
+          },
+          length: scan.code.length,
+          mimeType: 'text/x-rust'
+        }]
+      }]
+    };
+
+    return sarifReport;
+  }
+
+  private generateSarifRules(vulnerabilities: any[]): any[] {
+    const ruleMap = new Map();
+    
+    vulnerabilities.forEach(vuln => {
+      if (!ruleMap.has(vuln.cweId || vuln.type)) {
+        ruleMap.set(vuln.cweId || vuln.type, {
+          id: vuln.cweId || vuln.type,
+          name: vuln.title || vuln.type,
+          shortDescription: {
+            text: vuln.title || vuln.type
+          },
+          fullDescription: {
+            text: vuln.description || vuln.recommendation
+          },
+          defaultConfiguration: {
+            level: this.getSeverityLevel(vuln.severity)
+          },
+          help: {
+            text: vuln.recommendation
+          },
+          properties: {
+            category: vuln.type,
+            tags: [vuln.type.toLowerCase().replace(/\s+/g, '-')]
+          }
+        });
+      }
+    });
+
+    return Array.from(ruleMap.values());
+  }
+
+  private convertVulnerabilityToSarifResult(vuln: any): any {
+    return {
+      ruleId: vuln.cweId || vuln.type,
+      level: this.getSeverityLevel(vuln.severity),
+      message: {
+        text: vuln.description || vuln.title
+      },
+      locations: [{
+        physicalLocation: {
+          artifactLocation: {
+            uri: vuln.location.file || 'contract.rs'
+          },
+          region: {
+            startLine: vuln.location.line,
+            startColumn: vuln.location.column || 1,
+            endLine: vuln.location.line,
+            endColumn: (vuln.location.column || 1) + 20
+          }
+        }
+      }]
+    };
+  }
+
+  private getSeverityLevel(severity: string): string {
+    switch (severity.toLowerCase()) {
+      case 'critical':
+        return 'error';
+      case 'high':
+        return 'warning';
+      case 'medium':
+        return 'note';
+      case 'low':
+        return 'info';
+      default:
+        return 'note';
+    }
   }
 }
