@@ -39,6 +39,19 @@ export class Scan {
   @Column('text', { nullable: true })
   errorMessage: string;
 
+  @Column({
+    type: 'enum',
+    enum: ['uploading', 'parsing', 'fuzzing', 'analysis', 'reporting', 'completed', 'error'],
+    nullable: true,
+  })
+  currentStep: 'uploading' | 'parsing' | 'fuzzing' | 'analysis' | 'reporting' | 'completed' | 'error';
+
+  @Column('integer', { nullable: true, default: 0 })
+  progress: number;
+
+  @Column('jsonb', { nullable: true, default: [] })
+  logs: string[];
+
   @OneToMany(() => Vulnerability, vulnerability => vulnerability.scan, { cascade: true })
   vulnerabilities: Vulnerability[];
 

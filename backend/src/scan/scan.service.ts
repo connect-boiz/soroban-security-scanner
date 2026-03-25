@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { Scan } from './entities/scan.entity';
 import { Vulnerability } from './entities/vulnerability.entity';
 import { CreateScanDto } from './dto/create-scan.dto';
+import { ScanProgressGateway } from './scan-progress.gateway';
 
 @Injectable()
 export class ScanService {
@@ -15,6 +16,7 @@ export class ScanService {
     private readonly scanRepository: Repository<Scan>,
     @InjectRepository(Vulnerability)
     private readonly vulnerabilityRepository: Repository<Vulnerability>,
+    private readonly scanProgressGateway: ScanProgressGateway,
   ) {}
 
   async createScan(createScanDto: CreateScanDto, userId: string): Promise<Scan> {
@@ -36,13 +38,26 @@ export class ScanService {
     }
 
     scan.status = 'running';
+    scan.currentStep = 'uploading';
+    scan.progress = 0;
+    scan.logs = ['Starting scan...'];
     await this.scanRepository.save(scan);
+
+    // Emit initial status
+    this.scanProgressGateway.emitScanStatus(scanId, 'running');
+    this.scanProgressGateway.emitScanProgress(scanId, {
+      currentStep: 'uploading',
+      progress: 0,
+      message: 'Uploading contract code...'
+    });
 
     try {
       const result = await this.performAnalysis(scan);
       
       // Update scan with results
       scan.status = 'completed';
+      scan.progress = 100;
+      scan.currentStep = 'completed';
       scan.metrics = result.metrics;
       scan.scanTime = result.scanTime;
       
@@ -57,10 +72,23 @@ export class ScanService {
       }
 
       await this.scanRepository.save(scan);
+
+      // Emit completion event
+      this.scanProgressGateway.emitScanComplete(scanId, {
+        vulnerabilities: result.vulnerabilities,
+        metrics: result.metrics,
+        scanTime: result.scanTime,
+        zeroVulnerabilities: result.vulnerabilities.length === 0
+      });
+
     } catch (error) {
       scan.status = 'failed';
       scan.errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      scan.currentStep = 'error';
       await this.scanRepository.save(scan);
+
+      // Emit error event
+      this.scanProgressGateway.emitScanError(scanId, scan.errorMessage);
       throw error;
     }
   }
@@ -110,25 +138,99 @@ export class ScanService {
     const startTime = Date.now();
     this.logger.log(`Starting scan analysis for scan ${scan.id}`);
 
-    // Mock vulnerability detection (replace with actual core scanner integration)
-    const vulnerabilities = this.detectMockVulnerabilities(scan.code);
-    
-    // Calculate metrics
-    const metrics = this.calculateMetrics(vulnerabilities, scan.code);
-    
-    // Generate SARIF report
-    const sarifReport = this.generateSarifReport(vulnerabilities, scan);
-    
-    const scanTime = Date.now() - startTime;
+    try {
+      // Step 1: Parsing
+      scan.currentStep = 'parsing';
+      scan.progress = 25;
+      scan.logs = [...(scan.logs || []), 'Parsing contract code...'];
+      await this.scanRepository.save(scan);
+      
+      this.scanProgressGateway.emitScanProgress(scan.id, {
+        currentStep: 'parsing',
+        progress: 25,
+        message: 'Parsing contract code...'
+      });
+      this.scanProgressGateway.emitScanLog(scan.id, 'Parsing contract code...');
 
-    this.logger.log(`Scan analysis completed for scan ${scan.id}, found ${vulnerabilities.length} vulnerabilities`);
+      // Simulate parsing delay
+      await this.delay(1000);
 
-    return {
-      vulnerabilities,
-      metrics,
-      scanTime,
-      sarifReport,
-    };
+      // Step 2: Fuzzing
+      scan.currentStep = 'fuzzing';
+      scan.progress = 50;
+      scan.logs = [...(scan.logs || []), 'Running fuzzing tests...'];
+      await this.scanRepository.save(scan);
+      
+      this.scanProgressGateway.emitScanProgress(scan.id, {
+        currentStep: 'fuzzing',
+        progress: 50,
+        message: 'Running fuzzing tests...'
+      });
+      this.scanProgressGateway.emitScanLog(scan.id, 'Running fuzzing tests...');
+
+      // Simulate fuzzing delay
+      await this.delay(2000);
+
+      // Step 3: Analysis
+      scan.currentStep = 'analysis';
+      scan.progress = 75;
+      scan.logs = [...(scan.logs || []), 'Analyzing for vulnerabilities...'];
+      await this.scanRepository.save(scan);
+      
+      this.scanProgressGateway.emitScanProgress(scan.id, {
+        currentStep: 'analysis',
+        progress: 75,
+        message: 'Analyzing for vulnerabilities...'
+      });
+      this.scanProgressGateway.emitScanLog(scan.id, 'Analyzing for vulnerabilities...');
+
+      // Mock vulnerability detection (replace with actual core scanner integration)
+      const vulnerabilities = this.detectMockVulnerabilities(scan.code);
+      
+      // Calculate metrics
+      const metrics = this.calculateMetrics(vulnerabilities, scan.code);
+      
+      // Generate SARIF report
+      const sarifReport = this.generateSarifReport(vulnerabilities, scan);
+      
+      // Step 4: Reporting
+      scan.currentStep = 'reporting';
+      scan.progress = 90;
+      scan.logs = [...(scan.logs || []), 'Generating security report...'];
+      await this.scanRepository.save(scan);
+      
+      this.scanProgressGateway.emitScanProgress(scan.id, {
+        currentStep: 'reporting',
+        progress: 90,
+        message: 'Generating security report...'
+      });
+      this.scanProgressGateway.emitScanLog(scan.id, 'Generating security report...');
+
+      // Simulate report generation delay
+      await this.delay(1000);
+
+      const scanTime = Date.now() - startTime;
+
+      this.logger.log(`Scan analysis completed for scan ${scan.id}, found ${vulnerabilities.length} vulnerabilities`);
+
+      return {
+        vulnerabilities,
+        metrics,
+        scanTime,
+        sarifReport,
+      };
+    } catch (error) {
+      // Handle WASM compilation errors specifically
+      if (error instanceof Error && error.message.includes('WASM compilation failed')) {
+        this.scanProgressGateway.emitScanError(scan.id, `WASM Compilation Error: ${error.message}`);
+        throw error;
+      }
+      throw error;
+    }
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   private detectMockVulnerabilities(code: string): any[] {
