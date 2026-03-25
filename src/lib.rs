@@ -14,6 +14,7 @@ pub mod bounty_marketplace;
 pub mod scanner_registry;
 pub mod audit_proof_of_scan;
 pub mod time_travel_debugger;
+pub mod differential_fuzzing;
 
 
 pub use scanners::{SecurityScanner, InvariantScanner};
@@ -28,6 +29,10 @@ pub use audit_proof_of_scan::{AuditProofOfScan, SecurityCertificate, Certificate
 pub use time_travel_debugger::{
     TimeTravelDebugger, TimeTravelConfig, LedgerSnapshot, ContractState, 
     ForkedState, TestResult, UpgradeSimulationResult, CacheStats
+};
+pub use differential_fuzzing::{
+    DifferentialFuzzer, DifferentialFuzzingConfig, DifferentialFuzzingReport,
+    SdkVersion, TestInput, ExecutionResult, DiscrepancyDetector, NonDeterministicBehavior
 };
 
 #[derive(Debug, Clone)]
