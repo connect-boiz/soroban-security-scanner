@@ -34,6 +34,8 @@
     "@nestjs/swagger": "^7.3.0",
     "@nestjs/throttler": "^5.1.1",
     "@nestjs/redis": "^10.0.1",
+    "@nestjs/bullmq": "^10.0.1",
+    "bullmq": "^5.0.0",
     "@nestjs/schedule": "^4.0.0",
     "typeorm": "^0.3.17",
     "pg": "^8.11.3",

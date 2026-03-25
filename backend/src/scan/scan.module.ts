@@ -3,18 +3,35 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 
+import { BullModule } from '@nestjs/bullmq';
 import { ScanController } from './scan.controller';
 import { ScanService } from './scan.service';
 import { ScanProgressGateway } from './scan-progress.gateway';
+import { ScanProcessor } from './scan.processor';
 import { Scan } from './entities/scan.entity';
 import { Vulnerability } from './entities/vulnerability.entity';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Scan, Vulnerability])],
+  imports: [
+    TypeOrmModule.forFeature([Scan, Vulnerability]),
+    BullModule.registerQueue({
+      name: 'scan-queue',
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 5000,
+        },
+      },
+    }),
+    ConfigModule,
+  ],
   controllers: [ScanController],
   providers: [
     ScanService,
     ScanProgressGateway,
+    ScanProcessor,
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
