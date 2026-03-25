@@ -10,7 +10,11 @@
   },
   "dependencies": {
     "next": "14.0.4",
-
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "@heroicons/react": "^2.0.18",
+    "socket.io-client": "^4.7.4",
+    "canvas-confetti": "^1.9.2",
     "eslint-config-next": "14.0.4"
   }
 }

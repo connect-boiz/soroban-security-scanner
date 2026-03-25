@@ -5,6 +5,7 @@ import { APP_GUARD } from '@nestjs/core';
 
 import { ScanController } from './scan.controller';
 import { ScanService } from './scan.service';
+import { ScanProgressGateway } from './scan-progress.gateway';
 import { Scan } from './entities/scan.entity';
 import { Vulnerability } from './entities/vulnerability.entity';
 
@@ -13,6 +14,7 @@ import { Vulnerability } from './entities/vulnerability.entity';
   controllers: [ScanController],
   providers: [
     ScanService,
+    ScanProgressGateway,
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
