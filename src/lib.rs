@@ -13,6 +13,7 @@ pub mod kubernetes;
 pub mod bounty_marketplace;
 pub mod scanner_registry;
 pub mod audit_proof_of_scan;
+pub mod time_travel_debugger;
 
 
 pub use scanners::{SecurityScanner, InvariantScanner};
@@ -24,6 +25,10 @@ pub use config::ScannerConfig;
 pub use kubernetes::{K8sScanManager, ScanPodConfig, ScanAutoScaler};
 pub use scanner_registry::{ScannerRegistry, ScannerVersion, VersionStatus};
 pub use audit_proof_of_scan::{AuditProofOfScan, SecurityCertificate, CertificateStatus, RiskScore};
+pub use time_travel_debugger::{
+    TimeTravelDebugger, TimeTravelConfig, LedgerSnapshot, ContractState, 
+    ForkedState, TestResult, UpgradeSimulationResult, CacheStats
+};
 
 #[derive(Debug, Clone)]
 pub struct ScanResult {
