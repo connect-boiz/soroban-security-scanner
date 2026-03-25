@@ -11,6 +11,7 @@ import { UserModule } from './user/user.module';
 import { AuthModule } from './auth/auth.module';
 import { DatabaseModule } from './database/database.module';
 import { RiskManagementModule } from './risk/risk-management.module';
+import { ApiKeyModule } from './api-key/api-key.module';
 
 @Module({
   imports: [
@@ -61,6 +62,7 @@ import { RiskManagementModule } from './risk/risk-management.module';
     UserModule,
     AuthModule,
     RiskManagementModule,
+    ApiKeyModule,
   ],
   controllers: [],
   providers: [],

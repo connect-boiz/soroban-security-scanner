@@ -5,6 +5,7 @@ import { User } from '../user/entities/user.entity';
 import { Scan } from '../scan/entities/scan.entity';
 import { Vulnerability } from '../scan/entities/vulnerability.entity';
 import { RiskData } from '../risk/entities/risk-data.entity';
+import { ApiKey } from '../api-key/entities/api-key.entity';
 
 @Module({
   imports: [
@@ -14,7 +15,7 @@ import { RiskData } from '../risk/entities/risk-data.entity';
         type: 'postgres',
         url: configService.get<string>('DATABASE_URL'),
         ssl: configService.get<boolean>('DATABASE_SSL', false),
-        entities: [User, Scan, Vulnerability, RiskData],
+        entities: [User, Scan, Vulnerability, RiskData, ApiKey],
         synchronize: configService.get<boolean>('DATABASE_SYNCHRONIZE', false),
         logging: configService.get<string>('NODE_ENV') === 'development',
         migrationsRun: true,
