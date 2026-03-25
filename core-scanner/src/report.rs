@@ -91,6 +91,73 @@ impl ScanReport {
         serde_json::to_string_pretty(self)
     }
 
+    pub fn export_sarif(&self) -> Result<String, serde_json::Error> {
+        let sarif = serde_json::json!({
+            "$schema": "https://schemastore.azurewebsites.net/schemas/json/sarif-2.1.0-rtm.5.json",
+            "version": "2.1.0",
+            "runs": [
+                {
+                    "tool": {
+                        "driver": {
+                            "name": "Soroban Security Scanner",
+                            "informationUri": "https://github.com/connect-boiz/soroban-security-scanner",
+                            "rules": self.vulnerabilities.iter().map(|v| {
+                                serde_json::json!({
+                                    "id": v.id,
+                                    "name": v.title,
+                                    "shortDescription": {
+                                        "text": v.title
+                                    },
+                                    "fullDescription": {
+                                        "text": v.description
+                                    },
+                                    "defaultConfiguration": {
+                                        "level": match v.severity {
+                                            crate::vulnerabilities::Severity::Critical | crate::vulnerabilities::Severity::High => "error",
+                                            crate::vulnerabilities::Severity::Medium => "warning",
+                                            crate::vulnerabilities::Severity::Low => "note",
+                                        }
+                                    },
+                                    "helpUri": v.references.first().cloned().unwrap_or_default(),
+                                    "properties": {
+                                        "cwe": v.cwe_id
+                                    }
+                                })
+                            }).collect::<Vec<_>>()
+                        }
+                    },
+                    "results": self.vulnerabilities.iter().map(|v| {
+                        serde_json::json!({
+                            "ruleId": v.id,
+                            "level": match v.severity {
+                                crate::vulnerabilities::Severity::Critical | crate::vulnerabilities::Severity::High => "error",
+                                crate::vulnerabilities::Severity::Medium => "warning",
+                                crate::vulnerabilities::Severity::Low => "note",
+                            },
+                            "message": {
+                                "text": format!("{}. Recommendation: {}", v.description, v.recommendation)
+                            },
+                            "locations": [
+                                {
+                                    "physicalLocation": {
+                                        "artifactLocation": {
+                                            "uri": v.location.file
+                                        },
+                                        "region": {
+                                            "startLine": v.location.line,
+                                            "startColumn": v.location.column
+                                        }
+                                    }
+                                }
+                            ]
+                        })
+                    }).collect::<Vec<_>>()
+                }
+            ]
+        });
+        serde_json::to_string_pretty(&sarif)
+    }
+
     pub fn export_csv(&self) -> String {
         let mut csv = String::new();
         csv.push_str("ID,Type,Severity,Title,Description,File,Line,Column,Function,Recommendation\n");

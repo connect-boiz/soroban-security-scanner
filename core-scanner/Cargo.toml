@@ -14,6 +14,14 @@ proc-macro2 = "1.0"
 # Soroban SDK analysis
 soroban-sdk = "21.0.0-preview.1"
 
+# Web framework
+axum = "0.7"
+tokio = { version = "1.0", features = ["full"] }
+tower-http = { version = "0.5", features = ["trace", "cors"] }
+
+# Caching
+redis = { version = "0.24", features = ["tokio-comp"] }
+
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -24,13 +32,13 @@ uuid = { version = "1.6", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 anyhow = "1.0"
 thiserror = "1.0"
+reqwest = { version = "0.11", features = ["json"] } # For pulling latest definitions
 
 # Logging
 tracing = "0.1"
-
-# Async utilities
-tokio = { version = "1.0", features = ["full"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
 [dev-dependencies]
 tempfile = "3.8"
 pretty_assertions = "1.4"
+mockito = "1.2"
