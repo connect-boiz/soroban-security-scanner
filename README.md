@@ -88,6 +88,38 @@ soroban-security-scanner/
 - Weak Signature Verification
 - Stellar Asset Manipulation
 
+### Time Travel Analysis
+- Historical State Compatibility
+- Contract Upgrade Safety
+- Orphaned State Detection
+- Ledger Sequence Testing
+
+## ⏰ Time Travel Debugger
+
+The Stellar Ledger State "Time Travel" Debugger allows developers to fork the network at specific ledger sequences and test contracts against historical live data.
+
+### Key Features
+- **Historical State Forking**: Test against any past ledger state
+- **Contract Upgrade Simulation**: Ensure new WASM versions are compatible
+- **Orphaned State Tracking**: Identify inaccessible storage after upgrades
+- **Read-Only Operation**: Safe testing without network interference
+- **Performance Optimization**: LRU caching for efficient state retrieval
+
+### Quick Start
+
+```bash
+# Fork network at specific ledger
+stellar-scanner time-travel fork --ledger-sequence 1000000
+
+# Test contract against historical state
+stellar-scanner time-travel test --contract-id CONTRACT_ID --ledger-sequence 1000000
+
+# Simulate contract upgrade
+stellar-scanner time-travel upgrade --contract-id CONTRACT_ID --wasm-file new.wasm --ledger-sequence 1000000
+```
+
+For detailed documentation, see [TIME_TRAVEL_DEBUGGER.md](TIME_TRAVEL_DEBUGGER.md).
+
 ## 🛠️ Technology Stack
 
 ### Frontend
