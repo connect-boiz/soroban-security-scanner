@@ -8,6 +8,7 @@ import { ScanController } from './scan.controller';
 import { ScanService } from './scan.service';
 import { ScanProgressGateway } from './scan-progress.gateway';
 import { ScanProcessor } from './scan.processor';
+import { GarbageCollectorService } from './garbage-collector.service';
 import { Scan } from './entities/scan.entity';
 import { Vulnerability } from './entities/vulnerability.entity';
 import { ConfigModule } from '@nestjs/config';
@@ -32,6 +33,7 @@ import { ConfigModule } from '@nestjs/config';
     ScanService,
     ScanProgressGateway,
     ScanProcessor,
+    GarbageCollectorService,
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
