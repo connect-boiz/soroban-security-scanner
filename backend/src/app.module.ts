@@ -5,6 +5,7 @@ import { RedisModule } from '@nestjs/redis';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { JwtModule } from '@nestjs/jwt';
 import { BullModule } from '@nestjs/bullmq';
+import { ScheduleModule } from '@nestjs/schedule';
 
 import { HealthModule } from './health/health.module';
 import { ScanModule } from './scan/scan.module';
@@ -21,6 +22,9 @@ import { ApiKeyModule } from './api-key/api-key.module';
       isGlobal: true,
       envFilePath: ['.env.local', '.env'],
     }),
+
+    // Schedule
+    ScheduleModule.forRoot(),
 
     // Database
     DatabaseModule,
