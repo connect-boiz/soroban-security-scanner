@@ -15,6 +15,8 @@
     "@heroicons/react": "^2.0.18",
     "socket.io-client": "^4.7.4",
     "canvas-confetti": "^1.9.2",
+    "@monaco-editor/react": "^4.6.0",
+    "monaco-editor": "^0.44.0",
     "eslint-config-next": "14.0.4"
   }
 }
