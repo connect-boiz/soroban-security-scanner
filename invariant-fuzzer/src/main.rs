@@ -16,7 +16,7 @@ use tower_http::trace::TraceLayer;
 use tracing::{info, error, Level};
 use tracing_subscriber::{FmtSubscriber, EnvFilter};
 use crate::fuzzer::{FuzzValue, InputGenerator};
-use crate::executor::WasmExecutor;
+use crate::executor::{WasmExecutor, CoverageData, FuzzerInput};
 use crate::ledger::MockLedger;
 use anyhow::{Result, anyhow};
 use base64::{Engine as _, engine::general_purpose};
@@ -35,6 +35,7 @@ struct FuzzResult {
     iterations_completed: usize,
     failure_input_sequence: Option<Vec<FuzzValue>>,
     error_message: Option<String>,
+    coverage_data: Option<CoverageData>,
 }
 
 pub struct AppState {
@@ -69,6 +70,9 @@ async fn handle_fuzz_job(
     let executor = WasmExecutor::new().unwrap();
     let arg_count = payload.arg_count.unwrap_or(0);
     
+    // Reset coverage data for new job
+    executor.reset_coverage();
+    
     info!("Starting fuzz job for function '{}' ({} args) with {} iterations", 
         payload.function, arg_count, payload.iterations);
 
@@ -95,8 +99,8 @@ async fn handle_fuzz_job(
             })
         ];
 
-        // Execute with invariants check
-        if let Err(e) = executor.execute_with_invariants(&wasm_bytes, &payload.function, inputs.clone(), invariants) {
+        // Execute with invariants check and coverage tracking
+        if let Err(e) = executor.execute_with_invariants(&wasm_bytes, &payload.function, inputs.clone(), invariants, i) {
            error!("Invariant violation at iteration {}: {}", i, e);
            failure_sequence = Some(inputs);
            success = false;
@@ -107,6 +111,9 @@ async fn handle_fuzz_job(
         iterations_completed = i + 1;
     }
 
+    // Get coverage data after fuzzing completes
+    let coverage_data = executor.get_coverage_data();
+
     *state.status.lock().unwrap() = WorkerStatus::Idle;
 
     (StatusCode::OK, Json(FuzzResult {
@@ -114,6 +121,7 @@ async fn handle_fuzz_job(
         iterations_completed,
         failure_input_sequence: failure_sequence,
         error_message,
+        coverage_data: Some(coverage_data),
     })).into_response()
 }
 
@@ -124,6 +132,32 @@ async fn health_check(State(state): State<Arc<AppState>>) -> impl IntoResponse {
         "worker_id": uuid::Uuid::new_v4().to_string(),
         "ready": matches!(*status, WorkerStatus::Idle),
     }))
+}
+
+#[derive(Serialize, Deserialize)]
+struct FuzzerInputRequest {
+    wasm_base64: String,
+    line_number: u32,
+}
+
+async fn get_fuzzer_inputs_for_line(
+    Json(payload): Json<FuzzerInputRequest>,
+) -> impl IntoResponse {
+    let wasm_bytes = match general_purpose::STANDARD.decode(&payload.wasm_base64) {
+        Ok(b) => b,
+        Err(_) => {
+            return (StatusCode::BAD_REQUEST, Json("Invalid base64 WASM")).into_response();
+        }
+    };
+    
+    let executor = WasmExecutor::new().unwrap();
+    let inputs = executor.get_fuzzer_inputs_for_line(payload.line_number);
+    
+    (StatusCode::OK, Json(serde_json::json!({
+        "line_number": payload.line_number,
+        "fuzzer_inputs": inputs,
+        "input_count": inputs.len()
+    }))).into_response()
 }
 
 #[tokio::main]
@@ -143,6 +177,7 @@ async fn main() {
     let app = Router::new()
         .route("/health", get(health_check))
         .route("/fuzz", post(handle_fuzz_job))
+        .route("/fuzzer-inputs", post(get_fuzzer_inputs_for_line))
         .layer(TraceLayer::new_for_http())
         .with_state(state);
 

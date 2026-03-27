@@ -108,6 +108,30 @@ const mockSarifData = {
   }]
 };
 
+// Mock coverage data
+const mockCoverageData = {
+  lines_hit: {
+    1: 10, 2: 10, 3: 10, 4: 10, 5: 10, 6: 10, 7: 10, 8: 10, 9: 10, 10: 10,
+    11: 8, 12: 8, 13: 8, 14: 8, 15: 8, 16: 8, 17: 8, 18: 8, 19: 8, 20: 8,
+    21: 5, 22: 5, 23: 5, 24: 5, 25: 5, 26: 5, 27: 5, 28: 5, 29: 5, 30: 5,
+    31: 0, 32: 0, 33: 0, 34: 0, 35: 0, 36: 0, 37: 0, 38: 0, 39: 0, 40: 0,
+  },
+  branches_hit: {
+    15: [true, false], // Partial coverage - only true path tested
+    25: [true, true],  // Full coverage - both paths tested
+    35: [false, false], // No coverage - neither path tested
+  },
+  functions_hit: {
+    "new": 10,
+    "mint": 8,
+    "transfer": 5,
+    "get_balance": 0, // Critical function not tested
+    "approve": 3,
+  },
+  total_instructions: 1000000,
+  executed_instructions: 450000,
+};
+
 export default function ReportViewerPage() {
   const [showViewer, setShowViewer] = useState(false);
   const [scanId] = useState('demo-scan-123');
@@ -235,6 +259,7 @@ export default function ReportViewerPage() {
         <VulnerabilityReportViewer
           scanId={scanId}
           sarifData={mockSarifData}
+          coverageData={mockCoverageData}
           onClose={() => setShowViewer(false)}
         />
       )}
