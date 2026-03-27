@@ -14,6 +14,7 @@ import { AuthModule } from './auth/auth.module';
 import { DatabaseModule } from './database/database.module';
 import { RiskManagementModule } from './risk/risk-management.module';
 import { ApiKeyModule } from './api-key/api-key.module';
+import { WebhookModule } from './webhook/webhook.module';
 
 @Module({
   imports: [
@@ -80,6 +81,7 @@ import { ApiKeyModule } from './api-key/api-key.module';
     AuthModule,
     RiskManagementModule,
     ApiKeyModule,
+    WebhookModule,
   ],
   controllers: [],
   providers: [],

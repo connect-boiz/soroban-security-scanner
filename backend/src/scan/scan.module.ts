@@ -12,6 +12,7 @@ import { GarbageCollectorService } from './garbage-collector.service';
 import { Scan } from './entities/scan.entity';
 import { Vulnerability } from './entities/vulnerability.entity';
 import { ConfigModule } from '@nestjs/config';
+import { WebhookModule } from '../webhook/webhook.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { ConfigModule } from '@nestjs/config';
       },
     }),
     ConfigModule,
+    WebhookModule,
   ],
   controllers: [ScanController],
   providers: [
