@@ -6,6 +6,7 @@ import { Repository } from 'typeorm';
 import { Scan } from './entities/scan.entity';
 import { Vulnerability } from './entities/vulnerability.entity';
 import { ScanProgressGateway } from './scan-progress.gateway';
+import { WebhookService } from '../webhook/webhook.service';
 import axios from 'axios';
 import { ConfigService } from '@nestjs/config';
 
@@ -19,6 +20,7 @@ export class ScanProcessor extends WorkerHost {
     @InjectRepository(Vulnerability)
     private readonly vulnerabilityRepository: Repository<Vulnerability>,
     private readonly scanProgressGateway: ScanProgressGateway,
+    private readonly webhookService: WebhookService,
     private readonly configService: ConfigService,
   ) {
     super();
@@ -94,6 +96,15 @@ export class ScanProcessor extends WorkerHost {
         vulnerabilities: allVulnerabilities,
         metrics: scan.metrics,
       });
+
+      // Send webhook notifications
+      if (allVulnerabilities.length > 0) {
+        try {
+          await this.webhookService.sendScanNotification(scan, allVulnerabilities);
+        } catch (error) {
+          this.logger.error(`Failed to send webhook notifications for scan ${scanId}:`, error.message);
+        }
+      }
 
       return { success: true };
 
