@@ -19,6 +19,24 @@ spec:
         app: stellar-security-scanner
         component: api
     spec:
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector:
+          matchLabels:
+            app: stellar-security-scanner
+            component: api
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  app: stellar-security-scanner
+                  component: api
       serviceAccountName: scanner-sa
       containers:
       - name: api
@@ -32,6 +50,13 @@ spec:
               name: scanner-secrets
               key: database-url
         - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: scanner-secrets
+              key: redis-url
+        - name: SESSION_MODE
+          value: stateless
+        - name: SESSION_STORE_URL
           valueFrom:
             secretKeyRef:
               name: scanner-secrets
@@ -71,11 +96,15 @@ kind: Service
 metadata:
   name: scanner-api-service
   namespace: stellar-security-scanner
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: nlb
 spec:
   selector:
     app: stellar-security-scanner
     component: api
+  sessionAffinity: None
+  externalTrafficPolicy: Cluster
   ports:
   - port: 80
     targetPort: 8080
-  type: ClusterIP
+  type: LoadBalancer
