@@ -1,7 +1,8 @@
 import React from 'react';
-import { SummaryWidget } from './dashboard/SummaryWidget';
-import { VulnerabilityTrendsChart } from './dashboard/VulnerabilityTrendsChart';
-import { RecentScansTable } from './dashboard/RecentScansTable';
-import { DatePicker } from './dashboard/DatePicker';
+import { SummaryWidget } from './SummaryWidget';
+import { VulnerabilityTrendsChart } from './VulnerabilityTrendsChart';
+import { RecentScansTable } from './RecentScansTable';
+import { DatePicker } from './DatePicker';
+import { ContractHealthScores } from './ContractHealthScores';
 
-export { SummaryWidget, VulnerabilityTrendsChart, RecentScansTable, DatePicker };
+export { SummaryWidget, VulnerabilityTrendsChart, RecentScansTable, DatePicker, ContractHealthScores };

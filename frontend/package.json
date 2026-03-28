@@ -17,6 +17,8 @@
     "canvas-confetti": "^1.9.2",
     "@monaco-editor/react": "^4.6.0",
     "monaco-editor": "^0.44.0",
-    "eslint-config-next": "14.0.4"
+    "eslint-config-next": "14.0.4",
+    "zustand": "^4.4.7",
+    "recharts": "^2.8.0"
   }
 }
