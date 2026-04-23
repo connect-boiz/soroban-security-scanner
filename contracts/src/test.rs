@@ -1,97 +1,256 @@
 #![cfg(test)]
 
-use soroban_sdk::{symbol, Address, BytesN, Env, String};
-use crate::{SecurityScannerContract, ContractError, VulnerabilityReport};
+use soroban_sdk::{symbol_short, Address, BytesN, Env, String, testutils::{Address as _}, token};
+use crate::{SecurityScannerContract, ContractError, VulnerabilityReport, SecurityScannerContractClient};
 
-#[test]
-fn test_initialize() {
-    let env = Env::default();
+// Mock Oracle Contract
+pub struct MockOracle;
+
+#[soroban_sdk::contractimpl]
+impl MockOracle {
+    pub fn get_reward(env: Env, severity: String) -> i128 {
+        if severity == String::from_str(&env, "emergency") {
+            20000000i128 // 20 XLM
+        } else {
+            10000000i128 // 10 XLM
+        }
+    }
+}
+
+fn setup_test(env: &Env) -> (SecurityScannerContractClient<'_>, Address, Address, Address) {
     let contract_id = env.register_contract(None, SecurityScannerContract);
-    let client = SecurityScannerContract::new(&env, &contract_id);
+    let client = SecurityScannerContractClient::new(env, &contract_id);
+    let admin = Address::generate(env);
+    let token_admin = Address::generate(env);
+    let token_id = env.register_stellar_asset_contract_v2(token_admin.clone()).address();
     
-    let admin = Address::generate(&env);
-    
-    // Initialize contract
     client.initialize(&admin);
-    
-    // Verify admin is set
-    assert_eq!(client.get_bounty_pool(), 0);
+    client.add_token(&admin, &token_id); // Whitelist the default token (#125)
+    (client, admin, token_id, token_admin)
 }
 
 #[test]
-fn test_report_vulnerability() {
+fn test_multi_token_bounty_pool() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SecurityScannerContract);
-    let client = SecurityScannerContract::new(&env, &contract_id);
+    env.mock_all_auths();
+    let (client, _admin, token_id, token_admin) = setup_test(&env);
+    let funder = Address::generate(&env);
     
-    let admin = Address::generate(&env);
-    let reporter = Address::generate(&env);
+    // Mint tokens to funder
+    let token_client = token::StellarAssetClient::new(&env, &token_id);
+    token_client.mint(&funder, &1000);
     
-    // Initialize contract
-    client.initialize(&admin);
+    // Fund bounty pool
+    client.fund_bounty_pool(&funder, &token_id, &500);
     
-    // Report vulnerability
-    let contract_address = BytesN::from_array(&env, &[1u8; 32]);
-    let vuln_type = String::from_str(&env, "Access Control");
-    let severity = String::from_str(&env, "critical");
-    let description = String::from_str(&env, "Missing access control");
-    let location = String::from_str(&env, "src/lib.rs:45");
-    
-    let report_id = client.report_vulnerability(
-        &reporter,
-        &contract_address,
-        &vuln_type,
-        &severity,
-        &description,
-        &location,
-    );
-    
-    // Verify report was created
-    let report = client.get_vulnerability(report_id).unwrap();
-    assert_eq!(report.reporter, reporter);
-    assert_eq!(report.contract_id, contract_address);
-    assert_eq!(report.vulnerability_type, vuln_type);
-    assert_eq!(report.status, String::from_str(&env, "pending"));
+    assert_eq!(client.get_bounty_pool(&token_id), 500);
+    assert_eq!(token::Client::new(&env, &token_id).balance(&client.address), 500);
 }
 
 #[test]
-fn test_verify_vulnerability() {
+fn test_oracle_emergency_reward() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SecurityScannerContract);
-    let client = SecurityScannerContract::new(&env, &contract_id);
+    env.mock_all_auths();
+    let (client, admin, token_id, _token_admin) = setup_test(&env);
     
-    let admin = Address::generate(&env);
+    // Register mock oracle
+    let oracle_id = env.register_contract(None, MockOracle);
+    client.set_oracle(&admin, &oracle_id);
+    
     let reporter = Address::generate(&env);
-    
-    // Initialize contract
-    client.initialize(&admin);
-    
-    // Report vulnerability
     let contract_address = BytesN::from_array(&env, &[1u8; 32]);
-    let vuln_type = String::from_str(&env, "Access Control");
-    let severity = String::from_str(&env, "critical");
-    let description = String::from_str(&env, "Missing access control");
-    let location = String::from_str(&env, "src/lib.rs:45");
     
-    let report_id = client.report_vulnerability(
+    // Report emergency vulnerability
+    let alert_id = client.report_emergency_vulnerability(
         &reporter,
         &contract_address,
-        &vuln_type,
-        &severity,
-        &description,
-        &location,
+        &String::from_str(&env, "Critical Bug"),
+        &String::from_str(&env, "emergency"),
+        &String::from_str(&env, "Exploit found"),
+        &String::from_str(&env, "lib.rs"),
+        &token_id,
+        &15000000i128, // min_reward
     );
     
-    // Verify vulnerability and award bounty
-    client.verify_vulnerability(&admin, report_id, &1000000);
+    let alert = client.get_emergency_alert(&alert_id).unwrap();
+    assert_eq!(alert.emergency_reward, 20000000i128); // From Oracle
+}
+
+#[test]
+fn test_slippage_protection() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _admin, token_id, _token_admin) = setup_test(&env);
     
-    // Check updated report
-    let report = client.get_vulnerability(report_id).unwrap();
-    assert_eq!(report.status, String::from_str(&env, "verified"));
-    assert_eq!(report.bounty_amount, 1000000);
+    let reporter = Address::generate(&env);
+    let contract_address = BytesN::from_array(&env, &[1u8; 32]);
     
-    // Check reputation
-    let reputation = client.get_reputation(reporter).unwrap();
-    assert_eq!(reputation.successful_reports, 1);
-    assert_eq!(reputation.total_earnings, 1000000);
+    // This should fail because 10,000,000 (hardcoded fallback) < 15,000,000 (min_reward)
+    let result = env.as_contract(&client.address, || {
+        client.try_report_emergency_vulnerability(
+            &reporter,
+            &contract_address,
+            &String::from_str(&env, "Critical Bug"),
+            &String::from_str(&env, "emergency"),
+            &String::from_str(&env, "Exploit found"),
+            &String::from_str(&env, "lib.rs"),
+            &token_id,
+            &15000000i128,
+        )
+    });
+    
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_admin_withdraw_liquidity() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, token_id, token_admin) = setup_test(&env);
+    
+    // Fund contract
+    let funder = Address::generate(&env);
+    let token_client = token::StellarAssetClient::new(&env, &token_id);
+    token_client.mint(&funder, &1000);
+    client.fund_bounty_pool(&funder, &token_id, &1000);
+    
+    let treasury = Address::generate(&env);
+    client.admin_withdraw(&admin, &token_id, &400, &treasury);
+    
+    assert_eq!(token::Client::new(&env, &token_id).balance(&treasury), 400);
+    assert_eq!(token::Client::new(&env, &token_id).balance(&client.address), 600);
+}
+
+#[test]
+fn test_escrow_multi_token() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, token_id, token_admin) = setup_test(&env);
+    
+    let depositor = Address::generate(&env);
+    let beneficiary = Address::generate(&env);
+    
+    token::StellarAssetClient::new(&env, &token_id).mint(&depositor, &1000);
+    
+    let escrow_id = client.create_escrow(
+        &depositor,
+        &beneficiary,
+        &500,
+        &token_id,
+        &String::from_str(&env, "bounty"),
+        &100,
+    );
+    
+    assert_eq!(client.get_escrow_pool_balance(&token_id), 500);
+    
+    // Release escrow
+    client.mark_escrow_conditions_met(&admin, &escrow_id);
+    client.release_escrow(&escrow_id, &depositor, &None);
+    
+    assert_eq!(token::Client::new(&env, &token_id).balance(&beneficiary), 500);
+    assert_eq!(client.get_escrow_pool_balance(&token_id), 0);
+}
+
+#[test]
+fn test_token_whitelisting() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, token_id, _token_admin) = setup_test(&env);
+    
+    let other_token = Address::generate(&env);
+    let reporter = Address::generate(&env);
+    
+    // Reporting with non-whitelisted token should fail
+    let result = env.as_contract(&client.address, || {
+        client.try_report_vulnerability(
+            &reporter,
+            &BytesN::from_array(&env, &[0u8; 32]),
+            &String::from_str(&env, "Bug"),
+            &String::from_str(&env, "medium"),
+            &String::from_str(&env, "desc"),
+            &String::from_str(&env, "loc"),
+            &other_token,
+            &0,
+        )
+    });
+    assert!(result.is_err());
+    
+    // Add token and it should succeed
+    client.add_token(&admin, &other_token);
+    let _report_id = client.report_vulnerability(
+        &reporter,
+        &BytesN::from_array(&env, &[0u8; 32]),
+        &String::from_str(&env, "Bug"),
+        &String::from_str(&env, "medium"),
+        &String::from_str(&env, "desc"),
+        &String::from_str(&env, "loc"),
+        &other_token,
+        &0,
+    );
+}
+
+#[test]
+fn test_liquidity_management_insufficient_pool() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, token_id, _token_admin) = setup_test(&env);
+    
+    let reporter = Address::generate(&env);
+    let report_id = client.report_vulnerability(
+        &reporter,
+        &BytesN::from_array(&env, &[0u8; 32]),
+        &String::from_str(&env, "Bug"),
+        &String::from_str(&env, "medium"),
+        &String::from_str(&env, "desc"),
+        &String::from_str(&env, "loc"),
+        &token_id,
+        &0,
+    );
+    
+    // Verification should fail if pool is empty
+    let result = env.as_contract(&client.address, || {
+        client.try_verify_vulnerability(&admin, &report_id, &1000)
+    });
+    assert!(result.is_err());
+    
+    // Fund pool and it should succeed
+    let funder = Address::generate(&env);
+    token::StellarAssetClient::new(&env, &token_id).mint(&funder, &1000);
+    client.fund_bounty_pool(&funder, &token_id, &1000);
+    
+    client.verify_vulnerability(&admin, &report_id, &1000);
+    assert_eq!(client.get_bounty_pool(&token_id), 0);
+}
+
+#[test]
+fn test_slippage_protection_standard_report() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, token_id, _token_admin) = setup_test(&env);
+    
+    let reporter = Address::generate(&env);
+    let report_id = client.report_vulnerability(
+        &reporter,
+        &BytesN::from_array(&env, &[0u8; 32]),
+        &String::from_str(&env, "Bug"),
+        &String::from_str(&env, "medium"),
+        &String::from_str(&env, "desc"),
+        &String::from_str(&env, "loc"),
+        &token_id,
+        &500, // min_bounty
+    );
+    
+    // Fund pool
+    let funder = Address::generate(&env);
+    token::StellarAssetClient::new(&env, &token_id).mint(&funder, &1000);
+    client.fund_bounty_pool(&funder, &token_id, &1000);
+    
+    // Verification with 400 < 500 should fail
+    let result = env.as_contract(&client.address, || {
+        client.try_verify_vulnerability(&admin, &report_id, &400)
+    });
+    assert!(result.is_err());
+    
+    // Verification with 600 >= 500 should succeed
+    client.verify_vulnerability(&admin, &report_id, &600);
 }
