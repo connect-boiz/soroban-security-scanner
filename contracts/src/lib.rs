@@ -1,16 +1,11 @@
-use soroban_sdk::{contractimpl, Address, BytesN, Env, Symbol, Vec, Map, String, token, contracttype, try_contract, ConversionError};
-use soroban_sdk::token::{TokenClient, StellarAssetClient};
+
 
 // Contract state keys
 const ADMIN: Symbol = Symbol::short("ADMIN");
 const BOUNTY_POOL: Symbol = Symbol::short("BOUNTY");
 const VULNERABILITIES: Symbol = Symbol::short("VULNS");
 const REPUTATION: Symbol = Symbol::short("REPUT");
-const PRICE_ORACLE: Symbol = Symbol::short("ORACLE");
-const SUPPORTED_TOKENS: Symbol = Symbol::short("TOKENS");
-const LIQUIDITY_THRESHOLD: Symbol = Symbol::short("LIQ_THR");
-const EMERGENCY_REWARDS: Symbol = Symbol::short("EMERG_RW");
-const SLIPPAGE_TOLERANCE: Symbol = Symbol::short("SLIP_TOL");
+
 
 // Contract errors
 pub enum ContractError {
@@ -18,37 +13,7 @@ pub enum ContractError {
     InvalidInput = 2,
     NotFound = 3,
     InsufficientFunds = 4,
-    OracleError = 5,
-    TokenNotSupported = 6,
-    SlippageExceeded = 7,
-    InsufficientLiquidity = 8,
-    TransferFailed = 9,
-}
 
-// Token interface structure
-#[derive(Clone, contracttype)]
-pub struct TokenInfo {
-    pub token_address: Address,
-    pub decimals: u32,
-    pub is_active: bool,
-    pub minimum_liquidity: i128,
-}
-
-// Liquidity pool structure
-#[derive(Clone, contracttype)]
-pub struct LiquidityPool {
-    pub token_address: Address,
-    pub balance: i128,
-    pub last_updated: u64,
-}
-
-// Emergency reward configuration
-#[derive(Clone, contracttype)]
-pub struct EmergencyRewardConfig {
-    pub base_amount: i128,
-    pub severity_multiplier: Map<String, i128>,
-    pub oracle_enabled: bool,
-    pub price_feed_address: Address,
 }
 
 // Vulnerability structure
@@ -76,6 +41,37 @@ pub struct Reputation {
     pub total_earnings: i128,
 }
 
+// Escrow structure
+#[derive(Clone)]
+pub struct EscrowEntry {
+    pub id: u64,
+    pub depositor: Address,
+    pub beneficiary: Address,
+    pub amount: i128,
+    pub purpose: String, // "bounty", "reward", "emergency"
+    pub status: String,  // "pending", "locked", "released", "refunded"
+    pub created_at: u64,
+    pub lock_until: u64,
+    pub conditions_met: bool,
+    pub release_signature: Option<BytesN<32>>,
+}
+
+// Emergency alert structure
+#[derive(Clone)]
+pub struct EmergencyAlert {
+    pub id: u64,
+    pub reporter: Address,
+    pub contract_id: BytesN<32>,
+    pub vulnerability_type: String,
+    pub severity: String, // "critical", "emergency"
+    pub description: String,
+    pub location: String,
+    pub timestamp: u64,
+    pub status: String, // "pending", "verified", "false_positive"
+    pub emergency_reward: i128,
+    pub verified_by: Option<Address>,
+}
+
 pub struct SecurityScannerContract;
 
 #[contractimpl]
@@ -89,6 +85,7 @@ impl SecurityScannerContract {
         
         env.storage().instance().set(&ADMIN, &admin);
         env.storage().instance().set(&BOUNTY_POOL, &0i128);
+        env.storage().instance().set(&EMERGENCY_POOL, &0i128);
         
         // Initialize default configuration
         let supported_tokens: Map<Address, TokenInfo> = Map::new(&env);
@@ -381,132 +378,6 @@ impl SecurityScannerContract {
 
         Ok(())
     }
-    
-    /// Calculate emergency reward amount using oracle or fixed amounts
-    fn calculate_emergency_reward(env: Env, severity: &String) -> Result<i128, ContractError> {
-        let emergency_config: EmergencyRewardConfig = env.storage().instance()
-            .get(&EMERGENCY_REWARDS)
-            .ok_or(ContractError::NotFound)?;
-        
-        let base_amount = if emergency_config.oracle_enabled {
-            // Try to get price from oracle
-            match Self::get_price_from_oracle(env, emergency_config.price_feed_address) {
-                Ok(price) => price * emergency_config.base_amount / 1000000i128, // Normalize
-                Err(_) => emergency_config.base_amount, // Fallback to base amount
-            }
-        } else {
-            emergency_config.base_amount
-        };
-        
-        // Apply severity multiplier
-        let multiplier = emergency_config.severity_multiplier
-            .get(severity.clone())
-            .unwrap_or(1000000i128); // Default 1x multiplier
-        
-        Ok(base_amount * multiplier / 1000000i128)
-    }
-    
-    /// Get price from oracle (mock implementation)
-    fn get_price_from_oracle(env: Env, oracle_address: Address) -> Result<i128, ContractError> {
-        // This is a mock oracle implementation
-        // In a real implementation, this would call an actual price oracle contract
-        // For now, we'll return a fixed price to demonstrate the concept
-        Ok(1000000i128) // 1 USD = 1,000,000 units (6 decimals)
-    }
-    
-    /// Check if sufficient liquidity exists
-    fn check_liquidity(env: Env, token_address: Address, required_amount: i128) -> Result<(), ContractError> {
-        let liquidity_pools: Map<Address, LiquidityPool> = env.storage().instance()
-            .get(&Symbol::short("LIQ_POOLS"))
-            .unwrap_or_else(|| Map::new(&env));
-        
-        let pool_balance = match liquidity_pools.get(token_address) {
-            Some(pool) => pool.balance,
-            None => 0i128,
-        };
-        
-        let threshold: i128 = env.storage().instance()
-            .get(&LIQUIDITY_THRESHOLD)
-            .unwrap_or(1000000000i128); // 1000 tokens default
-        
-        if pool_balance < required_amount + threshold {
-            return Err(ContractError::InsufficientLiquidity);
-        }
-        
-        Ok(())
-    }
-    
-    /// Update liquidity pool
-    fn update_liquidity_pool(env: Env, token_address: Address, amount: i128, is_deposit: bool) -> Result<(), ContractError> {
-        let mut liquidity_pools: Map<Address, LiquidityPool> = env.storage().instance()
-            .get(&Symbol::short("LIQ_POOLS"))
-            .unwrap_or_else(|| Map::new(&env));
-        
-        let mut pool = liquidity_pools.get(token_address).unwrap_or(LiquidityPool {
-            token_address,
-            balance: 0i128,
-            last_updated: env.ledger().timestamp(),
-        });
-        
-        if is_deposit {
-            pool.balance += amount;
-        } else {
-            pool.balance -= amount;
-        }
-        
-        pool.last_updated = env.ledger().timestamp();
-        liquidity_pools.set(token_address, &pool);
-        env.storage().instance().set(&Symbol::short("LIQ_POOLS"), &liquidity_pools);
-        
-        Ok(())
-    }
-    
-    /// Transfer bounty with slippage protection
-    fn transfer_bounty(env: Env, token_address: Address, recipient: Address, amount: i128) -> Result<(), ContractError> {
-        let token_client = TokenClient::new(&env, &token_address);
-        
-        // Get current balance to check for slippage
-        let contract_balance = token_client.balance(&env.current_contract_address());
-        
-        if contract_balance < amount {
-            return Err(ContractError::InsufficientFunds);
-        }
-        
-        // Transfer tokens
-        token_client.transfer(&env.current_contract_address(), &recipient, &amount);
-        
-        // Update liquidity pool
-        Self::update_liquidity_pool(env, token_address, amount, false)?;
-        
-        Ok(())
-    }
-    
-    /// Get supported tokens
-    pub fn get_supported_tokens(env: Env) -> Map<Address, TokenInfo> {
-        env.storage().instance()
-            .get(&SUPPORTED_TOKENS)
-            .unwrap_or_else(|| Map::new(&env))
-    }
-    
-    /// Get emergency reward configuration
-    pub fn get_emergency_config(env: Env) -> EmergencyRewardConfig {
-        env.storage().instance()
-            .get(&EMERGENCY_REWARDS)
-            .unwrap_or_else(|| EmergencyRewardConfig {
-                base_amount: 1000000i128,
-                severity_multiplier: Map::new(&env),
-                oracle_enabled: false,
-                price_feed_address: Address::generate(&env),
-            })
-    }
-    
-    /// Get liquidity information
-    pub fn get_liquidity_info(env: Env, token_address: Address) -> Result<LiquidityPool, ContractError> {
-        let liquidity_pools: Map<Address, LiquidityPool> = env.storage().instance()
-            .get(&Symbol::short("LIQ_POOLS"))
-            .unwrap_or_else(|| Map::new(&env));
-        
-        liquidity_pools.get(token_address)
-            .ok_or(ContractError::NotFound)
+
     }
 }

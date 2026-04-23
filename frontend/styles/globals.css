@@ -1,0 +1,143 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-primary-600 text-white px-4 py-2 rounded-lg hover:bg-primary-700 transition-colors font-medium;
+  }
+  
+  .btn-secondary {
+    @apply bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300 transition-colors font-medium;
+  }
+  
+  .card {
+    @apply bg-white rounded-xl shadow-lg border border-gray-200 p-6;
+  }
+  
+  .input-field {
+    @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent;
+  }
+}
+
+/* Monaco Editor Vulnerability Highlighting */
+.monaco-editor .vulnerable-line {
+  background-color: rgba(255, 107, 107, 0.2) !important;
+  border-left: 4px solid #ff6b6b !important;
+}
+
+.monaco-editor .vulnerable-line:hover {
+  background-color: rgba(255, 107, 107, 0.3) !important;
+}
+
+/* Monaco Editor Coverage Heatmap */
+.monaco-editor .coverage-line-covered {
+  background-color: rgba(34, 197, 94, 0.1) !important;
+  border-left: 3px solid #22c55e !important;
+}
+
+.monaco-editor .coverage-line-partial {
+  background-color: rgba(250, 204, 21, 0.1) !important;
+  border-left: 3px solid #facc15 !important;
+}
+
+.monaco-editor .coverage-line-not-hit {
+  background-color: rgba(239, 68, 68, 0.1) !important;
+  border-left: 3px solid #ef4444 !important;
+}
+
+.monaco-editor .coverage-gutter-covered {
+  background-color: #22c55e !important;
+  color: white !important;
+  border-radius: 2px !important;
+  padding: 0 2px !important;
+  font-size: 10px !important;
+  font-weight: bold !important;
+}
+
+.monaco-editor .coverage-gutter-partial {
+  background-color: #facc15 !important;
+  color: #000 !important;
+  border-radius: 2px !important;
+  padding: 0 2px !important;
+  font-size: 10px !important;
+  font-weight: bold !important;
+}
+
+.monaco-editor .coverage-gutter-not-hit {
+  background-color: #ef4444 !important;
+  color: white !important;
+  border-radius: 2px !important;
+  padding: 0 2px !important;
+  font-size: 10px !important;
+  font-weight: bold !important;
+}
+
+/* Custom scrollbar for vulnerability lists */
+.vulnerability-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.vulnerability-list::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.vulnerability-list::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+.vulnerability-list::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* PDF export styles */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  
+  .print-only {
+    display: block !important;
+  }
+  
+  body {
+    font-size: 12pt;
+    line-height: 1.4;
+  }
+  
+  .vulnerability-section {
+    page-break-inside: avoid;
+    margin-bottom: 20pt;
+  }
+  
+  .vulnerability-title {
+    font-weight: bold;
+    font-size: 14pt;
+    color: #333;
+  }
+  
+  .severity-critical {
+    color: #dc2626;
+  }
+  
+  .severity-high {
+    color: #ea580c;
+  }
+  
+  .severity-medium {
+    color: #3b82f6;
+  }
+  
+  .severity-low {
+    color: #22c55e;
+  }
+}

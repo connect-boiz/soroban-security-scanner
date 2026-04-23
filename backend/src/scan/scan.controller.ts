@@ -69,4 +69,65 @@ export class ScanController {
   async getScanStats() {
     return await this.scanService.getScanStats();
   }
+
+  @Get(':scanId/sarif')
+  @ApiOperation({ summary: 'Get SARIF report for a scan' })
+  @ApiParam({ name: 'scanId', description: 'Scan ID' })
+  @ApiResponse({ status: 200, description: 'SARIF report retrieved successfully' })
+  @ApiResponse({ status: 404, description: 'Scan not found' })
+  async getSarifReport(@Param('scanId') scanId: string) {
+    const scan = await this.scanService.getScan(scanId);
+    
+    // Generate SARIF report if not already stored
+    if (!scan.sarifReport) {
+      // This would be generated during scan analysis in a real implementation
+      throw new Error('SARIF report not available for this scan');
+    }
+
+    return {
+      scanId: scan.id,
+      sarifReport: scan.sarifReport,
+      generatedAt: scan.updatedAt,
+    };
+  }
+
+  @Post(':scanId/vulnerabilities/:vulnerabilityId/acknowledge')
+  @ApiOperation({ summary: 'Acknowledge a vulnerability' })
+  @ApiParam({ name: 'scanId', description: 'Scan ID' })
+  @ApiParam({ name: 'vulnerabilityId', description: 'Vulnerability ID' })
+  @ApiResponse({ status: 200, description: 'Vulnerability acknowledged successfully' })
+  async acknowledgeVulnerability(
+    @Param('scanId') scanId: string,
+    @Param('vulnerabilityId') vulnerabilityId: string,
+    @Body() body: { notes?: string }
+  ) {
+    // In a real implementation, this would update the vulnerability status in the database
+    return {
+      scanId,
+      vulnerabilityId,
+      status: 'acknowledged',
+      notes: body.notes,
+      acknowledgedAt: new Date().toISOString(),
+    };
+  }
+
+  @Post(':scanId/vulnerabilities/:vulnerabilityId/false-positive')
+  @ApiOperation({ summary: 'Mark vulnerability as false positive' })
+  @ApiParam({ name: 'scanId', description: 'Scan ID' })
+  @ApiParam({ name: 'vulnerabilityId', description: 'Vulnerability ID' })
+  @ApiResponse({ status: 200, description: 'Vulnerability marked as false positive successfully' })
+  async markAsFalsePositive(
+    @Param('scanId') scanId: string,
+    @Param('vulnerabilityId') vulnerabilityId: string,
+    @Body() body: { reason?: string }
+  ) {
+    // In a real implementation, this would update the vulnerability status in the database
+    return {
+      scanId,
+      vulnerabilityId,
+      status: 'false_positive',
+      reason: body.reason,
+      markedAt: new Date().toISOString(),
+    };
+  }
 }

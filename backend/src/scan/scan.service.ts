@@ -5,6 +5,9 @@ import { v4 as uuidv4 } from 'uuid';
 import { Scan } from './entities/scan.entity';
 import { Vulnerability } from './entities/vulnerability.entity';
 import { CreateScanDto } from './dto/create-scan.dto';
+import { ScanProgressGateway } from './scan-progress.gateway';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 
 @Injectable()
 export class ScanService {
@@ -15,6 +18,9 @@ export class ScanService {
     private readonly scanRepository: Repository<Scan>,
     @InjectRepository(Vulnerability)
     private readonly vulnerabilityRepository: Repository<Vulnerability>,
+    private readonly scanProgressGateway: ScanProgressGateway,
+    @InjectQueue('scan-queue')
+    private readonly scanQueue: Queue,
   ) {}
 
   async createScan(createScanDto: CreateScanDto, userId: string): Promise<Scan> {
@@ -35,34 +41,25 @@ export class ScanService {
       throw new Error('Scan not found');
     }
 
-    scan.status = 'running';
+    scan.status = 'queued';
     await this.scanRepository.save(scan);
 
-    try {
-      const result = await this.performAnalysis(scan);
-      
-      // Update scan with results
-      scan.status = 'completed';
-      scan.metrics = result.metrics;
-      scan.scanTime = result.scanTime;
-      
-      // Save vulnerabilities
-      for (const vuln of result.vulnerabilities) {
-        const vulnerability = this.vulnerabilityRepository.create({
-          id: uuidv4(),
-          scanId: scan.id,
-          ...vuln,
-        });
-        await this.vulnerabilityRepository.save(vulnerability);
-      }
+    // Initial progress update
+    this.scanProgressGateway.emitScanStatus(scanId, 'queued');
+    this.scanProgressGateway.emitScanProgress(scanId, {
+      currentStep: 'queued' as any,
+      progress: 0,
+      message: 'Scan has been queued and is waiting for a worker...'
+    });
 
-      await this.scanRepository.save(scan);
-    } catch (error) {
-      scan.status = 'failed';
-      scan.errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      await this.scanRepository.save(scan);
-      throw error;
-    }
+    // Add to BullMQ
+    await this.scanQueue.add('process-scan', { scanId }, {
+        jobId: scanId, // Prevent duplicate jobs for the same scan
+        removeOnComplete: true,
+        removeOnFail: false,
+    });
+    
+    this.logger.log(`Scan ${scanId} added to the queue`);
   }
 
   async getScan(scanId: string): Promise<Scan> {
@@ -91,106 +88,12 @@ export class ScanService {
   }
 
   async getScanStats(): Promise<any> {
-    // Mock implementation - in reality, this would aggregate data from the database
     return {
       totalScans: 0,
       totalVulnerabilities: 0,
       averageRiskScore: 0,
       topVulnerabilityTypes: [],
       recentScans: [],
-    };
-  }
-
-  private async performAnalysis(scan: Scan): Promise<{
-    vulnerabilities: any[];
-    metrics: any;
-    scanTime: number;
-  }> {
-    const startTime = Date.now();
-    this.logger.log(`Starting scan analysis for scan ${scan.id}`);
-
-    // Mock vulnerability detection (replace with actual core scanner integration)
-    const vulnerabilities = this.detectMockVulnerabilities(scan.code);
-    
-    // Calculate metrics
-    const metrics = this.calculateMetrics(vulnerabilities, scan.code);
-    
-    const scanTime = Date.now() - startTime;
-
-    this.logger.log(`Scan analysis completed for scan ${scan.id}, found ${vulnerabilities.length} vulnerabilities`);
-
-    return {
-      vulnerabilities,
-      metrics,
-      scanTime,
-    };
-  }
-
-  private detectMockVulnerabilities(code: string): any[] {
-    const vulnerabilities = [];
-
-    // Example mock vulnerabilities
-    if (code.includes('pub fn') && !code.includes('require_auth')) {
-      vulnerabilities.push({
-        type: 'Access Control',
-        severity: 'critical',
-        title: 'Missing Access Control',
-        description: 'Public function lacks access control checks',
-        location: {
-          file: 'contract.rs',
-          line: 1,
-          column: 1,
-        },
-        recommendation: 'Add require_auth() or similar access control checks',
-        cweId: 'CWE-284',
-      });
-    }
-
-    if (code.includes('token.mint')) {
-      vulnerabilities.push({
-        type: 'Token Economics',
-        severity: 'high',
-        title: 'Potential Infinite Mint',
-        description: 'Token minting function may lack proper limits',
-        location: {
-          file: 'contract.rs',
-          line: 2,
-          column: 1,
-        },
-        recommendation: 'Implement total supply limits and minting controls',
-        cweId: 'CWE-400',
-      });
-    }
-
-    return vulnerabilities;
-  }
-
-  private calculateMetrics(vulnerabilities: any[], code: string): any {
-    const linesOfCode = code.split('\n').length;
-    
-    const severityCounts = vulnerabilities.reduce((acc, vuln) => {
-      acc[vuln.severity + 'Count'] = (acc[vuln.severity + 'Count'] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-
-    const riskScore = vulnerabilities.reduce((score, vuln) => {
-      const severityScore = {
-        critical: 10,
-        high: 7,
-        medium: 4,
-        low: 1,
-      };
-      return score + severityScore[vuln.severity];
-    }, 0);
-
-    return {
-      totalVulnerabilities: vulnerabilities.length,
-      criticalCount: severityCounts.criticalCount || 0,
-      highCount: severityCounts.highCount || 0,
-      mediumCount: severityCounts.mediumCount || 0,
-      lowCount: severityCounts.lowCount || 0,
-      riskScore,
-      linesOfCode,
     };
   }
 }

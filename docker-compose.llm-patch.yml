@@ -1,0 +1,156 @@
+version: '3.8'
+
+services:
+  # PostgreSQL database for LLM Patch Service
+  llm-patch-db:
+    image: postgres:15-alpine
+    container_name: soroban-llm-patch-db
+    environment:
+      POSTGRES_DB: llm_patch_service
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - llm_patch_data:/var/lib/postgresql/data
+    networks:
+      - soroban-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for caching
+  redis:
+    image: redis:7-alpine
+    container_name: soroban-redis
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - soroban-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # LLM Patch Service
+  llm-patch-service:
+    build:
+      context: ./llm-patch-service
+      dockerfile: Dockerfile
+    container_name: soroban-llm-patch-service
+    environment:
+      SERVICE_HOST: 0.0.0.0
+      SERVICE_PORT: 8080
+      DATABASE_URL: postgresql://postgres:postgres@llm-patch-db:5432/llm_patch_service
+      DB_MAX_CONNECTIONS: 10
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+      LLM_API_KEY: ${LLM_API_KEY}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4}
+      LLM_MAX_TOKENS: 2000
+      LLM_TEMPERATURE: 0.3
+      RUST_LOG: llm_patch_service=info,tower_http=info
+      MIN_CONFIDENCE_THRESHOLD: 0.4
+      ENABLE_SANITIZATION: true
+      ENABLE_VERIFICATION: true
+    ports:
+      - "8080:8080"
+    depends_on:
+      llm-patch-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - soroban-network
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock  # For compilation sandbox
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Backend API (updated to include LLM Patch integration)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: soroban-backend
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/soroban_scanner
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: your-jwt-secret-key
+      LLM_PATCH_SERVICE_URL: http://llm-patch-service:8080
+      LLM_PATCH_SERVICE_API_KEY: ${LLM_PATCH_SERVICE_API_KEY:-}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - postgres
+      - redis
+      - llm-patch-service
+    networks:
+      - soroban-network
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    restart: unless-stopped
+
+  # Core Scanner Service
+  core-scanner:
+    build:
+      context: ./core-scanner
+      dockerfile: Dockerfile
+    container_name: soroban-core-scanner
+    environment:
+      RUST_LOG: info
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "8081:8080"
+    depends_on:
+      - redis
+    networks:
+      - soroban-network
+    restart: unless-stopped
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: soroban-frontend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:3000
+      NEXT_PUBLIC_LLM_PATCH_URL: http://localhost:8080
+    ports:
+      - "3001:3000"
+    depends_on:
+      - backend
+      - llm-patch-service
+    networks:
+      - soroban-network
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    restart: unless-stopped
+
+volumes:
+  llm_patch_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  soroban-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

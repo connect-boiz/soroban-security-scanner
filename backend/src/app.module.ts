@@ -4,6 +4,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { RedisModule } from '@nestjs/redis';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { JwtModule } from '@nestjs/jwt';
+import { BullModule } from '@nestjs/bullmq';
+import { ScheduleModule } from '@nestjs/schedule';
 
 import { HealthModule } from './health/health.module';
 import { ScanModule } from './scan/scan.module';
@@ -11,6 +13,8 @@ import { UserModule } from './user/user.module';
 import { AuthModule } from './auth/auth.module';
 import { DatabaseModule } from './database/database.module';
 import { RiskManagementModule } from './risk/risk-management.module';
+import { ApiKeyModule } from './api-key/api-key.module';
+import { WebhookModule } from './webhook/webhook.module';
 
 @Module({
   imports: [
@@ -19,6 +23,9 @@ import { RiskManagementModule } from './risk/risk-management.module';
       isGlobal: true,
       envFilePath: ['.env.local', '.env'],
     }),
+
+    // Schedule
+    ScheduleModule.forRoot(),
 
     // Database
     DatabaseModule,
@@ -30,6 +37,18 @@ import { RiskManagementModule } from './risk/risk-management.module';
         config: {
           url: configService.get<string>('REDIS_URL', 'redis://localhost:6379'),
           keyPrefix: configService.get<string>('REDIS_KEY_PREFIX', 'soroban_scanner:'),
+        },
+      }),
+      inject: [ConfigService],
+    }),
+
+    // BullMQ Queueing
+    BullModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: async (configService: ConfigService) => ({
+        connection: {
+          host: configService.get<string>('REDIS_HOST', 'localhost'),
+          port: configService.get<number>('REDIS_PORT', 6379),
         },
       }),
       inject: [ConfigService],
@@ -61,6 +80,8 @@ import { RiskManagementModule } from './risk/risk-management.module';
     UserModule,
     AuthModule,
     RiskManagementModule,
+    ApiKeyModule,
+    WebhookModule,
   ],
   controllers: [],
   providers: [],

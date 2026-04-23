@@ -17,10 +17,10 @@ export class Scan {
 
   @Column({
     type: 'enum',
-    enum: ['pending', 'running', 'completed', 'failed'],
+    enum: ['pending', 'queued', 'running', 'completed', 'failed'],
     default: 'pending',
   })
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  status: 'pending' | 'queued' | 'running' | 'completed' | 'failed';
 
   @Column('jsonb', { nullable: true })
   metrics: {
@@ -38,6 +38,19 @@ export class Scan {
 
   @Column('text', { nullable: true })
   errorMessage: string;
+
+  @Column({
+    type: 'enum',
+    enum: ['uploading', 'queued', 'parsing', 'fuzzing', 'analysis', 'reporting', 'completed', 'error'],
+    nullable: true,
+  })
+  currentStep: 'uploading' | 'queued' | 'parsing' | 'fuzzing' | 'analysis' | 'reporting' | 'completed' | 'error';
+
+  @Column('integer', { nullable: true, default: 0 })
+  progress: number;
+
+  @Column('jsonb', { nullable: true, default: [] })
+  logs: string[];
 
   @OneToMany(() => Vulnerability, vulnerability => vulnerability.scan, { cascade: true })
   vulnerabilities: Vulnerability[];
