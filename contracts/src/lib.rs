@@ -1,12 +1,11 @@
-use soroban_sdk::{contractimpl, Address, BytesN, Env, Symbol, Vec, Map, String, I128, U128};
+
 
 // Contract state keys
 const ADMIN: Symbol = Symbol::short("ADMIN");
 const BOUNTY_POOL: Symbol = Symbol::short("BOUNTY");
 const VULNERABILITIES: Symbol = Symbol::short("VULNS");
 const REPUTATION: Symbol = Symbol::short("REPUT");
-const ESCROW: Symbol = Symbol::short("ESCROW");
-const EMERGENCY_POOL: Symbol = Symbol::short("EMERG");
+
 
 // Contract errors
 pub enum ContractError {
@@ -14,9 +13,7 @@ pub enum ContractError {
     InvalidInput = 2,
     NotFound = 3,
     InsufficientFunds = 4,
-    EscrowLocked = 5,
-    InvalidEscrowStatus = 6,
-    EmergencyModeActive = 7,
+
 }
 
 // Vulnerability structure
@@ -31,6 +28,8 @@ pub struct VulnerabilityReport {
     pub timestamp: u64,
     pub status: String, // "pending", "verified", "rejected"
     pub bounty_amount: i128,
+    pub token_address: Address,
+    pub slippage_protection: i128,
 }
 
 // Reputation tracking
@@ -88,6 +87,31 @@ impl SecurityScannerContract {
         env.storage().instance().set(&BOUNTY_POOL, &0i128);
         env.storage().instance().set(&EMERGENCY_POOL, &0i128);
         
+        // Initialize default configuration
+        let supported_tokens: Map<Address, TokenInfo> = Map::new(&env);
+        env.storage().instance().set(&SUPPORTED_TOKENS, &supported_tokens);
+        
+        // Set default liquidity threshold (1000 tokens)
+        env.storage().instance().set(&LIQUIDITY_THRESHOLD, &1000000000i128);
+        
+        // Set default slippage tolerance (5%)
+        env.storage().instance().set(&SLIPPAGE_TOLERANCE, &500i128);
+        
+        // Initialize emergency reward config
+        let mut severity_multipliers = Map::new(&env);
+        severity_multipliers.set(String::from_str(&env, "low"), &1000000i128);
+        severity_multipliers.set(String::from_str(&env, "medium"), &5000000i128);
+        severity_multipliers.set(String::from_str(&env, "high"), &10000000i128);
+        severity_multipliers.set(String::from_str(&env, "critical"), &50000000i128);
+        
+        let emergency_config = EmergencyRewardConfig {
+            base_amount: 1000000i128,
+            severity_multiplier: severity_multipliers,
+            oracle_enabled: false,
+            price_feed_address: admin.clone(), // Placeholder
+        };
+        env.storage().instance().set(&EMERGENCY_REWARDS, &emergency_config);
+        
         Ok(())
     }
 
@@ -100,9 +124,19 @@ impl SecurityScannerContract {
         severity: String,
         description: String,
         location: String,
+        token_address: Address,
     ) -> Result<u64, ContractError> {
         // Verify reporter is authorized
         reporter.require_auth();
+        
+        // Check if token is supported
+        let supported_tokens: Map<Address, TokenInfo> = env.storage().instance()
+            .get(&SUPPORTED_TOKENS)
+            .unwrap_or_else(|| Map::new(&env));
+        
+        if !supported_tokens.contains_key(token_address) {
+            return Err(ContractError::TokenNotSupported);
+        }
         
         // Create vulnerability report
         let report = VulnerabilityReport {
@@ -115,6 +149,8 @@ impl SecurityScannerContract {
             timestamp: env.ledger().timestamp(),
             status: String::from_slice(&env, "pending"),
             bounty_amount: 0i128,
+            token_address,
+            slippage_protection: 0i128,
         };
 
         // Store the report
@@ -132,7 +168,7 @@ impl SecurityScannerContract {
         env: Env,
         admin: Address,
         report_id: u64,
-        bounty_amount: i128,
+        custom_bounty_amount: Option<i128>,
     ) -> Result<(), ContractError> {
         // Verify admin authorization
         let contract_admin: Address = env.storage().instance().get(&ADMIN).unwrap();
@@ -148,6 +184,23 @@ impl SecurityScannerContract {
             .get(&report_key)
             .ok_or(ContractError::NotFound)?;
 
+        // Calculate bounty amount using oracle or custom amount
+        let bounty_amount = match custom_bounty_amount {
+            Some(amount) => amount,
+            None => Self::calculate_emergency_reward(env, &report.severity)?,
+        };
+
+        // Check liquidity for the token
+        Self::check_liquidity(env, report.token_address, bounty_amount)?;
+
+        // Apply slippage protection
+        let slippage_tolerance: i128 = env.storage().instance()
+            .get(&SLIPPAGE_TOLERANCE)
+            .unwrap_or(500i128); // 5% default
+        
+        let slippage_amount = (bounty_amount * slippage_tolerance) / 10000i128;
+        report.slippage_protection = slippage_amount;
+
         // Update status and bounty
         report.status = String::from_slice(&env, "verified");
         report.bounty_amount = bounty_amount;
@@ -157,6 +210,9 @@ impl SecurityScannerContract {
 
         // Update researcher reputation
         Self::update_reputation(env, report.reporter, 1, bounty_amount)?;
+
+        // Transfer bounty from pool to researcher
+        Self::transfer_bounty(env, report.token_address, report.reporter, bounty_amount)?;
 
         Ok(())
     }
@@ -178,19 +234,122 @@ impl SecurityScannerContract {
     }
 
     /// Add funds to bounty pool
-    pub fn fund_bounty_pool(env: Env, funder: Address, amount: i128) -> Result<(), ContractError> {
+    pub fn fund_bounty_pool(env: Env, funder: Address, token_address: Address, amount: i128) -> Result<(), ContractError> {
         funder.require_auth();
         
-        let mut current_pool: i128 = env.storage().instance().get(&BOUNTY_POOL).unwrap_or(0i128);
-        current_pool += amount;
-        env.storage().instance().set(&BOUNTY_POOL, &current_pool);
+        // Check if token is supported
+        let supported_tokens: Map<Address, TokenInfo> = env.storage().instance()
+            .get(&SUPPORTED_TOKENS)
+            .unwrap_or_else(|| Map::new(&env));
+        
+        if !supported_tokens.contains_key(token_address) {
+            return Err(ContractError::TokenNotSupported);
+        }
+        
+        // Transfer tokens to contract
+        let token_client = TokenClient::new(&env, &token_address);
+        token_client.transfer(&funder, &env.current_contract_address(), &amount);
+        
+        // Update liquidity pool
+        Self::update_liquidity_pool(env, token_address, amount, true)?;
 
         Ok(())
     }
 
-    /// Get bounty pool balance
-    pub fn get_bounty_pool(env: Env) -> i128 {
-        env.storage().instance().get(&BOUNTY_POOL).unwrap_or(0i128)
+    /// Get bounty pool balance for specific token
+    pub fn get_bounty_pool(env: Env, token_address: Address) -> Result<i128, ContractError> {
+        let liquidity_pools: Map<Address, LiquidityPool> = env.storage().instance()
+            .get(&Symbol::short("LIQ_POOLS"))
+            .unwrap_or_else(|| Map::new(&env));
+        
+        match liquidity_pools.get(token_address) {
+            Some(pool) => Ok(pool.balance),
+            None => Ok(0i128),
+        }
+    }
+    
+    /// Add supported token
+    pub fn add_supported_token(
+        env: Env,
+        admin: Address,
+        token_address: Address,
+        decimals: u32,
+        minimum_liquidity: i128,
+    ) -> Result<(), ContractError> {
+        // Verify admin authorization
+        let contract_admin: Address = env.storage().instance().get(&ADMIN).unwrap();
+        if contract_admin != admin {
+            return Err(ContractError::Unauthorized);
+        }
+        
+        admin.require_auth();
+        
+        let mut supported_tokens: Map<Address, TokenInfo> = env.storage().instance()
+            .get(&SUPPORTED_TOKENS)
+            .unwrap_or_else(|| Map::new(&env));
+        
+        let token_info = TokenInfo {
+            token_address,
+            decimals,
+            is_active: true,
+            minimum_liquidity,
+        };
+        
+        supported_tokens.set(token_address, &token_info);
+        env.storage().instance().set(&SUPPORTED_TOKENS, &supported_tokens);
+        
+        Ok(())
+    }
+    
+    /// Configure price oracle
+    pub fn configure_oracle(
+        env: Env,
+        admin: Address,
+        oracle_address: Address,
+        enabled: bool,
+    ) -> Result<(), ContractError> {
+        // Verify admin authorization
+        let contract_admin: Address = env.storage().instance().get(&ADMIN).unwrap();
+        if contract_admin != admin {
+            return Err(ContractError::Unauthorized);
+        }
+        
+        admin.require_auth();
+        
+        let mut emergency_config: EmergencyRewardConfig = env.storage().instance()
+            .get(&EMERGENCY_REWARDS)
+            .unwrap_or_else(|| EmergencyRewardConfig {
+                base_amount: 1000000i128,
+                severity_multiplier: Map::new(&env),
+                oracle_enabled: false,
+                price_feed_address: admin.clone(),
+            });
+        
+        emergency_config.oracle_enabled = enabled;
+        emergency_config.price_feed_address = oracle_address;
+        
+        env.storage().instance().set(&EMERGENCY_REWARDS, &emergency_config);
+        
+        Ok(())
+    }
+    
+    /// Set slippage tolerance (in basis points, e.g., 500 = 5%)
+    pub fn set_slippage_tolerance(env: Env, admin: Address, tolerance_bps: i128) -> Result<(), ContractError> {
+        // Verify admin authorization
+        let contract_admin: Address = env.storage().instance().get(&ADMIN).unwrap();
+        if contract_admin != admin {
+            return Err(ContractError::Unauthorized);
+        }
+        
+        admin.require_auth();
+        
+        if tolerance_bps < 0 || tolerance_bps > 10000 {
+            return Err(ContractError::InvalidInput);
+        }
+        
+        env.storage().instance().set(&SLIPPAGE_TOLERANCE, &tolerance_bps);
+        
+        Ok(())
     }
 
     /// Helper function to update reputation
@@ -220,294 +379,5 @@ impl SecurityScannerContract {
         Ok(())
     }
 
-    /// Create escrow entry for bounty payment
-    pub fn create_escrow(
-        env: Env,
-        depositor: Address,
-        beneficiary: Address,
-        amount: i128,
-        purpose: String,
-        lock_duration: u64,
-    ) -> Result<u64, ContractError> {
-        depositor.require_auth();
-        
-        if amount <= 0 {
-            return Err(ContractError::InvalidInput);
-        }
-
-        let escrow_id = env.ledger().sequence();
-        let current_time = env.ledger().timestamp();
-        
-        let escrow = EscrowEntry {
-            id: escrow_id,
-            depositor: depositor.clone(),
-            beneficiary: beneficiary.clone(),
-            amount,
-            purpose: purpose.clone(),
-            status: String::from_slice(&env, "pending"),
-            created_at: current_time,
-            lock_until: current_time + lock_duration,
-            conditions_met: false,
-            release_signature: None,
-        };
-
-        // Store escrow entry
-        let escrow_key = Symbol::short(&format!("ESCROW_{:?}", escrow_id));
-        env.storage().instance().set(&escrow_key, &escrow);
-
-        // Add to escrow pool tracking
-        let mut escrow_pool: i128 = env.storage().instance().get(&ESCROW).unwrap_or(0i128);
-        escrow_pool += amount;
-        env.storage().instance().set(&ESCROW, &escrow_pool);
-
-        Ok(escrow_id)
-    }
-
-    /// Release escrow funds to beneficiary
-    pub fn release_escrow(
-        env: Env,
-        escrow_id: u64,
-        depositor: Address,
-        signature: Option<BytesN<32>>,
-    ) -> Result<(), ContractError> {
-        depositor.require_auth();
-
-        let escrow_key = Symbol::short(&format!("ESCROW_{:?}", escrow_id));
-        let mut escrow: EscrowEntry = env.storage().instance()
-            .get(&escrow_key)
-            .ok_or(ContractError::NotFound)?;
-
-        // Verify depositor authorization
-        if escrow.depositor != depositor {
-            return Err(ContractError::Unauthorized);
-        }
-
-        // Check if escrow can be released
-        if escrow.status == String::from_slice(&env, "released") {
-            return Err(ContractError::InvalidEscrowStatus);
-        }
-
-        let current_time = env.ledger().timestamp();
-        
-        // Allow release if conditions are met or lock period has expired
-        if !escrow.conditions_met && current_time < escrow.lock_until {
-            return Err(ContractError::EscrowLocked);
-        }
-
-        // Update escrow status
-        escrow.status = String::from_slice(&env, "released");
-        escrow.release_signature = signature;
-        env.storage().instance().set(&escrow_key, &escrow);
-
-        // Update escrow pool
-        let mut escrow_pool: i128 = env.storage().instance().get(&ESCROW).unwrap_or(0i128);
-        escrow_pool -= escrow.amount;
-        env.storage().instance().set(&ESCROW, &escrow_pool);
-
-        // In a real implementation, you would transfer the tokens here
-        // For now, we just update the state
-
-        Ok(())
-    }
-
-    /// Refund escrow funds to depositor
-    pub fn refund_escrow(
-        env: Env,
-        escrow_id: u64,
-        depositor: Address,
-    ) -> Result<(), ContractError> {
-        depositor.require_auth();
-
-        let escrow_key = Symbol::short(&format!("ESCROW_{:?}", escrow_id));
-        let mut escrow: EscrowEntry = env.storage().instance()
-            .get(&escrow_key)
-            .ok_or(ContractError::NotFound)?;
-
-        // Verify depositor authorization
-        if escrow.depositor != depositor {
-            return Err(ContractError::Unauthorized);
-        }
-
-        // Check if escrow can be refunded
-        if escrow.status == String::from_slice(&env, "released") {
-            return Err(ContractError::InvalidEscrowStatus);
-        }
-
-        let current_time = env.ledger().timestamp();
-        
-        // Only allow refund if lock period has expired and conditions not met
-        if current_time < escrow.lock_until || escrow.conditions_met {
-            return Err(ContractError::EscrowLocked);
-        }
-
-        // Update escrow status
-        escrow.status = String::from_slice(&env, "refunded");
-        env.storage().instance().set(&escrow_key, &escrow);
-
-        // Update escrow pool
-        let mut escrow_pool: i128 = env.storage().instance().get(&ESCROW).unwrap_or(0i128);
-        escrow_pool -= escrow.amount;
-        env.storage().instance().set(&ESCROW, &escrow_pool);
-
-        // In a real implementation, you would transfer tokens back to depositor
-        // For now, we just update the state
-
-        Ok(())
-    }
-
-    /// Mark escrow conditions as met (for bounty completion)
-    pub fn mark_escrow_conditions_met(
-        env: Env,
-        escrow_id: u64,
-        admin: Address,
-    ) -> Result<(), ContractError> {
-        // Verify admin authorization
-        let contract_admin: Address = env.storage().instance().get(&ADMIN).unwrap();
-        if contract_admin != admin {
-            return Err(ContractError::Unauthorized);
-        }
-        
-        admin.require_auth();
-
-        let escrow_key = Symbol::short(&format!("ESCROW_{:?}", escrow_id));
-        let mut escrow: EscrowEntry = env.storage().instance()
-            .get(&escrow_key)
-            .ok_or(ContractError::NotFound)?;
-
-        escrow.conditions_met = true;
-        env.storage().instance().set(&escrow_key, &escrow);
-
-        Ok(())
-    }
-
-    /// Report emergency vulnerability
-    pub fn report_emergency_vulnerability(
-        env: Env,
-        reporter: Address,
-        contract_id: BytesN<32>,
-        vulnerability_type: String,
-        severity: String,
-        description: String,
-        location: String,
-    ) -> Result<u64, ContractError> {
-        // Verify severity is critical or emergency
-        if severity != String::from_slice(&env, "critical") && severity != String::from_slice(&env, "emergency") {
-            return Err(ContractError::InvalidInput);
-        }
-
-        reporter.require_auth();
-
-        let alert_id = env.ledger().sequence();
-        let emergency_reward = if severity == String::from_slice(&env, "emergency") { 
-            10000000i128 // 10 XLM for emergency
-        } else { 
-            5000000i128 // 5 XLM for critical
-        };
-
-        let alert = EmergencyAlert {
-            id: alert_id,
-            reporter: reporter.clone(),
-            contract_id,
-            vulnerability_type: vulnerability_type.clone(),
-            severity: severity.clone(),
-            description: description.clone(),
-            location: location.clone(),
-            timestamp: env.ledger().timestamp(),
-            status: String::from_slice(&env, "pending"),
-            emergency_reward,
-            verified_by: None,
-        };
-
-        // Store emergency alert
-        let alert_key = Symbol::short(&format!("EMERG_{:?}", alert_id));
-        env.storage().instance().set(&alert_key, &alert);
-
-        Ok(alert_id)
-    }
-
-    /// Verify emergency vulnerability and trigger immediate reward
-    pub fn verify_emergency_vulnerability(
-        env: Env,
-        admin: Address,
-        alert_id: u64,
-        verified: bool,
-    ) -> Result<(), ContractError> {
-        // Verify admin authorization
-        let contract_admin: Address = env.storage().instance().get(&ADMIN).unwrap();
-        if contract_admin != admin {
-            return Err(ContractError::Unauthorized);
-        }
-        
-        admin.require_auth();
-
-        let alert_key = Symbol::short(&format!("EMERG_{:?}", alert_id));
-        let mut alert: EmergencyAlert = env.storage().instance()
-            .get(&alert_key)
-            .ok_or(ContractError::NotFound)?;
-
-        if verified {
-            alert.status = String::from_slice(&env, "verified");
-            alert.verified_by = Some(admin.clone());
-
-            // Create immediate escrow for emergency reward
-            let escrow_id = Self::create_escrow(
-                env,
-                admin.clone(), // Admin deposits on behalf of the platform
-                alert.reporter.clone(),
-                alert.emergency_reward,
-                String::from_slice(&env, "emergency"),
-                0, // No lock period for emergency rewards
-            )?;
-
-            // Immediately mark conditions as met and release
-            Self::mark_escrow_conditions_met(env, escrow_id, admin)?;
-            Self::release_escrow(env, escrow_id, admin, None)?;
-
-            // Update reputation
-            Self::update_reputation(env, alert.reporter, 1, alert.emergency_reward)?;
-        } else {
-            alert.status = String::from_slice(&env, "false_positive");
-        }
-
-        env.storage().instance().set(&alert_key, &alert);
-
-        Ok(())
-    }
-
-    /// Get escrow details
-    pub fn get_escrow(env: Env, escrow_id: u64) -> Result<EscrowEntry, ContractError> {
-        let escrow_key = Symbol::short(&format!("ESCROW_{:?}", escrow_id));
-        env.storage().instance()
-            .get(&escrow_key)
-            .ok_or(ContractError::NotFound)
-    }
-
-    /// Get emergency alert details
-    pub fn get_emergency_alert(env: Env, alert_id: u64) -> Result<EmergencyAlert, ContractError> {
-        let alert_key = Symbol::short(&format!("EMERG_{:?}", alert_id));
-        env.storage().instance()
-            .get(&alert_key)
-            .ok_or(ContractError::NotFound)
-    }
-
-    /// Get escrow pool balance
-    pub fn get_escrow_pool_balance(env: Env) -> i128 {
-        env.storage().instance().get(&ESCROW).unwrap_or(0i128)
-    }
-
-    /// Get emergency pool balance
-    pub fn get_emergency_pool_balance(env: Env) -> i128 {
-        env.storage().instance().get(&EMERGENCY_POOL).unwrap_or(0i128)
-    }
-
-    /// Fund emergency pool
-    pub fn fund_emergency_pool(env: Env, funder: Address, amount: i128) -> Result<(), ContractError> {
-        funder.require_auth();
-        
-        let mut current_pool: i128 = env.storage().instance().get(&EMERGENCY_POOL).unwrap_or(0i128);
-        current_pool += amount;
-        env.storage().instance().set(&EMERGENCY_POOL, &current_pool);
-
-        Ok(())
     }
 }
