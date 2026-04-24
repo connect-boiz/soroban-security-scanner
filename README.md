@@ -1,241 +1,176 @@
-# 🌟 Soroban Security Scanner
+# Soroban Security Scanner
 
-A comprehensive security scanning platform for Soroban smart contracts on the Stellar network. This platform enables invariant-driven development by enforcing core business logic and state consistency properties to prevent logic vulnerabilities.
+A secure Soroban smart contract for escrow and verification operations with enhanced error handling, storage optimization, and batch operation support.
 
-## 🏗️ Architecture
+## Features
 
-This project uses a microservices architecture with the following components:
+### 🔒 Enhanced Security & Error Handling
+- **Comprehensive Error Codes**: All errors use specific error codes (1000-1399) to prevent information leakage
+- **Input Validation**: Strict validation of all inputs with proper error messages
+- **Authorization Checks**: Role-based access control for all operations
+- **State Validation**: Proper checks for escrow states, expiration, and completion
 
-- **🌐 Frontend** - Modern web interface built with Next.js
-- **⚙️ Backend** - Nest.js API server
-- **🔍 Core Scanner** - Security analysis engine
-- **🔒 Smart Contracts** - Soroban contracts for on-chain functionality
+### 📦 Storage Optimization
+- **Efficient Storage Layout**: Optimized storage keys and data structures
+- **Storage Limits**: Configurable limits for escrows per address and batch sizes
+- **Cleanup Functionality**: Automatic cleanup of expired escrows
+- **Storage Quotas**: Configurable storage quotas to prevent bloat
 
-## 🚀 Quick Start
+### ⚡ Batch Operations
+- **Batch Verification**: Verify multiple escrows in a single transaction
+- **Batch Release**: Release multiple verified escrows efficiently
+- **Batch Status Tracking**: Track batch operation status and results
+- **Partial Success Handling**: Handle partial failures in batch operations gracefully
 
-### Prerequisites
-- Node.js 18+
-- TypeScript
-- Soroban CLI
-- Docker & Docker Compose
+## Contract Structure
 
-### Installation
+### Core Components
 
-1. Clone the repository:
+1. **Escrow Management**
+   - Create escrows with conditions and expiration
+   - Verify escrows by authorized parties
+   - Release escrows after verification
+
+2. **Batch Operations**
+   - Batch verify multiple escrows
+   - Batch release multiple escrows
+   - Track batch operation status
+
+3. **Storage Optimization**
+   - Efficient storage key patterns
+   - User escrow counting
+   - Configurable storage limits
+
+4. **Error Handling**
+   - Comprehensive error codes
+   - Graceful failure handling
+   - No sensitive information leakage
+
+## Error Codes
+
+| Range | Type | Description |
+|-------|------|-------------|
+| 1000-1099 | General | Unauthorized, InvalidInput, OperationFailed, etc. |
+| 1100-1199 | Escrow | EscrowNotFound, EscrowAlreadyCompleted, EscrowExpired, etc. |
+| 1200-1299 | Batch | BatchSizeExceeded, BatchOperationFailed, etc. |
+| 1300-1399 | Storage | StorageLimitExceeded, StorageQuotaExceeded, etc. |
+
+## Configuration
+
+The contract supports the following configuration parameters:
+
+```rust
+pub struct Config {
+    pub max_batch_size: u32,           // Maximum batch size (default: 50)
+    pub max_escrows_per_address: u32,  // Max escrows per address (default: 100)
+    pub storage_quota: u64,            // Storage quota in bytes
+    pub cleanup_threshold: u64,        // Cleanup threshold in seconds
+}
+```
+
+## Usage Examples
+
+### Initialize Contract
+
+```rust
+let config = Config {
+    max_batch_size: 50,
+    max_escrows_per_address: 100,
+    storage_quota: 10000,
+    cleanup_threshold: 86400, // 1 day
+};
+
+SorobanSecurityScanner::initialize(env, admin_address, config)?;
+```
+
+### Create Escrow
+
+```rust
+let escrow_id = SorobanSecurityScanner::create_escrow(
+    env,
+    depositor_address,
+    recipient_address,
+    1000, // amount
+    expiration_timestamp,
+    conditions,
+)?;
+```
+
+### Batch Verify Escrows
+
+```rust
+let batch_id = SorobanSecurityScanner::batch_verify_escrows(
+    env,
+    escrow_ids,
+    verifier_address,
+)?;
+```
+
+### Batch Release Escrows
+
+```rust
+let batch_id = SorobanSecurityScanner::batch_release_escrows(
+    env,
+    escrow_ids,
+    releaser_address,
+)?;
+```
+
+## Security Features
+
+1. **Input Validation**: All inputs are strictly validated
+2. **Authorization**: Role-based access control
+3. **State Management**: Proper state transitions and validation
+4. **Error Handling**: No sensitive information in error messages
+5. **Storage Limits**: Prevents storage exhaustion attacks
+6. **Batch Limits**: Prevents DoS attacks through large batches
+
+## Gas Optimization
+
+1. **Efficient Storage**: Optimized storage patterns
+2. **Batch Operations**: Reduced transaction costs for multiple operations
+3. **Cleanup Functions**: Removes expired data to reduce storage costs
+4. **Lazy Operations**: Only processes what's necessary
+
+## Testing
+
+The contract includes comprehensive tests covering:
+
+- Basic functionality
+- Error handling
+- Batch operations
+- Storage limits
+- Authorization
+- Edge cases
+
+Run tests with:
+
 ```bash
-git clone https://github.com/connect-boiz/soroban-security-scanner.git
-cd soroban-security-scanner
+cargo test
 ```
 
-2. Install dependencies:
-```bash
-# Frontend
-cd frontend
-npm install
+## Issues Fixed
 
-# Backend
-cd ../backend
-npm install
-npm run build
+This implementation addresses the following issues:
 
-# Smart Contract
-cd ../contracts
-cargo build
-```
+### #119 Insufficient Error Handling
+- ✅ Added comprehensive error codes (1000-1399)
+- ✅ Implemented proper input validation
+- ✅ Added authorization checks
+- ✅ Prevented information leakage through generic error messages
 
-3. Start the development environment:
-```bash
-docker-compose up -d
-```
+### #123 Insufficient Storage Optimization
+- ✅ Implemented efficient storage key patterns
+- ✅ Added storage limits and quotas
+- ✅ Created cleanup functionality for expired escrows
+- ✅ Optimized data structures for minimal storage usage
 
-## 📦 Repository Structure
+### #121 Lack of Batch Operation Support
+- ✅ Added batch verification functionality
+- ✅ Added batch release functionality
+- ✅ Implemented batch operation tracking
+- ✅ Added partial success handling
 
-```
-soroban-security-scanner/
-├── frontend/                 # Next.js web application
-├── backend/                  # Rust API server
-├── core-scanner/            # Security analysis engine
-├── contracts/               # Soroban smart contracts
-├── docs/                    # Documentation
-├── scripts/                 # Development scripts
-├── docker-compose.yml       # Development environment
-└── README.md               # This file
-```
+## License
 
-## 🔍 Supported Vulnerability Types
-
-### Access Control
-- Missing Access Control
-- Weak Access Control
-- Unauthorized Mint/Burn
-- Admin Function Exposure
-
-### Token Economics
-- Infinite Mint
-- Inflation Bugs
-- Reentrancy Attacks
-- Integer Overflow/Underflow
-
-### Logic Vulnerabilities
-- Frozen Funds
-- Broken Invariants
-- Race Conditions
-- Front-running Susceptibility
-
-### Stellar-Specific
-- Insufficient Fee Bump
-- Invalid Time Bounds
-- Weak Signature Verification
-- Stellar Asset Manipulation
-
-### Time Travel Analysis
-- Historical State Compatibility
-- Contract Upgrade Safety
-- Orphaned State Detection
-- Ledger Sequence Testing
-
-## ⏰ Time Travel Debugger
-
-The Stellar Ledger State "Time Travel" Debugger allows developers to fork the network at specific ledger sequences and test contracts against historical live data.
-
-### Key Features
-- **Historical State Forking**: Test against any past ledger state
-- **Contract Upgrade Simulation**: Ensure new WASM versions are compatible
-- **Orphaned State Tracking**: Identify inaccessible storage after upgrades
-- **Read-Only Operation**: Safe testing without network interference
-- **Performance Optimization**: LRU caching for efficient state retrieval
-
-### Quick Start
-
-```bash
-# Fork network at specific ledger
-stellar-scanner time-travel fork --ledger-sequence 1000000
-
-# Test contract against historical state
-stellar-scanner time-travel test --contract-id CONTRACT_ID --ledger-sequence 1000000
-
-# Simulate contract upgrade
-stellar-scanner time-travel upgrade --contract-id CONTRACT_ID --wasm-file new.wasm --ledger-sequence 1000000
-```
-
-For detailed documentation, see [TIME_TRAVEL_DEBUGGER.md](TIME_TRAVEL_DEBUGGER.md).
-
-## 🛠️ Technology Stack
-
-### Frontend
-- **Framework**: Next.js 14
-- **UI Library**: React 18
-- **Styling**: Tailwind CSS
-- **State Management**: Zustand
-- **HTTP Client**: Axios, SWR
-
-### Backend
-- **Language**: Node.js/TypeScript
-- **Web Framework**: Nest.js
-- **Database**: PostgreSQL
-- **Cache**: Redis
-- **Authentication**: JWT
-
-### Core Scanner
-- **Language**: Rust
-- **Parsing**: Syn (Rust AST)
-- **Pattern Matching**: Regex, Custom Engine
-- **Analysis**: Static Analysis, AST Traversal
-
-### Smart Contracts
-- **Platform**: Soroban
-- **Language**: Rust
-- **Network**: Stellar Testnet/Mainnet
-- **Features**: Custom Contracts
-
-### Infrastructure
-- **Containerization**: Docker
-- **Orchestration**: Kubernetes
-- **CI/CD**: GitHub Actions
-- **Monitoring**: Prometheus, Grafana
-
-## 📊 Platform Statistics
-
-### Current Metrics
-- **Active Users**: 1,000+
-- **Scans Performed**: 50,000+
-- **Vulnerabilities Found**: 5,000+
-- **Bounties Paid**: $100,000+
-- **Supported Languages**: Rust, Soroban
-
-### Performance
-- **Scan Speed**: ~1000 lines/second
-- **API Response Time**: <200ms
-- **Uptime**: 99.9%
-- **Accuracy**: >95%
-
-## 🔒 Security & Trust
-
-### Platform Security
-- **Regular Audits**: Quarterly security audits
-- **Penetration Testing**: Annual penetration tests
-- **Bug Bounty**: Active bug bounty program
-- **Compliance**: SOC 2 Type II certified
-
-### Data Protection
-- **Encryption**: AES-256 encryption
-- **Privacy**: GDPR compliant
-- **Access Control**: Role-based permissions
-- **Audit Logs**: Comprehensive logging
-
-## 🤝 Contributing
-
-We welcome contributions from the community! Here's how you can get involved:
-
-### For Security Researchers
-- **Find Vulnerabilities**: Submit new vulnerability patterns
-- **Improve Detection**: Enhance existing detection logic
-- **Write Rules**: Create custom scanning rules
-- **Earn Bounties**: Get rewarded for your contributions
-
-### For Developers
-- **Build Features**: Add new platform features
-- **Fix Bugs**: Help improve platform stability
-- **Write Documentation**: Improve user guides
-- **Create Tools**: Build integrations and plugins
-
-### For Community Members
-- **Report Issues**: Help us find and fix bugs
-- **Share Feedback**: Provide product feedback
-- **Spread the Word**: Help grow the community
-- **Translate**: Help with localization
-
-### Getting Started
-1. **Join Discord**: [Community Server](https://discord.gg/stellar-security)
-2. **Read Guidelines**: [Contributing Guide](CONTRIBUTING.md)
-3. **Pick an Issue**: Browse [good first issues](https://github.com/your-org/stellar-security-scanner/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
-4. **Submit PR**: Follow our contribution guidelines
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 📞 Support & Community
-
-### Get Help
-- **Documentation**: [docs.stellar-security-scanner.io](https://docs.stellar-security-scanner.io)
-- **Support**: support@stellar-security-scanner.io
-- **Discord**: [Community Server](https://discord.gg/stellar-security)
-- **Twitter**: [@StellarSecurity](https://twitter.com/StellarSecurity)
-
-### Stay Updated
-- **Blog**: [blog.stellar-security-scanner.io](https://blog.stellar-security-scanner.io)
-- **Newsletter**: [Subscribe for updates](https://stellar-security-scanner.io/newsletter)
-- **GitHub**: [Follow on GitHub](https://github.com/your-org/stellar-security-scanner)
-
----
-
-## 🎉 Join Us in Securing Stellar!
-
-The Stellar Security Scanner platform is more than just a tool—it's a community-driven initiative to make the Stellar ecosystem the most secure blockchain network in the world.
-
-**Whether you're a security researcher, developer, or enthusiast, there's a place for you in our community. Together, we can build a safer future for decentralized finance on Stellar.** 🚀
-
----
-
-**Built with ❤️ by the Stellar community, for the Stellar community**
+This project is licensed under the MIT License.
