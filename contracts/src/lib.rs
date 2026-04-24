@@ -7,6 +7,17 @@ const BOUNTY_POOL: Symbol = Symbol::short("BOUNTY");
 const VULNERABILITIES: Symbol = Symbol::short("VULNS");
 const REPUTATION: Symbol = Symbol::short("REPUT");
 
+// Gas limit configuration keys
+const GAS_CONFIG: Symbol = Symbol::short("GAS_CONFIG");
+const ESCROW_BATCH: Symbol = Symbol::short("ESCROW_BATCH");
+const EMERGENCY_BATCH: Symbol = Symbol::short("EMERGENCY_BATCH");
+
+// Default gas limits (in Soroban fee units)
+const DEFAULT_SINGLE_TRANSFER_GAS: u64 = 100_000;
+const DEFAULT_BATCH_TRANSFER_GAS: u64 = 500_000;
+const DEFAULT_EMERGENCY_GAS: u64 = 200_000;
+const MAX_BATCH_SIZE: u32 = 50;
+
 
 
 // Contract errors
@@ -15,6 +26,9 @@ pub enum ContractError {
     InvalidInput = 2,
     NotFound = 3,
     InsufficientFunds = 4,
+    GasLimitExceeded = 5,
+    BatchTooLarge = 6,
+    InsufficientGas = 7,
 
 }
 
@@ -81,6 +95,44 @@ pub struct EmergencyAlert {
     pub verified_by: Option<Address>,
 }
 
+// Gas configuration structure
+#[derive(Clone)]
+#[contracttype]
+pub struct GasConfig {
+    pub single_transfer_limit: u64,
+    pub batch_transfer_limit: u64,
+    pub emergency_limit: u64,
+    pub max_batch_size: u32,
+    pub gas_price_multiplier: u32, // For dynamic gas adjustment
+}
+
+// Batch operation structure for escrow releases
+#[derive(Clone)]
+#[contracttype]
+pub struct BatchRelease {
+    pub id: u64,
+    pub recipients: Vec<Address>,
+    pub amounts: Vec<i128>,
+    pub tokens: Vec<Address>,
+    pub total_amount: i128,
+    pub gas_used: u64,
+    pub status: String, // "pending", "processing", "completed", "failed"
+    pub created_at: u64,
+}
+
+// Batch operation structure for emergency rewards
+#[derive(Clone)]
+#[contracttype]
+pub struct EmergencyBatch {
+    pub id: u64,
+    pub alert_ids: Vec<u64>,
+    pub total_reward: i128,
+    pub token: Address,
+    pub gas_used: u64,
+    pub status: String, // "pending", "processing", "completed", "failed"
+    pub created_at: u64,
+}
+
 
 pub struct SecurityScannerContract;
 
@@ -119,6 +171,16 @@ impl SecurityScannerContract {
             price_feed_address: admin.clone(), // Placeholder
         };
         env.storage().instance().set(&EMERGENCY_REWARDS, &emergency_config);
+        
+        // Initialize gas configuration
+        let gas_config = GasConfig {
+            single_transfer_limit: DEFAULT_SINGLE_TRANSFER_GAS,
+            batch_transfer_limit: DEFAULT_BATCH_TRANSFER_GAS,
+            emergency_limit: DEFAULT_EMERGENCY_GAS,
+            max_batch_size: MAX_BATCH_SIZE,
+            gas_price_multiplier: 100, // 1x multiplier
+        };
+        env.storage().instance().set(&GAS_CONFIG, &gas_config);
         
         Ok(())
     }
@@ -404,6 +466,324 @@ impl SecurityScannerContract {
         let client = token::Client::new(&env, &token);
         let contract_balance = client.balance(&env.current_contract_address());
         (bounty_pool, contract_balance)
+    }
+
+    /// Transfer bounty with gas limit consideration (#112)
+    fn transfer_bounty(env: &Env, token_address: &Address, recipient: &Address, amount: i128) -> Result<(), ContractError> {
+        let gas_config: GasConfig = env.storage().instance()
+            .get(&GAS_CONFIG)
+            .unwrap_or_else(|| GasConfig {
+                single_transfer_limit: DEFAULT_SINGLE_TRANSFER_GAS,
+                batch_transfer_limit: DEFAULT_BATCH_TRANSFER_GAS,
+                emergency_limit: DEFAULT_EMERGENCY_GAS,
+                max_batch_size: MAX_BATCH_SIZE,
+                gas_price_multiplier: 100,
+            });
+
+        // Check current gas usage and limits
+        let current_gas = env.budget().gas_left();
+        if current_gas < gas_config.single_transfer_limit {
+            return Err(ContractError::InsufficientGas);
+        }
+
+        let client = token::Client::new(env, token_address);
+        
+        // Perform transfer with gas tracking
+        let initial_gas = env.budget().gas_left();
+        client.transfer(&env.current_contract_address(), recipient, &amount);
+        let gas_used = initial_gas - env.budget().gas_left();
+
+        // Log gas usage for monitoring
+        env.log().format(
+            &format!("Bounty transfer completed. Gas used: {}, Gas limit: {}, Amount: {}", 
+                gas_used, gas_config.single_transfer_limit, amount)
+        );
+
+        Ok(())
+    }
+
+    /// Batch escrow release with gas limit management (#112)
+    pub fn batch_escrow_release(
+        env: Env,
+        admin: Address,
+        recipients: Vec<Address>,
+        amounts: Vec<i128>,
+        tokens: Vec<Address>,
+    ) -> Result<u64, ContractError> {
+        let contract_admin: Address = env.storage().instance().get(&ADMIN).unwrap();
+        if contract_admin != admin {
+            return Err(ContractError::Unauthorized);
+        }
+        admin.require_auth();
+
+        // Validate batch size
+        if recipients.len() > MAX_BATCH_SIZE as usize {
+            return Err(ContractError::BatchTooLarge);
+        }
+
+        if recipients.len() != amounts.len() || recipients.len() != tokens.len() {
+            return Err(ContractError::InvalidInput);
+        }
+
+        let gas_config: GasConfig = env.storage().instance()
+            .get(&GAS_CONFIG)
+            .unwrap_or_else(|| GasConfig {
+                single_transfer_limit: DEFAULT_SINGLE_TRANSFER_GAS,
+                batch_transfer_limit: DEFAULT_BATCH_TRANSFER_GAS,
+                emergency_limit: DEFAULT_EMERGENCY_GAS,
+                max_batch_size: MAX_BATCH_SIZE,
+                gas_price_multiplier: 100,
+            });
+
+        // Check if enough gas for batch operation
+        let current_gas = env.budget().gas_left();
+        let estimated_gas = gas_config.batch_transfer_limit * (recipients.len() as u64);
+        
+        if current_gas < estimated_gas {
+            return Err(ContractError::InsufficientGas);
+        }
+
+        // Create batch record
+        let batch_id = env.ledger().sequence();
+        let total_amount: i128 = amounts.iter().sum();
+        
+        let batch = BatchRelease {
+            id: batch_id,
+            recipients: recipients.clone(),
+            amounts: amounts.clone(),
+            tokens: tokens.clone(),
+            total_amount,
+            gas_used: 0,
+            status: String::from_slice(&env, "processing"),
+            created_at: env.ledger().timestamp(),
+        };
+
+        env.storage().instance().set(&Symbol::short(&format!("BATCH_{}", batch_id)), &batch);
+
+        // Process transfers with gas tracking
+        let initial_gas = env.budget().gas_left();
+        
+        for (i, recipient) in recipients.iter().enumerate() {
+            Self::transfer_bounty(&env, &tokens[i], recipient, amounts[i])?;
+            
+            // Check gas remaining after each transfer
+            let remaining_gas = env.budget().gas_left();
+            let estimated_remaining = initial_gas - (gas_config.single_transfer_limit * ((i + 1) as u64));
+            
+            if remaining_gas < estimated_remaining {
+                // Update batch status to failed
+                let mut updated_batch = batch.clone();
+                updated_batch.status = String::from_slice(&env, "failed");
+                updated_batch.gas_used = initial_gas - remaining_gas;
+                env.storage().instance().set(&Symbol::short(&format!("BATCH_{}", batch_id)), &updated_batch);
+                
+                return Err(ContractError::GasLimitExceeded);
+            }
+        }
+
+        // Mark batch as completed
+        let mut completed_batch = batch.clone();
+        completed_batch.status = String::from_slice(&env, "completed");
+        completed_batch.gas_used = initial_gas - env.budget().gas_left();
+        env.storage().instance().set(&Symbol::short(&format!("BATCH_{}", batch_id)), &completed_batch);
+
+        env.log().format(&format!("Batch escrow release {} completed. Total transfers: {}, Total gas used: {}", 
+            batch_id, recipients.len(), completed_batch.gas_used));
+
+        Ok(batch_id)
+    }
+
+    /// Emergency reward distribution with gas limit consideration (#112)
+    pub fn emergency_reward_distribution(
+        env: Env,
+        admin: Address,
+        alert_ids: Vec<u64>,
+        token: Address,
+    ) -> Result<u64, ContractError> {
+        let contract_admin: Address = env.storage().instance().get(&ADMIN).unwrap();
+        if contract_admin != admin {
+            return Err(ContractError::Unauthorized);
+        }
+        admin.require_auth();
+
+        // Validate batch size
+        if alert_ids.len() > MAX_BATCH_SIZE as usize {
+            return Err(ContractError::BatchTooLarge);
+        }
+
+        let gas_config: GasConfig = env.storage().instance()
+            .get(&GAS_CONFIG)
+            .unwrap_or_else(|| GasConfig {
+                single_transfer_limit: DEFAULT_SINGLE_TRANSFER_GAS,
+                batch_transfer_limit: DEFAULT_BATCH_TRANSFER_GAS,
+                emergency_limit: DEFAULT_EMERGENCY_GAS,
+                max_batch_size: MAX_BATCH_SIZE,
+                gas_price_multiplier: 100,
+            });
+
+        // Check if enough gas for emergency operation
+        let current_gas = env.budget().gas_left();
+        let estimated_gas = gas_config.emergency_limit * (alert_ids.len() as u64);
+        
+        if current_gas < estimated_gas {
+            return Err(ContractError::InsufficientGas);
+        }
+
+        // Get emergency reward configuration
+        let emergency_config: EmergencyRewardConfig = env.storage().instance()
+            .get(&EMERGENCY_REWARDS)
+            .unwrap_or_else(|| EmergencyRewardConfig {
+                base_amount: 1000000i128,
+                severity_multiplier: Map::new(&env),
+                oracle_enabled: false,
+                price_feed_address: admin.clone(),
+            });
+
+        // Calculate total reward amount
+        let mut total_reward = 0i128;
+        for alert_id in alert_ids.iter() {
+            let alert_key = Symbol::short(&format!("ALERT_{}", alert_id));
+            if let Some(alert) = env.storage().instance().get::<EmergencyAlert>(&alert_key) {
+                let multiplier = emergency_config.severity_multiplier
+                    .get(String::from_str(&env, &alert.severity))
+                    .unwrap_or(&1000000i128);
+                total_reward += emergency_config.base_amount * *multiplier / 1000000i128;
+            }
+        }
+
+        // Create emergency batch record
+        let batch_id = env.ledger().sequence();
+        let emergency_batch = EmergencyBatch {
+            id: batch_id,
+            alert_ids: alert_ids.clone(),
+            total_reward,
+            token: token.clone(),
+            gas_used: 0,
+            status: String::from_slice(&env, "processing"),
+            created_at: env.ledger().timestamp(),
+        };
+
+        env.storage().instance().set(&Symbol::short(&format!("EMERGENCY_BATCH_{}", batch_id)), &emergency_batch);
+
+        // Process emergency rewards with gas tracking
+        let initial_gas = env.budget().gas_left();
+        
+        for alert_id in alert_ids.iter() {
+            let alert_key = Symbol::short(&format!("ALERT_{}", alert_id));
+            if let Some(mut alert) = env.storage().instance().get::<EmergencyAlert>(&alert_key) {
+                let multiplier = emergency_config.severity_multiplier
+                    .get(String::from_str(&env, &alert.severity))
+                    .unwrap_or(&1000000i128);
+                let reward_amount = emergency_config.base_amount * *multiplier / 1000000i128;
+
+                // Transfer emergency reward
+                Self::transfer_bounty(&env, &token, &alert.reporter, reward_amount)?;
+                
+                // Update alert status
+                alert.status = String::from_slice(&env, "verified");
+                env.storage().instance().set(&alert_key, &alert);
+
+                // Check gas remaining
+                let remaining_gas = env.budget().gas_left();
+                let estimated_remaining = initial_gas - (gas_config.emergency_limit * ((alert_ids.len() - alert_ids.iter().position(|&id| id == *alert_id).unwrap() + 1) as u64));
+                
+                if remaining_gas < estimated_remaining {
+                    // Update batch status to failed
+                    let mut updated_batch = emergency_batch.clone();
+                    updated_batch.status = String::from_slice(&env, "failed");
+                    updated_batch.gas_used = initial_gas - remaining_gas;
+                    env.storage().instance().set(&Symbol::short(&format!("EMERGENCY_BATCH_{}", batch_id)), &updated_batch);
+                    
+                    return Err(ContractError::GasLimitExceeded);
+                }
+            }
+        }
+
+        // Mark emergency batch as completed
+        let mut completed_batch = emergency_batch.clone();
+        completed_batch.status = String::from_slice(&env, "completed");
+        completed_batch.gas_used = initial_gas - env.budget().gas_left();
+        env.storage().instance().set(&Symbol::short(&format!("EMERGENCY_BATCH_{}", batch_id)), &completed_batch);
+
+        env.log().format(&format!("Emergency reward distribution {} completed. Total alerts: {}, Total reward: {}, Total gas used: {}", 
+            batch_id, alert_ids.len(), total_reward, completed_batch.gas_used));
+
+        Ok(batch_id)
+    }
+
+    /// Update gas configuration
+    pub fn update_gas_config(
+        env: Env,
+        admin: Address,
+        single_transfer_limit: Option<u64>,
+        batch_transfer_limit: Option<u64>,
+        emergency_limit: Option<u64>,
+        max_batch_size: Option<u32>,
+        gas_price_multiplier: Option<u32>,
+    ) -> Result<(), ContractError> {
+        let contract_admin: Address = env.storage().instance().get(&ADMIN).unwrap();
+        if contract_admin != admin {
+            return Err(ContractError::Unauthorized);
+        }
+        admin.require_auth();
+
+        let mut gas_config: GasConfig = env.storage().instance()
+            .get(&GAS_CONFIG)
+            .unwrap_or_else(|| GasConfig {
+                single_transfer_limit: DEFAULT_SINGLE_TRANSFER_GAS,
+                batch_transfer_limit: DEFAULT_BATCH_TRANSFER_GAS,
+                emergency_limit: DEFAULT_EMERGENCY_GAS,
+                max_batch_size: MAX_BATCH_SIZE,
+                gas_price_multiplier: 100,
+            });
+
+        if let Some(limit) = single_transfer_limit {
+            gas_config.single_transfer_limit = limit;
+        }
+        if let Some(limit) = batch_transfer_limit {
+            gas_config.batch_transfer_limit = limit;
+        }
+        if let Some(limit) = emergency_limit {
+            gas_config.emergency_limit = limit;
+        }
+        if let Some(size) = max_batch_size {
+            gas_config.max_batch_size = size;
+        }
+        if let Some(multiplier) = gas_price_multiplier {
+            gas_config.gas_price_multiplier = multiplier;
+        }
+
+        env.storage().instance().set(&GAS_CONFIG, &gas_config);
+        Ok(())
+    }
+
+    /// Get gas configuration
+    pub fn get_gas_config(env: Env) -> GasConfig {
+        env.storage().instance()
+            .get(&GAS_CONFIG)
+            .unwrap_or_else(|| GasConfig {
+                single_transfer_limit: DEFAULT_SINGLE_TRANSFER_GAS,
+                batch_transfer_limit: DEFAULT_BATCH_TRANSFER_GAS,
+                emergency_limit: DEFAULT_EMERGENCY_GAS,
+                max_batch_size: MAX_BATCH_SIZE,
+                gas_price_multiplier: 100,
+            })
+    }
+
+    /// Get batch status
+    pub fn get_batch_status(env: Env, batch_id: u64) -> Result<BatchRelease, ContractError> {
+        let batch_key = Symbol::short(&format!("BATCH_{}", batch_id));
+        env.storage().instance()
+            .get(&batch_key)
+            .ok_or(ContractError::NotFound)
+    }
+
+    /// Get emergency batch status
+    pub fn get_emergency_batch_status(env: Env, batch_id: u64) -> Result<EmergencyBatch, ContractError> {
+        let batch_key = Symbol::short(&format!("EMERGENCY_BATCH_{}", batch_id));
+        env.storage().instance()
+            .get(&batch_key)
+            .ok_or(ContractError::NotFound)
     }
 }
 
