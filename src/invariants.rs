@@ -11,6 +11,10 @@ pub enum InvariantRule {
     TransferConservation,
     MintSupplyIncrease,
     BurnSupplyDecrease,
+    SufficientBalanceCheck,
+    BalanceBoundsCheck,
+    TransferAtomicity,
+    BalanceIntegrity,
     
     // Access Control Invariants
     AdminAuthorization,
@@ -47,6 +51,10 @@ impl InvariantRule {
             InvariantRule::TransferConservation => "Transfers must conserve total value (sender decrease = receiver increase)",
             InvariantRule::MintSupplyIncrease => "Minting must increase total supply by minted amount",
             InvariantRule::BurnSupplyDecrease => "Burning must decrease total supply by burned amount",
+            InvariantRule::SufficientBalanceCheck => "All transfers must verify sufficient balance before execution",
+            InvariantRule::BalanceBoundsCheck => "Account balances must stay within defined bounds",
+            InvariantRule::TransferAtomicity => "Transfer operations must be atomic and reversible on failure",
+            InvariantRule::BalanceIntegrity => "Balance operations must maintain data integrity",
             
             InvariantRule::AdminAuthorization => "Admin operations must be properly authorized",
             InvariantRule::OwnershipConsistency => "Ownership must be consistent and transferable only by owner",
@@ -78,6 +86,10 @@ impl InvariantRule {
             InvariantRule::TransferConservation => r"transfer.*from.*to.*amount",
             InvariantRule::MintSupplyIncrease => r"mint.*total_supply.*\+=",
             InvariantRule::BurnSupplyDecrease => r"burn.*total_supply.*-=",
+            InvariantRule::SufficientBalanceCheck => r"require.*balance.*>=|balance.*>=.*amount",
+            InvariantRule::BalanceBoundsCheck => r"balance.*<=.*max_balance|max_balance.*>=.*balance",
+            InvariantRule::TransferAtomicity => r"transfer.*\{[^}]*?balance.*-=.*balance.*\+=",
+            InvariantRule::BalanceIntegrity => r"balance.*checked.*|checked.*balance",
             
             InvariantRule::AdminAuthorization => r"require_auth.*admin|admin.*require_auth",
             InvariantRule::OwnershipConsistency => r"owner.*transfer|transfer.*owner",
@@ -111,6 +123,10 @@ impl InvariantRule {
             
             InvariantRule::MintSupplyIncrease => Severity::High,
             InvariantRule::BurnSupplyDecrease => Severity::High,
+            InvariantRule::SufficientBalanceCheck => Severity::Critical,
+            InvariantRule::BalanceBoundsCheck => Severity::High,
+            InvariantRule::TransferAtomicity => Severity::Critical,
+            InvariantRule::BalanceIntegrity => Severity::High,
             InvariantRule::AdminAuthorization => Severity::High,
             InvariantRule::OwnershipConsistency => Severity::High,
             InvariantRule::SumOfBalancesEqualsSupply => Severity::High,
@@ -138,6 +154,10 @@ impl InvariantRule {
             InvariantRule::TransferConservation => "Validate that transfers conserve total value",
             InvariantRule::MintSupplyIncrease => "Ensure minting operations properly increase total supply",
             InvariantRule::BurnSupplyDecrease => "Ensure burning operations properly decrease total supply",
+            InvariantRule::SufficientBalanceCheck => "Add comprehensive balance verification before all transfers",
+            InvariantRule::BalanceBoundsCheck => "Implement balance bounds validation to prevent overflow",
+            InvariantRule::TransferAtomicity => "Ensure transfers are atomic with proper rollback on failure",
+            InvariantRule::BalanceIntegrity => "Use checked arithmetic for all balance operations",
             
             InvariantRule::AdminAuthorization => "Implement proper admin authorization for all admin functions",
             InvariantRule::OwnershipConsistency => "Maintain ownership consistency across all operations",
