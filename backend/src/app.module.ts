@@ -17,6 +17,7 @@ import { RiskManagementModule } from './risk/risk-management.module';
 import { ApiKeyModule } from './api-key/api-key.module';
 import { WebhookModule } from './webhook/webhook.module';
 import { EscrowModule } from './escrow/escrow.module';
+import { FeeModule } from './fee/fee.module';
 import { StateConsistencyValidator } from './common/validation/state-consistency.validator';
 import { StateConsistencyInterceptor } from './common/interceptors/state-consistency.interceptor';
 import { StateViolationMonitor } from './common/monitoring/state-violation.monitor';
@@ -109,6 +110,7 @@ import { StateViolationMonitor } from './common/monitoring/state-violation.monit
     ApiKeyModule,
     WebhookModule,
     EscrowModule,
+    FeeModule,
   ],
   controllers: [],
   providers: [

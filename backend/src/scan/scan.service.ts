@@ -9,6 +9,7 @@ import { ScanProgressGateway } from './scan-progress.gateway';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { StateConsistencyValidator } from '../common/validation/state-consistency.validator';
+import { FeeService } from '../fee/services/fee.service';
 
 /**
  * Scan Service - Smart Contract Security Scanning Management
@@ -70,6 +71,7 @@ export class ScanService {
     @InjectQueue('scan-queue')
     private readonly scanQueue: Queue,
     private readonly stateValidator: StateConsistencyValidator,
+    private readonly feeService: FeeService,
   ) {}
 
   /**
@@ -482,5 +484,30 @@ export class ScanService {
       topVulnerabilityTypes: [],
       recentScans: [],
     };
+  }
+
+  /**
+   * Charge fee for a scan operation
+   */
+  async chargeScanFee(scanId: string, userId: string, feeInfo: any): Promise<void> {
+    try {
+      await this.feeService.createAndChargeFee({
+        type: 'scan',
+        amount: feeInfo.estimatedFee.totalFee,
+        description: `Security scan fee for scan ${scanId}`,
+        metadata: {
+          scanComplexity: feeInfo.params.complexity,
+          codeSize: feeInfo.params.codeSize,
+          processingTime: feeInfo.params.processingTime,
+        },
+        scanId,
+      }, userId);
+
+      this.logger.log(`Fee charged for scan ${scanId}: ${feeInfo.estimatedFee.totalFee}`);
+    } catch (error) {
+      this.logger.error(`Failed to charge fee for scan ${scanId}:`, error);
+      // Don't throw error here to avoid breaking scan flow
+      // Consider implementing retry logic or compensation mechanism
+    }
   }
 }

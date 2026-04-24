@@ -1,5 +1,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
 import { ApiKey } from '../../api-key/entities/api-key.entity';
+import { Fee } from '../../fee/entities/fee.entity';
+import { UserBalance } from '../../fee/entities/user-balance.entity';
 
 @Entity('users')
 export class User {
@@ -33,6 +35,12 @@ export class User {
 
   @OneToMany(() => ApiKey, apiKey => apiKey.user, { cascade: true })
   apiKeys: ApiKey[];
+
+  @OneToMany(() => Fee, fee => fee.user, { cascade: true })
+  fees: Fee[];
+
+  @OneToMany(() => UserBalance, balance => balance.user, { cascade: true })
+  balances: UserBalance[];
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
