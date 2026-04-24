@@ -66,6 +66,10 @@ pub enum VulnerabilityType {
     Reentrancy,
     IntegerOverflow,
     IntegerUnderflow,
+    InsufficientBalance,
+    BalanceUnderflow,
+    BalanceOverflow,
+    TransferWithoutBalanceCheck,
     
     // Logic Vulnerabilities
     FrozenFunds,
@@ -133,6 +137,10 @@ impl VulnerabilityType {
             VulnerabilityType::Reentrancy => "Contract vulnerable to reentrancy attacks",
             VulnerabilityType::IntegerOverflow => "Integer operations may overflow",
             VulnerabilityType::IntegerUnderflow => "Integer operations may underflow",
+            VulnerabilityType::InsufficientBalance => "Transfer operations don't validate sufficient balance",
+            VulnerabilityType::BalanceUnderflow => "Balance operations may cause underflow",
+            VulnerabilityType::BalanceOverflow => "Balance operations may cause overflow",
+            VulnerabilityType::TransferWithoutBalanceCheck => "Transfer executed without balance verification",
             
             VulnerabilityType::FrozenFunds => "Assets can become permanently locked",
             VulnerabilityType::BrokenInvariant => "Contract invariants can be violated",
@@ -203,6 +211,10 @@ impl VulnerabilityType {
             VulnerabilityType::InflationBug => Severity::Medium,
             VulnerabilityType::IntegerOverflow => Severity::Medium,
             VulnerabilityType::IntegerUnderflow => Severity::Medium,
+            VulnerabilityType::InsufficientBalance => Severity::Critical,
+            VulnerabilityType::BalanceUnderflow => Severity::Critical,
+            VulnerabilityType::BalanceOverflow => Severity::High,
+            VulnerabilityType::TransferWithoutBalanceCheck => Severity::Critical,
             VulnerabilityType::RaceCondition => Severity::Medium,
             VulnerabilityType::FrontRunningSusceptibility => Severity::Medium,
             VulnerabilityType::InsufficientFeeBump => Severity::Medium,
@@ -266,6 +278,10 @@ impl VulnerabilityType {
             VulnerabilityType::Reentrancy => "Use checks-effects-interactions pattern and implement reentrancy guards",
             VulnerabilityType::IntegerOverflow => "Use safe arithmetic operations or add overflow checks",
             VulnerabilityType::IntegerUnderflow => "Use safe arithmetic operations or add underflow checks",
+            VulnerabilityType::InsufficientBalance => "Add balance validation before all transfer operations",
+            VulnerabilityType::BalanceUnderflow => "Implement underflow protection for balance operations",
+            VulnerabilityType::BalanceOverflow => "Implement overflow protection for balance operations",
+            VulnerabilityType::TransferWithoutBalanceCheck => "Add balance checks before executing transfers",
             
             VulnerabilityType::FrozenFunds => "Ensure all asset flows have proper exit paths",
             VulnerabilityType::BrokenInvariant => "Define and enforce critical invariants explicitly",

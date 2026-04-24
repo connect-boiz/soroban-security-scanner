@@ -1,0 +1,33 @@
+{
+  "name": "soroban-security-scanner",
+  "version": "1.0.0",
+  "description": "Security scanner for Soroban smart contracts",
+  "main": "src/index.js",
+  "scripts": {
+    "scan": "node src/index.js",
+    "test": "jest",
+    "lint": "eslint src/",
+    "start": "node src/index.js"
+  },
+  "keywords": [
+    "soroban",
+    "stellar",
+    "security",
+    "smart-contracts",
+    "blockchain",
+    "audit",
+    "vulnerability"
+  ],
+  "author": "connect-boiz",
+  "license": "MIT",
+  "dependencies": {
+    "@stellar/stellar-sdk": "^14.6.1",
+    "commander": "^11.1.0",
+    "chalk": "^4.1.2",
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "eslint": "^8.57.0"
+  }
+}

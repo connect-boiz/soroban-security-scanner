@@ -43,6 +43,18 @@ impl SecurityScanner {
         
         self.add_pattern(VulnerabilityType::UnauthorizedBurn,
             r"fn\s+burn.*\{[^}]*?(?!require_auth)[^}]*?balance.*-=")?;
+        
+        self.add_pattern(VulnerabilityType::InsufficientBalance,
+            r"transfer.*\{[^}]*?(?!balance.*>=|require.*balance)[^}]*?balance.*-=")?;
+        
+        self.add_pattern(VulnerabilityType::BalanceUnderflow,
+            r"balance.*-=.*(?!checked_|wrapping_|saturating_)")?;
+        
+        self.add_pattern(VulnerabilityType::BalanceOverflow,
+            r"balance.*\+=.*(?!checked_|wrapping_|saturating_)")?;
+        
+        self.add_pattern(VulnerabilityType::TransferWithoutBalanceCheck,
+            r"fn\s+transfer.*\{[^}]*?(?!require.*balance|balance.*>=)[^}]*?env\.invoke_contract|balance.*-=.*balance.*\+=")?;
 
         // Token Economics Vulnerabilities
         self.add_pattern(VulnerabilityType::InfiniteMint,
@@ -53,6 +65,9 @@ impl SecurityScanner {
         
         self.add_pattern(VulnerabilityType::IntegerOverflow,
             r"\+\s*=|-\s*=|\*\s*=|/\s*=.*(?!checked_|wrapping_|saturating_)")?;
+        
+        self.add_pattern(VulnerabilityType::IntegerUnderflow,
+            r"balance.*-=[^}]*?(?!checked_|wrapping_|saturating_)")?;
 
         // Logic Vulnerabilities
         self.add_pattern(VulnerabilityType::FrozenFunds,
@@ -232,6 +247,18 @@ impl InvariantScanner {
         self.add_rule(InvariantRule::BalanceNonNegative,
             r"balance.*<.*0|balance.*-=.*balance")?;
         
+        self.add_rule(InvariantRule::SufficientBalanceCheck,
+            r"transfer.*\{[^}]*?(?!balance.*>=|require.*balance)[^}]*?balance.*-=")?;
+        
+        self.add_rule(InvariantRule::BalanceBoundsCheck,
+            r"balance.*\+=.*(?!max_balance|limit)|balance.*-=.*(?!min_balance)")?;
+        
+        self.add_rule(InvariantRule::TransferAtomicity,
+            r"transfer.*\{[^}]*?balance.*-=.*balance.*\+=")?;
+        
+        self.add_rule(InvariantRule::BalanceIntegrity,
+            r"balance.*=.*(?!checked_|safe_)")?;
+        
         self.add_rule(InvariantRule::TransferConservation,
             r"transfer.*from.*to.*amount")?;
 
@@ -241,6 +268,9 @@ impl InvariantScanner {
         
         self.add_rule(InvariantRule::OverflowProtection,
             r"checked_add|checked_sub|checked_mul|checked_div")?;
+        
+        self.add_rule(InvariantRule::BalanceBoundsCheck,
+            r"balance.*<=.*max_balance|max_balance.*>=.*balance")?;
 
         // State Consistency
         self.add_rule(InvariantRule::StateTransitionValidity,
