@@ -15,6 +15,7 @@ import { DatabaseModule } from './database/database.module';
 import { RiskManagementModule } from './risk/risk-management.module';
 import { ApiKeyModule } from './api-key/api-key.module';
 import { WebhookModule } from './webhook/webhook.module';
+import { EscrowModule } from './escrow/escrow.module';
 
 @Module({
   imports: [
@@ -57,8 +58,29 @@ import { WebhookModule } from './webhook/webhook.module';
     // Rate limiting
     ThrottlerModule.forRoot([
       {
+        name: 'default',
         ttl: 60000, // 1 minute
         limit: 100, // 100 requests per minute
+      },
+      {
+        name: 'vulnerability-reporting',
+        ttl: 60000, // 1 minute
+        limit: 10, // 10 vulnerability reports per minute
+      },
+      {
+        name: 'escrow-creation',
+        ttl: 60000, // 1 minute
+        limit: 5, // 5 escrow creations per minute
+      },
+      {
+        name: 'batch-operations',
+        ttl: 300000, // 5 minutes
+        limit: 3, // 3 batch operations per 5 minutes
+      },
+      {
+        name: 'scan-operations',
+        ttl: 60000, // 1 minute
+        limit: 20, // 20 scans per minute
       },
     ]),
 
@@ -82,6 +104,7 @@ import { WebhookModule } from './webhook/webhook.module';
     RiskManagementModule,
     ApiKeyModule,
     WebhookModule,
+    EscrowModule,
   ],
   controllers: [],
   providers: [],

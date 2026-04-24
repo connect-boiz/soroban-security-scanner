@@ -10,16 +10,20 @@ import {
   Logger,
   UseGuards,
   Request,
+  UseInterceptors,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { LlmPatchService, PatchRequest, PatchResponse } from './llm-patch.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ApplyPatchRequest } from './dto/apply-patch.dto';
 import { GeneratePatchDto } from './dto/generate-patch.dto';
+import { CustomRateLimitGuard } from '../common/guards/rate-limit.guard';
+import { VulnerabilityReportRateLimit, BatchOperationRateLimit } from '../common/decorators/rate-limit.decorator';
 
 @ApiTags('llm-patch')
 @Controller('llm-patch')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, CustomRateLimitGuard)
 @ApiBearerAuth()
 export class LlmPatchController {
   private readonly logger = new Logger(LlmPatchController.name);
@@ -32,6 +36,8 @@ export class LlmPatchController {
   @ApiResponse({ status: 200, description: 'Patch generated successfully', type: Object })
   @ApiResponse({ status: 400, description: 'Invalid request' })
   @ApiResponse({ status: 500, description: 'Internal server error' })
+  @Throttle(10, 60) // 10 requests per minute
+  @VulnerabilityReportRateLimit()
   async generatePatch(
     @Body() generatePatchDto: GeneratePatchDto,
     @Request() req,
@@ -40,7 +46,7 @@ export class LlmPatchController {
     data?: PatchResponse;
     error?: string;
     confidence_level?: string;
-    should_apply?: boolean;
+    shouldApply?: boolean;
   }> {
     try {
       this.logger.log(
@@ -83,6 +89,8 @@ export class LlmPatchController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Generate multiple AI-powered security patches' })
   @ApiResponse({ status: 200, description: 'Batch patches generated successfully' })
+  @Throttle(3, 300) // 3 requests per 5 minutes
+  @BatchOperationRateLimit()
   async batchGeneratePatches(
     @Body() batchDto: { requests: GeneratePatchDto[] },
     @Request() req,
@@ -253,7 +261,7 @@ export class LlmPatchController {
   async getConfidenceLevel(@Param('score') score: string): Promise<{
     success: boolean;
     level?: string;
-    should_apply?: boolean;
+    shouldApply?: boolean;
     error?: string;
   }> {
     try {
