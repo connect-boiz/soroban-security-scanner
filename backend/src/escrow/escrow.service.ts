@@ -96,6 +96,7 @@ export class EscrowService {
 
     const originalStatus = escrow.status;
 
+    // CHECKS: Perform all validations before any state changes
     // Validate state transition
     const validation = await this.stateValidator.validateStateTransition(
       'escrow',
@@ -118,19 +119,27 @@ export class EscrowService {
       };
     }
 
-    // Update escrow status
-    escrow.status = 'released';
-    escrow.conditions_met = releaseEscrowDto.conditions_met ?? true;
-    escrow.release_signature = releaseEscrowDto.release_signature;
+    // Create a copy of the escrow with proposed changes for consistency validation
+    const proposedEscrow = {
+      ...escrow,
+      status: 'released' as const,
+      conditions_met: releaseEscrowDto.conditions_met ?? true,
+      release_signature: releaseEscrowDto.release_signature,
+    };
 
-    // Validate consistency after state change
-    const consistencyCheck = await this.stateValidator.validateEntityConsistency('escrow', escrow);
+    // Validate consistency with proposed changes (before actual state change)
+    const consistencyCheck = await this.stateValidator.validateEntityConsistency('escrow', proposedEscrow);
     if (!consistencyCheck.valid) {
       return {
         success: false,
         error: `Escrow consistency validation failed: ${consistencyCheck.errors.join(', ')}`,
       };
     }
+
+    // EFFECTS: Apply state changes only after all validations pass
+    escrow.status = 'released';
+    escrow.conditions_met = releaseEscrowDto.conditions_met ?? true;
+    escrow.release_signature = releaseEscrowDto.release_signature;
 
     // Store updated escrow
     this.escrows.set(escrowId, escrow);
