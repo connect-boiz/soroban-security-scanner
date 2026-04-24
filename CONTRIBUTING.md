@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Contributing to Soroban Security Scanner
 
 Thank you for your interest in contributing to the Soroban Security Scanner! This document provides guidelines and information for contributors.
@@ -597,4 +596,3 @@ Brief description of changes
 **Thank you for contributing to Stellar security! 🌟**
 
 Your work helps make the entire Stellar ecosystem safer and more reliable for everyone.
->>>>>>> d3f36ab92d9e66d23ee21a647a1c42fb35d58753
