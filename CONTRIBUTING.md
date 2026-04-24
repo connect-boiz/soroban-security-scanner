@@ -256,46 +256,6 @@ By contributing, you agree that your contributions will be licensed under the MI
 ---
 
 Thank you for contributing to Soroban Security Scanner! Your help makes the Stellar ecosystem safer for everyone. 🚀
-=======
-# 🤝 Contributing to Stellar Security Scanner
-
-Thank you for your interest in contributing to the Stellar Security Scanner! This guide will help you get started and understand our contribution process.
-
-## 🎯 Mission
-
-Our mission is to create the most comprehensive security scanning tool for Stellar smart contracts, helping developers build secure and reliable applications on the Stellar network.
-
-## 🚀 Getting Started
-
-### **Prerequisites**
-
-- Rust 1.70+ installed
-- Git configured
-- GitHub account
-- Discord account (for community communication)
-
-### **Step 1: Setup Development Environment**
-
-```bash
-# Clone the repository
-git clone https://github.com/your-org/stellar-security-scanner.git
-cd stellar-security-scanner
-
-# Install dependencies
-cargo build
-
-# Run tests to verify setup
-cargo test
-
-# Install development tools
-cargo install cargo-watch cargo-tarpaulin
-```
-
-### **Step 2: Join the Community**
-
-1. **Discord**: Join our [Discord server](https://discord.gg/stellar-security)
-2. **Introductions**: Post in `#introductions` channel
-3. **Contributors**: Join `#contributors` for project discussions
 
 ### **Step 3: Choose Your Contribution Type**
 
