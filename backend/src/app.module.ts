@@ -6,6 +6,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { JwtModule } from '@nestjs/jwt';
 import { BullModule } from '@nestjs/bullmq';
 import { ScheduleModule } from '@nestjs/schedule';
+import { APP_INTERCEPTORS } from '@nestjs/core';
 
 import { HealthModule } from './health/health.module';
 import { ScanModule } from './scan/scan.module';
@@ -16,6 +17,9 @@ import { RiskManagementModule } from './risk/risk-management.module';
 import { ApiKeyModule } from './api-key/api-key.module';
 import { WebhookModule } from './webhook/webhook.module';
 import { EscrowModule } from './escrow/escrow.module';
+import { StateConsistencyValidator } from './common/validation/state-consistency.validator';
+import { StateConsistencyInterceptor } from './common/interceptors/state-consistency.interceptor';
+import { StateViolationMonitor } from './common/monitoring/state-violation.monitor';
 
 @Module({
   imports: [
@@ -107,6 +111,13 @@ import { EscrowModule } from './escrow/escrow.module';
     EscrowModule,
   ],
   controllers: [],
-  providers: [],
+  providers: [
+    StateConsistencyValidator,
+    StateViolationMonitor,
+    {
+      provide: APP_INTERCEPTORS,
+      useClass: StateConsistencyInterceptor,
+    },
+  ],
 })
 export class AppModule {}
