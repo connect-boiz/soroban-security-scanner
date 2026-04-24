@@ -24,6 +24,7 @@ use uuid::Uuid;
 use soroban_security_scanner_core::analyzer::SecurityAnalyzer;
 use soroban_security_scanner_core::patterns::get_vulnerability_patterns;
 use soroban_security_scanner_core::vulnerabilities::VulnerabilityPattern;
+use soroban_security_scanner_core::scan_controller::{ScanController, ScanCommand, ScanStatus, ScanControl};
 
 lazy_static! {
     static ref DEV_API_KEY: String = std::env::var("DEV_API_KEY").unwrap_or_else(|_| "dummy-key".to_string());
@@ -72,6 +73,26 @@ struct ScanResult {
     repository_url: String,
 }
 
+#[derive(Serialize, Deserialize, ToSchema, Clone)]
+struct ScanControlRequest {
+    scan_id: String,
+    command: ScanCommand,
+}
+
+#[derive(Serialize, Deserialize, ToSchema, Clone)]
+struct ScanControlResponse {
+    success: bool,
+    message: String,
+    scan_status: Option<ScanControl>,
+}
+
+#[derive(Serialize, Deserialize, ToSchema, Clone)]
+struct ScanStatusResponse {
+    scan_id: String,
+    status: Option<ScanControl>,
+    active_scans: Vec<ScanControl>,
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -80,9 +101,12 @@ struct ScanResult {
         get_scan_result,
         get_patterns,
         refresh_patterns,
+        handle_scan_control,
+        get_scan_status,
+        get_active_scans,
     ),
     components(
-        schemas(ScanRequest, CiScanRequest, CiScanResponse, ScanResult, ScanStatus, VulnerabilityPattern)
+        schemas(ScanRequest, CiScanRequest, CiScanResponse, ScanResult, ScanStatus, VulnerabilityPattern, ScanControlRequest, ScanControlResponse, ScanStatusResponse, ScanCommand)
     ),
     tags(
         (name = "soroban-security-scanner", description = "Soroban Security Scanner API")
@@ -93,6 +117,7 @@ struct ApiDoc;
 pub struct AppState {
     patterns: RwLock<Vec<VulnerabilityPattern>>,
     redis_client: Option<redis::Client>,
+    scan_controller: ScanController,
 }
 
 async fn api_key_auth<B>(req: Request<B>, next: Next<B>) -> impl IntoResponse {
@@ -154,9 +179,9 @@ async fn handle_scan(
     Json(payload): Json<ScanRequest>,
 ) -> impl IntoResponse {
     let patterns = state.patterns.read().await;
-    let analyzer = SecurityAnalyzer::new(true, true); // Deep analysis enabled
+    let analyzer = SecurityAnalyzer::new(true, true, Some(state.scan_controller.clone())); // Deep analysis enabled with control
     
-    match analyzer.analyze(&payload.code, &payload.filename) {
+    match analyzer.analyze_with_control(&payload.code, &payload.filename, true, 5).await {
         Ok(report) => {
             let format = payload.format.unwrap_or_else(|| "json".to_string());
             if format == "sarif" {
@@ -239,8 +264,13 @@ async fn handle_ci_scan(
                 .query_async(&mut con).await;
         }
 
-        let analyzer = SecurityAnalyzer::new(true, true);
-        let scan_output = analyzer.analyze(&payload.code, &payload.filename);
+        let analyzer = SecurityAnalyzer::new(true, true, Some(scan_state.scan_controller.clone()));
+        let scan_output = analyzer.analyze_with_control(
+            &payload.code, 
+            &payload.filename,
+            true, // auto_stop_enabled
+            3     // auto_stop_threshold (stop after 3 critical vulnerabilities)
+        ).await;
 
         let final_result = match scan_output {
             Ok(report) => {
@@ -354,6 +384,81 @@ async fn get_scan_result(
     (StatusCode::INTERNAL_SERVER_ERROR, "Redis not configured".to_string()).into_response()
 }
 
+#[utoipa::path(
+    post,
+    path = "/scan/control",
+    request_body = ScanControlRequest,
+    responses(
+        (status = 200, description = "Scan control command processed", body = ScanControlResponse),
+        (status = 404, description = "Scan not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
+async fn handle_scan_control(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<ScanControlRequest>,
+) -> impl IntoResponse {
+    info!("Received scan control command: scan_id={}, command={:?}", payload.scan_id, payload.command);
+    
+    match state.scan_controller.issue_command(&payload.scan_id, payload.command).await {
+        Ok(_) => {
+            let scan_status = state.scan_controller.get_scan_status(&payload.scan_id).await.unwrap_or(None);
+            (StatusCode::OK, Json(ScanControlResponse {
+                success: true,
+                message: "Command processed successfully".to_string(),
+                scan_status,
+            })).into_response()
+        }
+        Err(e) => {
+            error!("Failed to process scan control command: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(ScanControlResponse {
+                success: false,
+                message: format!("Failed to process command: {}", e),
+                scan_status: None,
+            })).into_response()
+        }
+    }
+}
+
+#[utoipa::path(
+    get,
+    path = "/scan/status/{scan_id}",
+    responses(
+        (status = 200, description = "Scan status retrieved", body = ScanStatusResponse),
+        (status = 404, description = "Scan not found")
+    )
+)]
+async fn get_scan_status(
+    State(state): State<Arc<AppState>>,
+    Path(scan_id): Path<String>,
+) -> impl IntoResponse {
+    let scan_status = state.scan_controller.get_scan_status(&scan_id).await.unwrap_or(None);
+    let active_scans = state.scan_controller.get_active_scans().await.unwrap_or_default();
+    
+    (StatusCode::OK, Json(ScanStatusResponse {
+        scan_id,
+        status: scan_status,
+        active_scans,
+    })).into_response()
+}
+
+#[utoipa::path(
+    get,
+    path = "/scan/active",
+    responses(
+        (status = 200, description = "Active scans retrieved", body = Vec<ScanControl>)
+    )
+)]
+async fn get_active_scans(
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    let active_scans = state.scan_controller.get_active_scans().await.unwrap_or_default();
+    (StatusCode::OK, Json(active_scans)).into_response()
+}
+
 #[tokio::main]
 async fn main() {
     let subscriber = FmtSubscriber::builder()
@@ -369,6 +474,7 @@ async fn main() {
     let state = Arc::new(AppState {
         patterns: RwLock::new(get_vulnerability_patterns()),
         redis_client,
+        scan_controller: ScanController::new(),
     });
 
     // In a real application, this would be based on the API key's subscription tier.
@@ -389,6 +495,9 @@ async fn main() {
     let app = Router::new()
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .route("/scan", post(handle_scan))
+        .route("/scan/control", post(handle_scan_control))
+        .route("/scan/status/:scan_id", get(get_scan_status))
+        .route("/scan/active", get(get_active_scans))
         .route("/patterns", get(get_patterns))
         .route("/patterns/refresh", post(refresh_patterns))
         .nest("/api/v1/ci", ci_router)
@@ -408,6 +517,22 @@ async fn main() {
             let mut patterns_lock = cron_state.patterns.write().await;
             *patterns_lock = new_patterns.clone();
             info!("Scheduled refresh complete.");
+        }
+    });
+
+    let cleanup_state = state.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600)); // Every hour
+        loop {
+            interval.tick().await;
+            info!("Running scan cleanup task...");
+            if let Ok(cleaned_count) = cleanup_state.scan_controller.cleanup_old_scans(
+                chrono::Duration::hours(24) // Clean scans older than 24 hours
+            ).await {
+                if cleaned_count > 0 {
+                    info!("Cleaned up {} old scan records", cleaned_count);
+                }
+            }
         }
     });
 
