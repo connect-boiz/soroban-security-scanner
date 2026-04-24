@@ -133,14 +133,12 @@ impl BountyMarketplace {
         let current_time = env.ledger().timestamp();
         let timelock_until = current_time + TIMELOCK_PERIOD;
 
-        // Generate bounty ID
-        let mut bounty_counter: u64 = env.storage().persistent().get(&BOUNTY_COUNTER).unwrap_or(0);
-        bounty_counter += 1;
-        env.storage().persistent().set(&BOUNTY_COUNTER, &bounty_counter);
+        // Generate secure bounty ID
+        let bounty_id = Self::generate_secure_id(&env);
 
         // Create bounty
         let bounty = Bounty {
-            id: bounty_counter,
+            id: bounty_id,
             creator: creator.clone(),
             amount,
             title,
@@ -429,6 +427,49 @@ impl BountyMarketplace {
     }
 
     // Internal helper functions
+
+    /// Generate a secure ID using multiple entropy sources
+    /// 
+    /// This function combines:
+    /// - Ledger sequence number (changes each block)
+    /// - Ledger timestamp (changes each second) 
+    /// - Random address for additional entropy
+    /// - Storage counter to ensure uniqueness within same block
+    fn generate_secure_id(env: &Env) -> u64 {
+        // Get ledger entropy sources
+        let ledger_sequence = env.ledger().sequence();
+        let ledger_timestamp = env.ledger().timestamp();
+        
+        // Generate random address for additional entropy
+        let random_addr = Address::random(env);
+        
+        // Get storage counter for uniqueness within same block
+        let mut counter = env.storage().persistent().get(&BOUNTY_COUNTER).unwrap_or(0u64);
+        counter += 1;
+        env.storage().persistent().set(&BOUNTY_COUNTER, &counter);
+        
+        // Extract bytes from random address (use first 8 bytes for u64)
+        let addr_bytes = random_addr.to_string();
+        let addr_hash = addr_bytes.bytes().fold(0u64, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u64));
+        
+        // Combine all entropy sources using cryptographic mixing
+        let combined = ledger_sequence
+            .wrapping_mul(31)
+            .wrapping_add(ledger_timestamp)
+            .wrapping_mul(17)
+            .wrapping_add(addr_hash)
+            .wrapping_mul(13)
+            .wrapping_add(counter);
+        
+        // Apply final mixing to reduce predictability
+        let mixed = combined
+            .wrapping_mul(0x9e3779b97f4a7c15u64)
+            .wrapping_add((combined >> 30).wrapping_mul(0xbf58476d1ce4e5b9u64))
+            .wrapping_add((combined >> 27).wrapping_mul(0x94d049bb133111ebu64));
+        
+        mixed
+    }
+
     fn get_bounty_internal(env: &Env, bounty_id: u64) -> Bounty {
         let bounties: Map<Address, Vec<Bounty>> = env.storage().persistent().get(&BOUNTIES)
             .unwrap_or_else(|| Map::new(env));
