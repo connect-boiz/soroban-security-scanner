@@ -1,5 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { StateConsistencyValidator } from '../common/validation/state-consistency.validator';
 
 export interface EscrowEntry {
   id: string;
@@ -37,7 +38,10 @@ export class EscrowService {
   private readonly logger = new Logger(EscrowService.name);
   private readonly escrows: Map<string, EscrowEntry> = new Map();
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly stateValidator: StateConsistencyValidator,
+  ) {}
 
   async createEscrow(createEscrowDto: CreateEscrowDto, userId: string): Promise<EscrowEntry> {
     const escrowId = this.generateEscrowId();
@@ -55,6 +59,18 @@ export class EscrowService {
       conditions_met: false,
       contract_address: createEscrowDto.contract_address,
     };
+
+    // Validate initial state
+    const isStateValid = this.stateValidator.validateInitialState('escrow', escrow.status);
+    if (!isStateValid) {
+      throw new BadRequestException('Invalid initial escrow state');
+    }
+
+    // Validate entity consistency
+    const consistencyCheck = await this.stateValidator.validateEntityConsistency('escrow', escrow);
+    if (!consistencyCheck.valid) {
+      throw new BadRequestException(`Escrow consistency validation failed: ${consistencyCheck.errors.join(', ')}`);
+    }
 
     // Store escrow (in production, this would be in a database)
     this.escrows.set(escrowId, escrow);
@@ -78,27 +94,27 @@ export class EscrowService {
       };
     }
 
-    // Check authorization
-    if (escrow.depositor !== userId) {
-      return {
-        success: false,
-        error: 'Unauthorized to release this escrow',
-      };
-    }
+    const originalStatus = escrow.status;
 
-    // Check if escrow can be released
-    if (escrow.status !== 'pending' && escrow.status !== 'locked') {
-      return {
-        success: false,
-        error: `Cannot release escrow in ${escrow.status} status`,
-      };
-    }
+    // Validate state transition
+    const validation = await this.stateValidator.validateStateTransition(
+      'escrow',
+      escrowId,
+      originalStatus,
+      'released',
+      escrow,
+      { 
+        userId,
+        conditions_met: releaseEscrowDto.conditions_met ?? true,
+        release_signature: releaseEscrowDto.release_signature,
+      }
+    );
 
-    // Check lock period
-    if (escrow.lock_until && new Date(escrow.lock_until) > new Date()) {
+    if (!validation.valid) {
+      this.stateValidator.logStateViolation(validation.error!);
       return {
         success: false,
-        error: 'Escrow is still locked',
+        error: `Cannot release escrow: ${validation.error!.error}`,
       };
     }
 
@@ -106,6 +122,15 @@ export class EscrowService {
     escrow.status = 'released';
     escrow.conditions_met = releaseEscrowDto.conditions_met ?? true;
     escrow.release_signature = releaseEscrowDto.release_signature;
+
+    // Validate consistency after state change
+    const consistencyCheck = await this.stateValidator.validateEntityConsistency('escrow', escrow);
+    if (!consistencyCheck.valid) {
+      return {
+        success: false,
+        error: `Escrow consistency validation failed: ${consistencyCheck.errors.join(', ')}`,
+      };
+    }
 
     // Store updated escrow
     this.escrows.set(escrowId, escrow);

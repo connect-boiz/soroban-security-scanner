@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
@@ -8,6 +8,7 @@ import { CreateScanDto } from './dto/create-scan.dto';
 import { ScanProgressGateway } from './scan-progress.gateway';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
+import { StateConsistencyValidator } from '../common/validation/state-consistency.validator';
 
 /**
  * Scan Service - Smart Contract Security Scanning Management
@@ -68,6 +69,7 @@ export class ScanService {
     private readonly scanProgressGateway: ScanProgressGateway,
     @InjectQueue('scan-queue')
     private readonly scanQueue: Queue,
+    private readonly stateValidator: StateConsistencyValidator,
   ) {}
 
   /**
@@ -138,7 +140,21 @@ export class ScanService {
       code: createScanDto.code,
       options: createScanDto.options || {},
       status: 'pending',
+      currentStep: 'uploading',
+      progress: 0,
     });
+
+    // Validate initial state
+    const isStateValid = this.stateValidator.validateInitialState('scan', scan.status);
+    if (!isStateValid) {
+      throw new BadRequestException('Invalid initial scan state');
+    }
+
+    // Validate entity consistency
+    const consistencyCheck = await this.stateValidator.validateEntityConsistency('scan', scan);
+    if (!consistencyCheck.valid) {
+      throw new BadRequestException(`Scan consistency validation failed: ${consistencyCheck.errors.join(', ')}`);
+    }
 
     return await this.scanRepository.save(scan);
   }
@@ -205,7 +221,34 @@ export class ScanService {
       throw new Error('Scan not found');
     }
 
+    const originalStatus = scan.status;
+
+    // Validate state transition
+    const validation = await this.stateValidator.validateStateTransition(
+      'scan',
+      scanId,
+      originalStatus,
+      'queued',
+      scan,
+      { userId: scan.userId }
+    );
+
+    if (!validation.valid) {
+      this.stateValidator.logStateViolation(validation.error!);
+      throw new BadRequestException(`Cannot start scan: ${validation.error!.error}`);
+    }
+
+    // Update state
     scan.status = 'queued';
+    scan.currentStep = 'queued';
+    scan.progress = 0;
+
+    // Validate consistency after state change
+    const consistencyCheck = await this.stateValidator.validateEntityConsistency('scan', scan);
+    if (!consistencyCheck.valid) {
+      throw new BadRequestException(`Scan consistency validation failed: ${consistencyCheck.errors.join(', ')}`);
+    }
+
     await this.scanRepository.save(scan);
 
     // Initial progress update
