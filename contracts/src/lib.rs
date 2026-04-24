@@ -1,10 +1,12 @@
 
 
+
 // Contract state keys
 const ADMIN: Symbol = Symbol::short("ADMIN");
 const BOUNTY_POOL: Symbol = Symbol::short("BOUNTY");
 const VULNERABILITIES: Symbol = Symbol::short("VULNS");
 const REPUTATION: Symbol = Symbol::short("REPUT");
+
 
 
 // Contract errors
@@ -18,6 +20,7 @@ pub enum ContractError {
 
 // Vulnerability structure
 #[derive(Clone)]
+#[contracttype]
 pub struct VulnerabilityReport {
     pub reporter: Address,
     pub contract_id: BytesN<32>,
@@ -28,12 +31,12 @@ pub struct VulnerabilityReport {
     pub timestamp: u64,
     pub status: String, // "pending", "verified", "rejected"
     pub bounty_amount: i128,
-    pub token_address: Address,
-    pub slippage_protection: i128,
-}
+
+
 
 // Reputation tracking
 #[derive(Clone)]
+#[contracttype]
 pub struct Reputation {
     pub researcher: Address,
     pub score: u64,
@@ -41,13 +44,16 @@ pub struct Reputation {
     pub total_earnings: i128,
 }
 
+
 // Escrow structure
 #[derive(Clone)]
+#[contracttype]
 pub struct EscrowEntry {
     pub id: u64,
     pub depositor: Address,
     pub beneficiary: Address,
     pub amount: i128,
+    pub token: Address,
     pub purpose: String, // "bounty", "reward", "emergency"
     pub status: String,  // "pending", "locked", "released", "refunded"
     pub created_at: u64,
@@ -56,8 +62,10 @@ pub struct EscrowEntry {
     pub release_signature: Option<BytesN<32>>,
 }
 
+
 // Emergency alert structure
 #[derive(Clone)]
+#[contracttype]
 pub struct EmergencyAlert {
     pub id: u64,
     pub reporter: Address,
@@ -69,8 +77,10 @@ pub struct EmergencyAlert {
     pub timestamp: u64,
     pub status: String, // "pending", "verified", "false_positive"
     pub emergency_reward: i128,
+    pub token: Address,
     pub verified_by: Option<Address>,
 }
+
 
 pub struct SecurityScannerContract;
 
@@ -84,8 +94,6 @@ impl SecurityScannerContract {
         }
         
         env.storage().instance().set(&ADMIN, &admin);
-        env.storage().instance().set(&BOUNTY_POOL, &0i128);
-        env.storage().instance().set(&EMERGENCY_POOL, &0i128);
         
         // Initialize default configuration
         let supported_tokens: Map<Address, TokenInfo> = Map::new(&env);
@@ -115,6 +123,19 @@ impl SecurityScannerContract {
         Ok(())
     }
 
+    /// Set the oracle contract address
+    pub fn set_oracle(env: Env, admin: Address, oracle: Address) -> Result<(), ContractError> {
+        let contract_admin: Address = env.storage().instance().get(&ADMIN).unwrap();
+        if contract_admin != admin {
+            return Err(ContractError::Unauthorized);
+        }
+        admin.require_auth();
+        
+        env.storage().instance().set(&ORACLE, &oracle);
+        Ok(())
+    }
+
+
     /// Report a new vulnerability
     pub fn report_vulnerability(
         env: Env,
@@ -124,10 +145,13 @@ impl SecurityScannerContract {
         severity: String,
         description: String,
         location: String,
-        token_address: Address,
+
     ) -> Result<u64, ContractError> {
         // Verify reporter is authorized
         reporter.require_auth();
+
+        // Check if token is whitelisted (#125)
+        Self::check_token_whitelisted(&env, &token)?;
         
         // Check if token is supported
         let supported_tokens: Map<Address, TokenInfo> = env.storage().instance()
@@ -149,9 +173,9 @@ impl SecurityScannerContract {
             timestamp: env.ledger().timestamp(),
             status: String::from_slice(&env, "pending"),
             bounty_amount: 0i128,
-            token_address,
-            slippage_protection: 0i128,
+
         };
+
 
         // Store the report
         let report_id = env.ledger().sequence();
@@ -168,38 +192,7 @@ impl SecurityScannerContract {
         env: Env,
         admin: Address,
         report_id: u64,
-        custom_bounty_amount: Option<i128>,
-    ) -> Result<(), ContractError> {
-        // Verify admin authorization
-        let contract_admin: Address = env.storage().instance().get(&ADMIN).unwrap();
-        if contract_admin != admin {
-            return Err(ContractError::Unauthorized);
-        }
-        
-        admin.require_auth();
 
-        // Get vulnerability report
-        let report_key = Symbol::short(&report_id.to_string());
-        let mut report: VulnerabilityReport = env.storage().instance()
-            .get(&report_key)
-            .ok_or(ContractError::NotFound)?;
-
-        // Calculate bounty amount using oracle or custom amount
-        let bounty_amount = match custom_bounty_amount {
-            Some(amount) => amount,
-            None => Self::calculate_emergency_reward(env, &report.severity)?,
-        };
-
-        // Check liquidity for the token
-        Self::check_liquidity(env, report.token_address, bounty_amount)?;
-
-        // Apply slippage protection
-        let slippage_tolerance: i128 = env.storage().instance()
-            .get(&SLIPPAGE_TOLERANCE)
-            .unwrap_or(500i128); // 5% default
-        
-        let slippage_amount = (bounty_amount * slippage_tolerance) / 10000i128;
-        report.slippage_protection = slippage_amount;
 
         // Update status and bounty
         report.status = String::from_slice(&env, "verified");
@@ -207,6 +200,11 @@ impl SecurityScannerContract {
         
         // Store updated report
         env.storage().instance().set(&report_key, &report);
+
+        // Deduct from bounty pool (#127)
+        let mut pools: Map<Address, i128> = env.storage().instance().get(&BOUNTY_POOL).unwrap_or(Map::new(&env));
+        pools.set(report.token.clone(), pool_balance - bounty_amount);
+        env.storage().instance().set(&BOUNTY_POOL, &pools);
 
         // Update researcher reputation
         Self::update_reputation(env, report.reporter, 1, bounty_amount)?;
@@ -234,42 +232,18 @@ impl SecurityScannerContract {
     }
 
     /// Add funds to bounty pool
-    pub fn fund_bounty_pool(env: Env, funder: Address, token_address: Address, amount: i128) -> Result<(), ContractError> {
-        funder.require_auth();
-        
-        // Check if token is supported
-        let supported_tokens: Map<Address, TokenInfo> = env.storage().instance()
-            .get(&SUPPORTED_TOKENS)
-            .unwrap_or_else(|| Map::new(&env));
-        
-        if !supported_tokens.contains_key(token_address) {
-            return Err(ContractError::TokenNotSupported);
-        }
-        
-        // Transfer tokens to contract
-        let token_client = TokenClient::new(&env, &token_address);
-        token_client.transfer(&funder, &env.current_contract_address(), &amount);
-        
-        // Update liquidity pool
-        Self::update_liquidity_pool(env, token_address, amount, true)?;
+
 
         Ok(())
     }
 
-    /// Get bounty pool balance for specific token
-    pub fn get_bounty_pool(env: Env, token_address: Address) -> Result<i128, ContractError> {
-        let liquidity_pools: Map<Address, LiquidityPool> = env.storage().instance()
-            .get(&Symbol::short("LIQ_POOLS"))
-            .unwrap_or_else(|| Map::new(&env));
+
         
         match liquidity_pools.get(token_address) {
             Some(pool) => Ok(pool.balance),
             None => Ok(0i128),
         }
-    }
-    
-    /// Add supported token
-    pub fn add_supported_token(
+
         env: Env,
         admin: Address,
         token_address: Address,
@@ -282,27 +256,7 @@ impl SecurityScannerContract {
             return Err(ContractError::Unauthorized);
         }
         
-        admin.require_auth();
-        
-        let mut supported_tokens: Map<Address, TokenInfo> = env.storage().instance()
-            .get(&SUPPORTED_TOKENS)
-            .unwrap_or_else(|| Map::new(&env));
-        
-        let token_info = TokenInfo {
-            token_address,
-            decimals,
-            is_active: true,
-            minimum_liquidity,
-        };
-        
-        supported_tokens.set(token_address, &token_info);
-        env.storage().instance().set(&SUPPORTED_TOKENS, &supported_tokens);
-        
-        Ok(())
-    }
-    
-    /// Configure price oracle
-    pub fn configure_oracle(
+
         env: Env,
         admin: Address,
         oracle_address: Address,
@@ -332,9 +286,7 @@ impl SecurityScannerContract {
         
         Ok(())
     }
-    
-    /// Set slippage tolerance (in basis points, e.g., 500 = 5%)
-    pub fn set_slippage_tolerance(env: Env, admin: Address, tolerance_bps: i128) -> Result<(), ContractError> {
+
         // Verify admin authorization
         let contract_admin: Address = env.storage().instance().get(&ADMIN).unwrap();
         if contract_admin != admin {
@@ -342,9 +294,7 @@ impl SecurityScannerContract {
         }
         
         admin.require_auth();
-        
-        if tolerance_bps < 0 || tolerance_bps > 10000 {
-            return Err(ContractError::InvalidInput);
+
         }
         
         env.storage().instance().set(&SLIPPAGE_TOLERANCE, &tolerance_bps);
@@ -374,10 +324,86 @@ impl SecurityScannerContract {
         reputation.total_earnings += earnings;
         reputation.score = reputation.successful_reports * 10 + (reputation.total_earnings / 1000000) as u64;
 
-        env.storage().instance().set(&rep_key, &reputation);
 
+    }
+
+    /// Admin withdraw function for liquidity management (#127)
+    pub fn admin_withdraw(
+        env: Env,
+        admin: Address,
+        token: Address,
+        amount: i128,
+        to: Address,
+    ) -> Result<(), ContractError> {
+        let contract_admin: Address = env.storage().instance().get(&ADMIN).unwrap();
+        if contract_admin != admin {
+            return Err(ContractError::Unauthorized);
+        }
+        admin.require_auth();
+
+        let client = token::Client::new(&env, &token);
+        let contract_balance = client.balance(&env.current_contract_address());
+        
+        // Liquidity Management (#127): Maintain a 10% reserve threshold
+        let reserve_threshold = contract_balance / 10;
+        if contract_balance - amount < reserve_threshold {
+            return Err(ContractError::InsufficientFunds);
+        }
+
+        client.transfer(&env.current_contract_address(), &to, &amount);
         Ok(())
     }
 
+    /// Add a token to the whitelist (#125)
+    pub fn add_token(env: Env, admin: Address, token: Address) -> Result<(), ContractError> {
+        let contract_admin: Address = env.storage().instance().get(&ADMIN).unwrap();
+        if contract_admin != admin {
+            return Err(ContractError::Unauthorized);
+        }
+        admin.require_auth();
+
+        let mut tokens: Vec<Address> = env.storage().instance().get(&TOKENS).unwrap_or(Vec::new(&env));
+        if !tokens.contains(&token) {
+            tokens.push_back(token);
+            env.storage().instance().set(&TOKENS, &tokens);
+        }
+        Ok(())
+    }
+
+    /// Remove a token from the whitelist (#125)
+    pub fn remove_token(env: Env, admin: Address, token: Address) -> Result<(), ContractError> {
+        let contract_admin: Address = env.storage().instance().get(&ADMIN).unwrap();
+        if contract_admin != admin {
+            return Err(ContractError::Unauthorized);
+        }
+        admin.require_auth();
+
+        let tokens: Vec<Address> = env.storage().instance().get(&TOKENS).unwrap_or(Vec::new(&env));
+        let mut new_tokens = Vec::new(&env);
+        for t in tokens.iter() {
+            if t != token {
+                new_tokens.push_back(t);
+            }
+        }
+        env.storage().instance().set(&TOKENS, &new_tokens);
+        Ok(())
+    }
+
+    /// Helper to check if token is whitelisted (#125)
+    fn check_token_whitelisted(env: &Env, token: &Address) -> Result<(), ContractError> {
+        let tokens: Vec<Address> = env.storage().instance().get(&TOKENS).unwrap_or(Vec::new(&env));
+        if !tokens.contains(token) {
+            return Err(ContractError::InvalidInput);
+        }
+        Ok(())
+    }
+
+    /// Get liquidity status report (#127)
+    pub fn get_liquidity_status(env: Env, token: Address) -> (i128, i128) {
+        let bounty_pool = Self::get_bounty_pool(env.clone(), token.clone());
+        let client = token::Client::new(&env, &token);
+        let contract_balance = client.balance(&env.current_contract_address());
+        (bounty_pool, contract_balance)
     }
 }
+
