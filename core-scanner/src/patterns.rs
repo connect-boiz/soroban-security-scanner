@@ -115,5 +115,72 @@ pub fn get_vulnerability_patterns() -> Vec<VulnerabilityPattern> {
             recommendation: "Add proper authorization checks for asset operations".to_string(),
             cwe_id: Some("CWE-20".to_string()),
         },
+
+        // Gas Limit Vulnerability Patterns
+        VulnerabilityPattern {
+            id: "GAS-001".to_string(),
+            name: "Unbounded Loop Operations".to_string(),
+            vulnerability_type: VulnerabilityType::StellarSpecific,
+            severity: Severity::High,
+            description: "Loop operations without gas limit checks can exhaust transaction gas".to_string(),
+            pattern: r"for\s+\w+\s+in\s+\w+\.\s*iter\(\)|while\s+\w+\s*\{".to_string(),
+            recommendation: "Add gas limit checks and consider batch processing for large operations".to_string(),
+            cwe_id: Some("CWE-400".to_string()),
+        },
+
+        VulnerabilityPattern {
+            id: "GAS-002".to_string(),
+            name: "Missing Gas Limit Validation".to_string(),
+            vulnerability_type: VulnerabilityType::StellarSpecific,
+            severity: Severity::High,
+            description: "Complex operations lack gas limit validation before execution".to_string(),
+            pattern: r"env\.invoke_contract\s*\([^)]*\)|env\.storage\(\)\.get\([^)]*\)".to_string(),
+            recommendation: "Validate gas availability before complex operations and implement batch processing".to_string(),
+            cwe_id: Some("CWE-400".to_string()),
+        },
+
+        VulnerabilityPattern {
+            id: "GAS-003".to_string(),
+            name: "Inefficient Batch Processing".to_string(),
+            vulnerability_type: VulnerabilityType::StellarSpecific,
+            severity: Severity::Medium,
+            description: "Batch operations process items individually without gas optimization".to_string(),
+            pattern: r"for\s+\w+\s+in\s+\w+\s*\{[^}]*env\.invoke_contract".to_string(),
+            recommendation: "Implement efficient batch processing with proper gas estimation".to_string(),
+            cwe_id: Some("CWE-400".to_string()),
+        },
+
+        VulnerabilityPattern {
+            id: "GAS-004".to_string(),
+            name: "Emergency Operations Without Gas Checks".to_string(),
+            vulnerability_type: VulnerabilityType::StellarSpecific,
+            severity: Severity::Critical,
+            description: "Emergency reward/escrow release functions don't validate gas limits".to_string(),
+            pattern: r"fn\s+(emergency_|release_|distribute_)[^}]*env\.transfer\(|env\.invoke_contract\(".to_string(),
+            recommendation: "Add gas limit validation to emergency operations and implement batch processing".to_string(),
+            cwe_id: Some("CWE-400".to_string()),
+        },
+
+        VulnerabilityPattern {
+            id: "GAS-005".to_string(),
+            name: "Large Array Operations Without Gas Limits".to_string(),
+            vulnerability_type: VulnerabilityType::StellarSpecific,
+            severity: Severity::High,
+            description: "Large array operations without gas limit consideration can cause transaction failures".to_string(),
+            pattern: r"Vec::new\([^)]*\)\.push_back\([^)]*\)|for\s+\w+\s+in\s+\w+\.\s*iter\(\)\s*\{[^}]*\.push_back".to_string(),
+            recommendation: "Implement chunked processing for large arrays and add gas limit checks".to_string(),
+            cwe_id: Some("CWE-400".to_string()),
+        },
+
+        VulnerabilityPattern {
+            id: "GAS-006".to_string(),
+            name: "Missing Gas Estimation".to_string(),
+            vulnerability_type: VulnerabilityType::StellarSpecific,
+            severity: Severity::Medium,
+            description: "Functions don't estimate or track gas usage for complex operations".to_string(),
+            pattern: r"fn\s+\w+\s*\([^)]*\)\s*->\s*[^{]*\{[^}]*env\.(budget|ledger)".to_string(),
+            recommendation: "Add gas estimation and tracking before executing complex operations".to_string(),
+            cwe_id: Some("CWE-400".to_string()),
+        },
     ]
 }
