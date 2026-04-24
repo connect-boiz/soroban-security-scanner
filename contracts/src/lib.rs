@@ -133,11 +133,126 @@ pub struct EmergencyBatch {
     pub created_at: u64,
 }
 
+// Event structures for critical operations
+#[derive(Clone)]
+#[contracttype]
+pub struct VulnerabilityReportedEvent {
+    pub report_id: u64,
+    pub reporter: Address,
+    pub contract_id: BytesN<32>,
+    pub vulnerability_type: String,
+    pub severity: String,
+    pub timestamp: u64,
+}
+
+#[derive(Clone)]
+#[contracttype]
+pub struct VulnerabilityVerifiedEvent {
+    pub report_id: u64,
+    pub verifier: Address,
+    pub reporter: Address,
+    pub bounty_amount: i128,
+    pub token: Address,
+    pub timestamp: u64,
+}
+
+#[derive(Clone)]
+#[contracttype]
+pub struct FundTransferEvent {
+    pub from: Address,
+    pub to: Address,
+    pub amount: i128,
+    pub token: Address,
+    pub purpose: String, // "bounty", "reward", "escrow"
+    pub reference_id: Option<u64>,
+    pub timestamp: u64,
+}
+
+#[derive(Clone)]
+#[contracttype]
+pub struct EscrowCreatedEvent {
+    pub escrow_id: u64,
+    pub depositor: Address,
+    pub beneficiary: Address,
+    pub amount: i128,
+    pub token: Address,
+    pub purpose: String,
+    pub timestamp: u64,
+}
+
+#[derive(Clone)]
+#[contracttype]
+pub struct EscrowReleasedEvent {
+    pub escrow_id: u64,
+    pub beneficiary: Address,
+    pub amount: i128,
+    pub token: Address,
+    pub released_by: Address,
+    pub timestamp: u64,
+}
+
+#[derive(Clone)]
+#[contracttype]
+pub struct BatchEscrowReleaseEvent {
+    pub batch_id: u64,
+    pub recipient_count: u32,
+    pub total_amount: i128,
+    pub token: Address,
+    pub gas_used: u64,
+    pub initiated_by: Address,
+    pub timestamp: u64,
+}
+
+#[derive(Clone)]
+#[contracttype]
+pub struct EmergencyRewardDistributedEvent {
+    pub batch_id: u64,
+    pub alert_count: u32,
+    pub total_reward: i128,
+    pub token: Address,
+    pub gas_used: u64,
+    pub distributed_by: Address,
+    pub timestamp: u64,
+}
+
+#[derive(Clone)]
+#[contracttype]
+pub struct ReputationUpdatedEvent {
+    pub researcher: Address,
+    pub score_change: u64,
+    pub new_score: u64,
+    pub successful_reports: u64,
+    pub total_earnings: i128,
+    pub timestamp: u64,
+}
+
+#[derive(Clone)]
+#[contracttype]
+pub struct BountyPoolFundedEvent {
+    pub funder: Address,
+    pub token: Address,
+    pub amount: i128,
+    pub new_balance: i128,
+    pub timestamp: u64,
+}
+
+#[derive(Clone)]
+#[contracttype]
+pub struct GasConfigUpdatedEvent {
+    pub updated_by: Address,
+    pub single_transfer_limit: u64,
+    pub batch_transfer_limit: u64,
+    pub emergency_limit: u64,
+    pub max_batch_size: u32,
+    pub timestamp: u64,
+}
 
 pub struct SecurityScannerContract;
 
 #[contractimpl]
 impl SecurityScannerContract {
+    // ... rest of the code remains the same ...
+}
     
     /// Initialize the contract with admin address
     pub fn initialize(env: Env, admin: Address) -> Result<(), ContractError> {
@@ -243,6 +358,17 @@ impl SecurityScannerContract {
         let report_id = env.ledger().sequence();
         env.storage().instance().set(&Symbol::short(&report_id.to_string()), &report);
 
+        // Emit vulnerability reported event
+        let reported_event = VulnerabilityReportedEvent {
+            report_id,
+            reporter: reporter.clone(),
+            contract_id,
+            vulnerability_type: vulnerability_type.clone(),
+            severity: severity.clone(),
+            timestamp: env.ledger().timestamp(),
+        };
+        env.events().publish((Symbol::short("VULNERABILITY_REPORTED"), reported_event));
+
         // Update reputation
         Self::update_reputation(env, reporter, 0, 0)?;
 
@@ -267,6 +393,17 @@ impl SecurityScannerContract {
         let mut pools: Map<Address, i128> = env.storage().instance().get(&BOUNTY_POOL).unwrap_or(Map::new(&env));
         pools.set(report.token.clone(), pool_balance - bounty_amount);
         env.storage().instance().set(&BOUNTY_POOL, &pools);
+
+        // Emit vulnerability verified event
+        let verified_event = VulnerabilityVerifiedEvent {
+            report_id,
+            verifier: admin.clone(),
+            reporter: report.reporter.clone(),
+            bounty_amount,
+            token: report.token_address.clone(),
+            timestamp: env.ledger().timestamp(),
+        };
+        env.events().publish((Symbol::short("VULNERABILITY_VERIFIED"), verified_event));
 
         // Update researcher reputation
         Self::update_reputation(env, report.reporter, 1, bounty_amount)?;
@@ -386,7 +523,19 @@ impl SecurityScannerContract {
         reputation.total_earnings += earnings;
         reputation.score = reputation.successful_reports * 10 + (reputation.total_earnings / 1000000) as u64;
 
+        // Emit reputation updated event
+        let reputation_event = ReputationUpdatedEvent {
+            researcher: researcher.clone(),
+            score_change: successful_reports * 10 + (earnings / 1000000) as u64 - (reputation.score - successful_reports * 10 - ((reputation.total_earnings - earnings) / 1000000) as u64),
+            new_score: reputation.score,
+            successful_reports: reputation.successful_reports,
+            total_earnings: reputation.total_earnings,
+            timestamp: env.ledger().timestamp(),
+        };
+        env.events().publish((Symbol::short("REPUTATION_UPDATED"), reputation_event));
 
+        env.storage().instance().set(&rep_key, &reputation);
+        Ok(())
     }
 
     /// Admin withdraw function for liquidity management (#127)
@@ -493,6 +642,18 @@ impl SecurityScannerContract {
         client.transfer(&env.current_contract_address(), recipient, &amount);
         let gas_used = initial_gas - env.budget().gas_left();
 
+        // Emit fund transfer event
+        let transfer_event = FundTransferEvent {
+            from: env.current_contract_address(),
+            to: recipient.clone(),
+            amount,
+            token: token_address.clone(),
+            purpose: String::from_slice(env, "bounty"),
+            reference_id: None,
+            timestamp: env.ledger().timestamp(),
+        };
+        env.events().publish((Symbol::short("FUND_TRANSFER"), transfer_event));
+
         // Log gas usage for monitoring
         env.log().format(
             &format!("Bounty transfer completed. Gas used: {}, Gas limit: {}, Amount: {}", 
@@ -586,6 +747,18 @@ impl SecurityScannerContract {
         completed_batch.status = String::from_slice(&env, "completed");
         completed_batch.gas_used = initial_gas - env.budget().gas_left();
         env.storage().instance().set(&Symbol::short(&format!("BATCH_{}", batch_id)), &completed_batch);
+
+        // Emit batch escrow release event
+        let batch_event = BatchEscrowReleaseEvent {
+            batch_id,
+            recipient_count: recipients.len() as u32,
+            total_amount: completed_batch.total_amount,
+            token: tokens[0].clone(), // All tokens should be same in batch
+            gas_used: completed_batch.gas_used,
+            initiated_by: admin.clone(),
+            timestamp: env.ledger().timestamp(),
+        };
+        env.events().publish((Symbol::short("BATCH_ESCROW_RELEASE"), batch_event));
 
         env.log().format(&format!("Batch escrow release {} completed. Total transfers: {}, Total gas used: {}", 
             batch_id, recipients.len(), completed_batch.gas_used));
@@ -705,6 +878,18 @@ impl SecurityScannerContract {
         completed_batch.gas_used = initial_gas - env.budget().gas_left();
         env.storage().instance().set(&Symbol::short(&format!("EMERGENCY_BATCH_{}", batch_id)), &completed_batch);
 
+        // Emit emergency reward distributed event
+        let emergency_event = EmergencyRewardDistributedEvent {
+            batch_id,
+            alert_count: alert_ids.len() as u32,
+            total_reward: completed_batch.total_reward,
+            token: token.clone(),
+            gas_used: completed_batch.gas_used,
+            distributed_by: admin.clone(),
+            timestamp: env.ledger().timestamp(),
+        };
+        env.events().publish((Symbol::short("EMERGENCY_REWARD_DISTRIBUTED"), emergency_event));
+
         env.log().format(&format!("Emergency reward distribution {} completed. Total alerts: {}, Total reward: {}, Total gas used: {}", 
             batch_id, alert_ids.len(), total_reward, completed_batch.gas_used));
 
@@ -752,6 +937,17 @@ impl SecurityScannerContract {
         if let Some(multiplier) = gas_price_multiplier {
             gas_config.gas_price_multiplier = multiplier;
         }
+
+        // Emit gas config updated event
+        let gas_config_event = GasConfigUpdatedEvent {
+            updated_by: admin.clone(),
+            single_transfer_limit: gas_config.single_transfer_limit,
+            batch_transfer_limit: gas_config.batch_transfer_limit,
+            emergency_limit: gas_config.emergency_limit,
+            max_batch_size: gas_config.max_batch_size,
+            timestamp: env.ledger().timestamp(),
+        };
+        env.events().publish((Symbol::short("GAS_CONFIG_UPDATED"), gas_config_event));
 
         env.storage().instance().set(&GAS_CONFIG, &gas_config);
         Ok(())
