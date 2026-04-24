@@ -29,14 +29,16 @@ use crate::vulnerabilities::{Vulnerability, VulnerabilityType, Severity, SourceL
 use crate::patterns::get_vulnerability_patterns;
 use crate::report::ScanReport;
 use crate::scan_controller::{ScanController, ScanCommand, ScanStatus};
+use crate::gas_analyzer::GasLimitAnalyzer;
 
 /// Multi-layered security analyzer for smart contract vulnerability detection.
 ///
-/// Performs four complementary analysis passes:
+/// Performs five complementary analysis passes:
 /// 1. Pattern matching for known vulnerability signatures
 /// 2. Abstract Syntax Tree (AST) structural analysis
 /// 3. Deep analysis for complex control flow issues (if enabled)
 /// 4. Invariant violation detection (if enabled)
+/// 5. Gas limit consideration analysis for complex operations
 ///
 /// # Security Considerations
 /// - **Input Validation**: No pre-validation of code input; handles parse errors gracefully
@@ -44,11 +46,13 @@ use crate::scan_controller::{ScanController, ScanCommand, ScanStatus};
 /// - **False Positives**: May report issues that are not actual vulnerabilities
 /// - **Incomplete Coverage**: Does not detect all possible vulnerabilities
 /// - **Time Complexity**: O(n*m) where n=code size, m=pattern count
+/// - **Gas Analysis**: Detects potential gas limit issues in complex operations
 pub struct SecurityAnalyzer {
     patterns: Vec<crate::vulnerabilities::VulnerabilityPattern>,
     deep_analysis: bool,
     check_invariants: bool,
     scan_controller: Option<ScanController>,
+    gas_analyzer: GasLimitAnalyzer,
 }
 
 impl SecurityAnalyzer {
@@ -64,6 +68,7 @@ impl SecurityAnalyzer {
     /// - Invariant checking uses heuristics with potential false positives/negatives
     /// - Patterns are loaded from static configuration at initialization
     /// - Scan controller enables emergency stop and pause/resume functionality
+    /// - Gas analyzer detects potential gas limit issues in complex operations
     pub fn new(deep_analysis: bool, check_invariants: bool, scan_controller: Option<ScanController>) -> Self {
         debug!(
             "Initializing SecurityAnalyzer with deep_analysis={}, check_invariants={}, scan_controller={}",
@@ -75,6 +80,7 @@ impl SecurityAnalyzer {
             deep_analysis,
             check_invariants,
             scan_controller,
+            gas_analyzer: GasLimitAnalyzer::new(),
         }
     }
 
@@ -195,6 +201,10 @@ impl SecurityAnalyzer {
             &scan_id,
             &mut command_receiver
         ).await?);
+
+        // Perform gas limit analysis - SECURITY: Detects potential gas issues
+        debug!("Running gas limit analysis (scan_id={})", scan_id);
+        vulnerabilities.extend(self.gas_analyzer.analyze(code, filename)?);
 
         // Perform AST analysis - SECURITY: Traverses entire AST
         debug!("Running AST analysis (scan_id={})", scan_id);
