@@ -13,6 +13,7 @@ import { Scan } from './entities/scan.entity';
 import { Vulnerability } from './entities/vulnerability.entity';
 import { ConfigModule } from '@nestjs/config';
 import { WebhookModule } from '../webhook/webhook.module';
+import { FeeModule } from '../fee/fee.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { WebhookModule } from '../webhook/webhook.module';
     }),
     ConfigModule,
     WebhookModule,
+    FeeModule,
   ],
   controllers: [ScanController],
   providers: [

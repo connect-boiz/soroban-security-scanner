@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery } from '@nestjs/
 import { ThrottlerGuard } from '@nestjs/throttler';
 import { CreateScanDto } from './dto/create-scan.dto';
 import { ScanService } from './scan.service';
+import { FeeGuard, SetFeeType, SetFeeParams } from '../fee/guards/fee.guard';
 
 @ApiTags('scan')
 @UseGuards(ThrottlerGuard)
@@ -11,9 +12,16 @@ export class ScanController {
   constructor(private readonly scanService: ScanService) {}
 
   @Post()
+  @UseGuards(FeeGuard)
+  @SetFeeType('scan')
+  @SetFeeParams((req) => ({
+    codeSize: req.body.code?.length || 0,
+    complexity: req.body.options?.complexity || 1,
+  }))
   @ApiOperation({ summary: 'Create and start a new security scan' })
   @ApiResponse({ status: 201, description: 'Scan created and started successfully' })
   @ApiResponse({ status: 400, description: 'Invalid input data' })
+  @ApiResponse({ status: 402, description: 'Insufficient balance' })
   async createScan(@Body() createScanDto: CreateScanDto, @Request() req: any) {
     const userId = req.user?.id || 'anonymous';
     
@@ -25,6 +33,11 @@ export class ScanController {
 
     const scan = await this.scanService.createScan(createScanDto, userId);
     
+    // Charge fee for the scan
+    if (req.feeInfo) {
+      await this.scanService.chargeScanFee(scan.id, userId, req.feeInfo);
+    }
+    
     // Start scan asynchronously
     this.scanService.startScan(scan.id).catch(error => {
       console.error(`Failed to start scan ${scan.id}:`, error);
@@ -33,6 +46,7 @@ export class ScanController {
     return {
       scanId: scan.id,
       status: 'started',
+      feeCharged: req.feeInfo?.estimatedFee?.totalFee || 0,
       message: 'Scan initiated successfully',
     };
   }
