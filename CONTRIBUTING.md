@@ -242,22 +242,6 @@ Contributors are recognized through:
 - **Release Notes**: Mentioned in release notes
 - **Reputation System**: On-chain reputation for vulnerability reports
 - **Bounty Programs**: Financial rewards for significant contributions
-
-## 📞 Getting Help
-
-- **Discord**: Join our community Discord
-- **GitHub Issues**: For bug reports and feature requests
-- **Documentation**: Check our docs directory
-- **Email**: info@soroban-scanner.dev
-
-## 📄 License
-
-By contributing, you agree that your contributions will be licensed under the MIT License.
-
----
-
-Thank you for contributing to Soroban Security Scanner! Your help makes the Stellar ecosystem safer for everyone. 🚀
-=======
 # 🤝 Contributing to Stellar Security Scanner
 
 Thank you for your interest in contributing to the Stellar Security Scanner! This guide will help you get started and understand our contribution process.
