@@ -4,9 +4,12 @@ import { ThrottlerGuard } from '@nestjs/throttler';
 import { CreateScanDto } from './dto/create-scan.dto';
 import { ScanService } from './scan.service';
 import { FeeGuard, SetFeeType, SetFeeParams } from '../fee/guards/fee.guard';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { EnhancedRolesGuard, RequirePermissions, Permission } from '../auth/enhanced-roles.guard';
+import { RequireMultiSignature } from '../auth/multi-signature.decorator';
 
 @ApiTags('scan')
-@UseGuards(ThrottlerGuard)
+@UseGuards(JwtAuthGuard, EnhancedRolesGuard, ThrottlerGuard)
 @Controller('scan')
 export class ScanController {
   constructor(private readonly scanService: ScanService) {}
@@ -106,6 +109,13 @@ export class ScanController {
   }
 
   @Post(':scanId/vulnerabilities/:vulnerabilityId/acknowledge')
+  @RequirePermissions(Permission.ACKNOWLEDGE_VULNERABILITY)
+  @RequireMultiSignature({
+    requiredSignatures: 2,
+    timeoutMinutes: 60,
+    allowedRoles: ['admin', 'developer'],
+    operationType: 'acknowledge_vulnerability'
+  })
   @ApiOperation({ summary: 'Acknowledge a vulnerability' })
   @ApiParam({ name: 'scanId', description: 'Scan ID' })
   @ApiParam({ name: 'vulnerabilityId', description: 'Vulnerability ID' })
@@ -113,7 +123,8 @@ export class ScanController {
   async acknowledgeVulnerability(
     @Param('scanId') scanId: string,
     @Param('vulnerabilityId') vulnerabilityId: string,
-    @Body() body: { notes?: string }
+    @Body() body: { notes?: string },
+    @Request() req: any
   ) {
     // In a real implementation, this would update the vulnerability status in the database
     return {
@@ -121,11 +132,19 @@ export class ScanController {
       vulnerabilityId,
       status: 'acknowledged',
       notes: body.notes,
+      acknowledgedBy: req.user.userId,
       acknowledgedAt: new Date().toISOString(),
     };
   }
 
   @Post(':scanId/vulnerabilities/:vulnerabilityId/false-positive')
+  @RequirePermissions(Permission.MARK_FALSE_POSITIVE)
+  @RequireMultiSignature({
+    requiredSignatures: 2,
+    timeoutMinutes: 60,
+    allowedRoles: ['admin', 'developer'],
+    operationType: 'mark_false_positive'
+  })
   @ApiOperation({ summary: 'Mark vulnerability as false positive' })
   @ApiParam({ name: 'scanId', description: 'Scan ID' })
   @ApiParam({ name: 'vulnerabilityId', description: 'Vulnerability ID' })
@@ -133,7 +152,8 @@ export class ScanController {
   async markAsFalsePositive(
     @Param('scanId') scanId: string,
     @Param('vulnerabilityId') vulnerabilityId: string,
-    @Body() body: { reason?: string }
+    @Body() body: { reason?: string },
+    @Request() req: any
   ) {
     // In a real implementation, this would update the vulnerability status in the database
     return {
@@ -141,6 +161,7 @@ export class ScanController {
       vulnerabilityId,
       status: 'false_positive',
       reason: body.reason,
+      markedBy: req.user.userId,
       markedAt: new Date().toISOString(),
     };
   }

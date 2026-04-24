@@ -20,10 +20,12 @@ import { ApplyPatchRequest } from './dto/apply-patch.dto';
 import { GeneratePatchDto } from './dto/generate-patch.dto';
 import { CustomRateLimitGuard } from '../common/guards/rate-limit.guard';
 import { VulnerabilityReportRateLimit, BatchOperationRateLimit } from '../common/decorators/rate-limit.decorator';
+import { EnhancedRolesGuard, RequirePermissions, Permission } from '../auth/enhanced-roles.guard';
+import { RequireMultiSignature } from '../auth/multi-signature.decorator';
 
 @ApiTags('llm-patch')
 @Controller('llm-patch')
-@UseGuards(JwtAuthGuard, CustomRateLimitGuard)
+@UseGuards(JwtAuthGuard, EnhancedRolesGuard, CustomRateLimitGuard)
 @ApiBearerAuth()
 export class LlmPatchController {
   private readonly logger = new Logger(LlmPatchController.name);
@@ -32,6 +34,7 @@ export class LlmPatchController {
 
   @Post('generate')
   @HttpCode(HttpStatus.OK)
+  @RequirePermissions(Permission.GENERATE_PATCH)
   @ApiOperation({ summary: 'Generate AI-powered security patch' })
   @ApiResponse({ status: 200, description: 'Patch generated successfully', type: Object })
   @ApiResponse({ status: 400, description: 'Invalid request' })
@@ -135,6 +138,13 @@ export class LlmPatchController {
 
   @Post(':remediationId/apply')
   @HttpCode(HttpStatus.OK)
+  @RequirePermissions(Permission.APPLY_PATCH)
+  @RequireMultiSignature({
+    requiredSignatures: 3,
+    timeoutMinutes: 60,
+    allowedRoles: ['admin', 'developer'],
+    operationType: 'apply_patch'
+  })
   @ApiOperation({ summary: 'Apply a generated patch to the target directory' })
   @ApiResponse({ status: 200, description: 'Patch applied successfully' })
   @ApiResponse({ status: 400, description: 'Invalid request' })

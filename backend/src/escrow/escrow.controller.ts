@@ -20,10 +20,12 @@ import { CreateEscrowDto } from './dto/create-escrow.dto';
 import { ReleaseEscrowDto } from './dto/release-escrow.dto';
 import { CustomRateLimitGuard } from '../common/guards/rate-limit.guard';
 import { EscrowCreationRateLimit } from '../common/decorators/rate-limit.decorator';
+import { EnhancedRolesGuard, RequirePermissions, Permission } from '../auth/enhanced-roles.guard';
+import { RequireMultiSignature } from '../auth/multi-signature.decorator';
 
 @ApiTags('escrow')
 @Controller('escrow')
-@UseGuards(JwtAuthGuard, CustomRateLimitGuard)
+@UseGuards(JwtAuthGuard, EnhancedRolesGuard, CustomRateLimitGuard)
 @ApiBearerAuth()
 export class EscrowController {
   private readonly logger = new Logger(EscrowController.name);
@@ -32,6 +34,7 @@ export class EscrowController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @RequirePermissions(Permission.CREATE_ESCROW)
   @ApiOperation({ summary: 'Create a new escrow entry' })
   @ApiResponse({ status: 201, description: 'Escrow created successfully' })
   @ApiResponse({ status: 400, description: 'Invalid request' })
@@ -73,6 +76,13 @@ export class EscrowController {
 
   @Post(':escrowId/release')
   @HttpCode(HttpStatus.OK)
+  @RequirePermissions(Permission.RELEASE_ESCROW)
+  @RequireMultiSignature({
+    requiredSignatures: 2,
+    timeoutMinutes: 30,
+    allowedRoles: ['admin', 'developer'],
+    operationType: 'release_escrow'
+  })
   @ApiOperation({ summary: 'Release funds from escrow' })
   @ApiResponse({ status: 200, description: 'Escrow released successfully' })
   @ApiResponse({ status: 400, description: 'Invalid request' })
