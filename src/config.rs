@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use crate::gas_limits::GasLimitConfig as GasLimitConfigType;
+use crate::event_logging::EventLoggingConfig as EventLoggingConfigType;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScannerConfig {
@@ -14,6 +15,7 @@ pub struct ScannerConfig {
     pub performance: PerformanceConfig,
     pub emergency_stop: EmergencyStopConfig,
     pub gas_limits: GasLimitConfigType,
+    pub event_logging: EventLoggingConfigType,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -81,6 +83,7 @@ impl Default for ScannerConfig {
             performance: PerformanceConfig::default(),
             emergency_stop: EmergencyStopConfig::default(),
             gas_limits: GasLimitConfigType::default(),
+            event_logging: EventLoggingConfigType::default(),
         }
     }
 }

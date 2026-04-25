@@ -101,6 +101,13 @@ pub enum VulnerabilityType {
     EscrowReleaseGasRisk,
     EmergencyDistributionGasRisk,
     BatchOperationGasLimit,
+    
+    // Event Logging Vulnerabilities
+    MissingCriticalEventLogging,
+    IncompleteEventAuditTrail,
+    InsufficientEventMetadata,
+    EventLoggingBypass,
+    CriticalOperationWithoutEvents,
 }
 
 impl VulnerabilityType {
@@ -174,6 +181,12 @@ impl VulnerabilityType {
             VulnerabilityType::EscrowReleaseGasRisk => "Escrow release operations have gas limit risks",
             VulnerabilityType::EmergencyDistributionGasRisk => "Emergency reward distribution may exceed gas limits",
             VulnerabilityType::BatchOperationGasLimit => "Batch operations don't consider gas limit constraints",
+            
+            VulnerabilityType::MissingCriticalEventLogging => "Critical operations lack proper event logging",
+            VulnerabilityType::IncompleteEventAuditTrail => "Event audit trail is incomplete or missing",
+            VulnerabilityType::InsufficientEventMetadata => "Events lack sufficient metadata for auditing",
+            VulnerabilityType::EventLoggingBypass => "Event logging can be bypassed or disabled",
+            VulnerabilityType::CriticalOperationWithoutEvents => "Critical operations execute without event emission",
         }
     }
 
@@ -248,6 +261,12 @@ impl VulnerabilityType {
             VulnerabilityType::EscrowReleaseGasRisk => Severity::High,
             VulnerabilityType::EmergencyDistributionGasRisk => Severity::Critical,
             VulnerabilityType::BatchOperationGasLimit => Severity::High,
+            
+            VulnerabilityType::MissingCriticalEventLogging => Severity::High,
+            VulnerabilityType::IncompleteEventAuditTrail => Severity::Medium,
+            VulnerabilityType::InsufficientEventMetadata => Severity::Medium,
+            VulnerabilityType::EventLoggingBypass => Severity::High,
+            VulnerabilityType::CriticalOperationWithoutEvents => Severity::Critical,
         }
     }
 
@@ -327,6 +346,12 @@ impl VulnerabilityType {
             VulnerabilityType::EscrowReleaseGasRisk => "Implement gas-efficient escrow release with batch processing",
             VulnerabilityType::EmergencyDistributionGasRisk => "Add gas limit checks and priority-based emergency distribution",
             VulnerabilityType::BatchOperationGasLimit => "Implement dynamic gas limit calculation for batch operations",
+            
+            VulnerabilityType::MissingCriticalEventLogging => "Add comprehensive event logging for all critical operations",
+            VulnerabilityType::IncompleteEventAuditTrail => "Ensure complete audit trail with before/after states",
+            VulnerabilityType::InsufficientEventMetadata => "Include detailed metadata in all critical events",
+            VulnerabilityType::EventLoggingBypass => "Implement mandatory event logging that cannot be bypassed",
+            VulnerabilityType::CriticalOperationWithoutEvents => "Add event emission before and after critical operations",
         }
     }
 }

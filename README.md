@@ -167,7 +167,94 @@ stellar-scanner gas-limits analyze --operation escrow_release
 stellar-scanner gas-limits optimize --path ./contracts
 ```
 
-## 🔍 Supported Vulnerability Types
+## � Event Logging for Critical Operations
+
+The scanner includes comprehensive event logging analysis for critical operations, addressing issue #113: "Missing Event Logging for Critical Operations".
+
+### Features
+- **Critical Operation Detection**: Identifies operations requiring event logging
+- **Audit Trail Analysis**: Ensures complete event audit trails
+- **Metadata Validation**: Verifies sufficient event metadata for auditing
+- **Event Bypass Detection**: Identifies potential event logging bypasses
+- **Comprehensive Coverage**: Covers fund transfers, vulnerability verification, and escrow operations
+
+### Critical Operations Monitored
+
+#### Fund Transfers
+- **Risk Level**: High
+- **Events Required**: Transfer initiation, completion, failure
+- **Metadata**: Amount, sender, recipient, reason, timestamp
+
+#### Vulnerability Verification
+- **Risk Level**: Critical
+- **Events Required**: Verification start, result, approval
+- **Metadata**: Vulnerability type, severity, verifier, timestamp
+
+#### Escrow Operations
+- **Risk Level**: High
+- **Events Required**: Escrow creation, release, refund
+- **Metadata**: Escrow amount, parties, conditions, timestamp
+
+#### Bounty Operations
+- **Risk Level**: Medium to Critical
+- **Events Required**: Creation, approval, claim, payment
+- **Metadata**: Bounty amount, researcher, severity, status changes
+
+### Event Logging Vulnerabilities
+
+#### Missing Critical Event Logging
+- **Severity**: High
+- **Description**: Critical operations lack proper event logging
+- **Impact**: No audit trail for important operations
+
+#### Incomplete Event Audit Trail
+- **Severity**: Medium
+- **Description**: Event audit trail is incomplete or missing
+- **Impact**: Cannot reconstruct operation sequence
+
+#### Insufficient Event Metadata
+- **Severity**: Medium
+- **Description**: Events lack sufficient metadata for auditing
+- **Impact**: Limited forensic analysis capabilities
+
+#### Event Logging Bypass
+- **Severity**: High
+- **Description**: Event logging can be bypassed or disabled
+- **Impact**: Security vulnerabilities can be hidden
+
+#### Critical Operation Without Events
+- **Severity**: Critical
+- **Description**: Critical operations execute without event emission
+- **Impact**: Complete lack of transparency for critical operations
+
+### Configuration
+
+Event logging behavior can be configured in `stellar-scanner.toml`:
+
+```toml
+[event_logging]
+enabled = true
+log_level = "info"
+structured_logging = false
+enable_persistence = true
+max_events_in_memory = 10000
+retention_period_seconds = 2592000
+```
+
+### Usage Examples
+
+```bash
+# Scan with event logging analysis
+stellar-scanner scan --verbose --analyze-events
+
+# Check event logging compliance
+stellar-scanner events check --path ./contracts
+
+# Generate event logging report
+stellar-scanner events report --format json
+```
+
+## �🔍 Supported Vulnerability Types
 
 ### Access Control
 - Missing Access Control
@@ -193,6 +280,13 @@ stellar-scanner gas-limits optimize --path ./contracts
 - Escrow Release Gas Risk
 - Emergency Distribution Gas Risk
 - Batch Operation Gas Limit
+
+### Event Logging Vulnerabilities
+- Missing Critical Event Logging
+- Incomplete Event Audit Trail
+- Insufficient Event Metadata
+- Event Logging Bypass
+- Critical Operation Without Events
 
 ### Stellar-Specific
 - Insufficient Fee Bump

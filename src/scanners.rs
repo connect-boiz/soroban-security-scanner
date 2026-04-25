@@ -138,6 +138,22 @@ impl SecurityScanner {
         self.add_pattern(VulnerabilityType::BatchOperationGasLimit,
             r"for.*\{[^}]*?env\.invoke_contract[^}]*?\}[^}]*?for.*\{[^}]*?env\.invoke_contract")?;
 
+        // Event Logging Vulnerabilities
+        self.add_pattern(VulnerabilityType::MissingCriticalEventLogging,
+            r"fn\s+(transfer|withdraw|claim|approve|release).*\{[^}]*?(?!event|emit)[^}]*?balance.*=")?;
+        
+        self.add_pattern(VulnerabilityType::CriticalOperationWithoutEvents,
+            r"fn\s+(transfer_funds|release_escrow|distribute_rewards).*\{[^}]*?(?!event|emit)[^}]*?\}")?;
+        
+        self.add_pattern(VulnerabilityType::IncompleteEventAuditTrail,
+            r"event!\([^)]*\)[^}]*?balance.*=[^}]*?(?!event|emit)[^}]*?\}")?;
+        
+        self.add_pattern(VulnerabilityType::InsufficientEventMetadata,
+            r"event!\([^)]*\)([^)]*\([^)]*\)){0,1}[^)]*\(,[^)]*\)[^)]*\(,[^)]*\)[^)]*\)")?;
+        
+        self.add_pattern(VulnerabilityType::EventLoggingBypass,
+            r"if.*condition.*\{[^}]*?return[^}]*?\}[^}]*?event!\(")?;
+
         Ok(())
     }
 
