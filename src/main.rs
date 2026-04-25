@@ -294,6 +294,73 @@ enum TimeTravelAction {
         #[arg(long, default_value = "https://mainnet.stellar.rpc")]
         rpc_url: String,
     },
+    
+    /// Batch operations for escrow releases and verifications
+    Batch {
+        #[command(subcommand)]
+        action: BatchAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum BatchAction {
+    /// Create batch escrow release
+    CreateEscrowRelease {
+        /// Comma-separated list of escrow IDs
+        #[arg(short, long)]
+        escrow_ids: String,
+        
+        /// Requester address
+        #[arg(short, long)]
+        requester: String,
+    },
+    
+    /// Execute batch escrow release
+    ExecuteEscrowRelease {
+        /// Batch ID
+        #[arg(short, long)]
+        batch_id: u64,
+        
+        /// Executor address
+        #[arg(short, long)]
+        executor: String,
+    },
+    
+    /// Create batch verification
+    CreateVerification {
+        /// Comma-separated list of vulnerability IDs
+        #[arg(short, long)]
+        vulnerability_ids: String,
+        
+        /// Verifier address
+        #[arg(short, long)]
+        verifier: String,
+    },
+    
+    /// Execute batch verification
+    ExecuteVerification {
+        /// Batch ID
+        #[arg(short, long)]
+        batch_id: u64,
+        
+        /// Executor address
+        #[arg(short, long)]
+        executor: String,
+    },
+    
+    /// Get batch summary
+    GetSummary {
+        /// Batch ID
+        #[arg(short, long)]
+        batch_id: u64,
+    },
+    
+    /// List user batches
+    ListUserBatches {
+        /// User address
+        #[arg(short, long)]
+        user: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -519,8 +586,8 @@ fn main() -> Result<()> {
         Commands::DifferentialFuzzing { action } => {
             run_differential_fuzzing_action(action)
         }
-        Commands::EmergencyStop { action } => {
-            run_emergency_stop_action(action)
+        Commands::Batch { action } => {
+            run_batch_action(action)
         }
     }
 }
@@ -1110,6 +1177,171 @@ fn run_time_travel_action(action: TimeTravelAction) -> Result<()> {
         
         Ok::<(), anyhow::Error>(())
     })
+}
+
+fn run_batch_action(action: BatchAction) -> Result<()> {
+    println!("{}", "⚡ Batch Operations".bold().cyan());
+    
+    // Initialize batch operations
+    let env = Env::default();
+    BatchOperations::initialize(env.clone());
+    
+    match action {
+        BatchAction::CreateEscrowRelease { escrow_ids, requester } => {
+            println!("📦 Creating batch escrow release...");
+            
+            let escrow_id_vec: Vec<u64> = escrow_ids
+                .split(',')
+                .filter_map(|s| s.trim().parse().ok())
+                .collect();
+            
+            if escrow_id_vec.is_empty() {
+                return Err(anyhow::anyhow!("Invalid escrow IDs provided"));
+            }
+            
+            let requester_addr = Address::from_string(&requester);
+            let batch_id = BatchOperations::create_batch_escrow_release(
+                env.clone(),
+                escrow_id_vec,
+                requester_addr,
+            );
+            
+            println!("✅ Batch escrow release created with ID: {}", batch_id);
+        }
+        
+        BatchAction::ExecuteEscrowRelease { batch_id, executor } => {
+            println!("🚀 Executing batch escrow release {}...", batch_id);
+            
+            let executor_addr = Address::from_string(&executor);
+            let summary = BatchOperations::execute_batch_escrow_release(
+                env.clone(),
+                batch_id,
+                executor_addr,
+            );
+            
+            println!("📊 Batch Execution Summary:");
+            println!("  Total items: {}", summary.total_items);
+            println!("  Successful: {}", summary.successful_items);
+            println!("  Failed: {}", summary.failed_items);
+            println!("  Status: {:?}", summary.status);
+            println!("  Total gas used: {}", summary.total_gas_used);
+            
+            if !summary.results.is_empty() {
+                println!("  Results:");
+                for result in summary.results.iter() {
+                    if result.success {
+                        println!("    ✅ ID {}: Success (gas: {})", result.id, result.gas_used);
+                    } else {
+                        println!("    ❌ ID {}: Failed - {} (gas: {})", 
+                                result.id, 
+                                result.error_message.as_ref().unwrap_or(&"Unknown error".to_string()), 
+                                result.gas_used);
+                    }
+                }
+            }
+        }
+        
+        BatchAction::CreateVerification { vulnerability_ids, verifier } => {
+            println!("🔍 Creating batch verification...");
+            
+            let vuln_id_vec: Vec<u64> = vulnerability_ids
+                .split(',')
+                .filter_map(|s| s.trim().parse().ok())
+                .collect();
+            
+            if vuln_id_vec.is_empty() {
+                return Err(anyhow::anyhow!("Invalid vulnerability IDs provided"));
+            }
+            
+            let verifier_addr = Address::from_string(&verifier);
+            let batch_id = BatchOperations::create_batch_verification(
+                env.clone(),
+                vuln_id_vec,
+                verifier_addr,
+            );
+            
+            println!("✅ Batch verification created with ID: {}", batch_id);
+        }
+        
+        BatchAction::ExecuteVerification { batch_id, executor } => {
+            println!("🚀 Executing batch verification {}...", batch_id);
+            
+            let executor_addr = Address::from_string(&executor);
+            let summary = BatchOperations::execute_batch_verification(
+                env.clone(),
+                batch_id,
+                executor_addr,
+            );
+            
+            println!("📊 Batch Execution Summary:");
+            println!("  Total items: {}", summary.total_items);
+            println!("  Successful: {}", summary.successful_items);
+            println!("  Failed: {}", summary.failed_items);
+            println!("  Status: {:?}", summary.status);
+            println!("  Total gas used: {}", summary.total_gas_used);
+            
+            if !summary.results.is_empty() {
+                println!("  Results:");
+                for result in summary.results.iter() {
+                    if result.success {
+                        println!("    ✅ ID {}: Success (gas: {})", result.id, result.gas_used);
+                    } else {
+                        println!("    ❌ ID {}: Failed - {} (gas: {})", 
+                                result.id, 
+                                result.error_message.as_ref().unwrap_or(&"Unknown error".to_string()), 
+                                result.gas_used);
+                    }
+                }
+            }
+        }
+        
+        BatchAction::GetSummary { batch_id } => {
+            println!("📋 Getting batch summary for ID: {}", batch_id);
+            
+            let summary = BatchOperations::get_batch_summary(env.clone(), batch_id);
+            
+            println!("📊 Batch Summary:");
+            println!("  Batch ID: {}", summary.batch_id);
+            println!("  Total items: {}", summary.total_items);
+            println!("  Successful: {}", summary.successful_items);
+            println!("  Failed: {}", summary.failed_items);
+            println!("  Status: {:?}", summary.status);
+            println!("  Total gas used: {}", summary.total_gas_used);
+            println!("  Timestamp: {}", summary.timestamp);
+            
+            if !summary.results.is_empty() {
+                println!("  Results:");
+                for result in summary.results.iter() {
+                    if result.success {
+                        println!("    ✅ ID {}: Success (gas: {})", result.id, result.gas_used);
+                    } else {
+                        println!("    ❌ ID {}: Failed - {} (gas: {})", 
+                                result.id, 
+                                result.error_message.as_ref().unwrap_or(&"Unknown error".to_string()), 
+                                result.gas_used);
+                    }
+                }
+            }
+        }
+        
+        BatchAction::ListUserBatches { user } => {
+            println!("📝 Listing batches for user: {}", user);
+            
+            let user_addr = Address::from_string(&user);
+            let batch_ids = BatchOperations::get_user_batches(env.clone(), user_addr);
+            
+            if batch_ids.is_empty() {
+                println!("  No batches found for this user.");
+            } else {
+                println!("  Found {} batches:", batch_ids.len());
+                for batch_id in batch_ids.iter() {
+                    println!("    📦 Batch ID: {}", batch_id);
+                }
+            }
+        }
+    }
+    
+    Ok(())
 }
 
 fn run_differential_fuzzing_action(action: DifferentialFuzzingAction) -> Result<()> {

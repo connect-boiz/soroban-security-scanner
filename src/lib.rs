@@ -16,10 +16,7 @@ pub mod audit_proof_of_scan;
 pub mod session;
 pub mod time_travel_debugger;
 pub mod differential_fuzzing;
-pub mod emergency_stop;
-pub mod gas_limits;
-pub mod event_logging;
-pub mod secure_id_generation;
+pub mod batch_operations;
 
 
 pub use scanners::{SecurityScanner, InvariantScanner};
@@ -43,10 +40,10 @@ pub use differential_fuzzing::{
     DifferentialFuzzer, DifferentialFuzzingConfig, DifferentialFuzzingReport,
     SdkVersion, TestInput, ExecutionResult, DiscrepancyDetector, NonDeterministicBehavior
 };
-pub use emergency_stop::{EmergencyStop, StopCommand, StopReason, EmergencyStopExt};
-pub use gas_limits::{GasLimitManager, GasLimitConfig, GasEstimation, GasValidationResult, OperationComplexity, GasRiskLevel};
-pub use event_logging::{EventLogger, EventLoggingConfig, CriticalEvent, CriticalOperation, EventSeverity, EventStatus, EventBuilder, EventStatistics};
-pub use secure_id_generation::{SecureIdGenerator, SecureIdConfig, IdGenerationMethod, EntropySource, SecureIdBuilder, IdGenerationStats};
+pub use batch_operations::{
+    BatchOperations, BatchOperationStatus, BatchEscrowReleaseRequest, 
+    BatchVerificationRequest, BatchOperationResult, BatchOperationSummary
+};
 
 #[derive(Debug, Clone)]
 pub struct ScanResult {
