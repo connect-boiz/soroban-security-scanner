@@ -16,6 +16,7 @@ pub mod audit_proof_of_scan;
 pub mod session;
 pub mod time_travel_debugger;
 pub mod differential_fuzzing;
+pub mod emergency_stop;
 
 
 pub use scanners::{SecurityScanner, InvariantScanner};
@@ -39,6 +40,7 @@ pub use differential_fuzzing::{
     DifferentialFuzzer, DifferentialFuzzingConfig, DifferentialFuzzingReport,
     SdkVersion, TestInput, ExecutionResult, DiscrepancyDetector, NonDeterministicBehavior
 };
+pub use emergency_stop::{EmergencyStop, StopCommand, StopReason, EmergencyStopExt};
 
 #[derive(Debug, Clone)]
 pub struct ScanResult {
