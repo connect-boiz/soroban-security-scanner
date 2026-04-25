@@ -112,7 +112,62 @@ save_partial_results = true
 timeout_seconds = 300
 ```
 
-## �🔍 Supported Vulnerability Types
+## ⛽ Gas Limit Considerations
+
+The scanner includes comprehensive gas limit analysis for complex operations like escrow release and emergency reward distribution, addressing issue #112: "Insufficient Gas Limit Considerations".
+
+### Features
+- **Gas Estimation**: Predicts gas consumption for complex operations
+- **Risk Assessment**: Evaluates gas exhaustion risks for different operation types
+- **Optimization Suggestions**: Provides gas optimization recommendations
+- **Dynamic Limits**: Configurable gas limits based on operation complexity
+- **Batch Analysis**: Analyzes gas efficiency of batch operations
+
+### Supported Operations
+
+#### Escrow Release Operations
+- **Risk Level**: High
+- **Base Cost**: 50,000 gas + variable factors
+- **Optimizations**: Batch transfers, early exits
+
+#### Emergency Reward Distribution
+- **Risk Level**: Critical
+- **Base Cost**: 100,000 gas + priority calculations
+- **Optimizations**: Priority-based processing, conditional execution
+
+#### Batch Operations
+- **Risk Level**: High
+- **Dynamic Limits**: Up to 100M gas for large batches
+- **Optimizations**: Chunked processing, gas-efficient loops
+
+### Configuration
+
+Gas limit behavior can be configured in `stellar-scanner.toml`:
+
+```toml
+[gas_limits]
+simple_operation_limit = 5000000
+complex_operation_limit = 25000000
+batch_operation_limit = 100000000
+safety_margin_percentage = 10.0
+enable_estimation = true
+enable_optimization = true
+```
+
+### Usage Examples
+
+```bash
+# Scan with gas limit analysis
+stellar-scanner scan --verbose --analyze-gas
+
+# Check gas limit recommendations
+stellar-scanner gas-limits analyze --operation escrow_release
+
+# Generate gas optimization report
+stellar-scanner gas-limits optimize --path ./contracts
+```
+
+## 🔍 Supported Vulnerability Types
 
 ### Access Control
 - Missing Access Control
@@ -131,6 +186,13 @@ timeout_seconds = 300
 - Broken Invariants
 - Race Conditions
 - Front-running Susceptibility
+
+### Gas Limit Considerations
+- Insufficient Gas Limit Considerations
+- Complex Operation Gas Exhaustion
+- Escrow Release Gas Risk
+- Emergency Distribution Gas Risk
+- Batch Operation Gas Limit
 
 ### Stellar-Specific
 - Insufficient Fee Bump

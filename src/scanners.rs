@@ -122,6 +122,22 @@ impl SecurityScanner {
         self.add_pattern(VulnerabilityType::InformationLeakage,
             r"event!\([^)]*\b(secret|private|password|key)\b")?;
 
+        // Gas Limit Vulnerabilities
+        self.add_pattern(VulnerabilityType::InsufficientGasLimitConsiderations,
+            r"fn\s+(claim_reward|release_escrow|emergency_distribute).*\{[^}]*?(?!gas|limit|estimate)[^}]*?}")?;
+        
+        self.add_pattern(VulnerabilityType::ComplexOperationGasExhaustion,
+            r"for.*\{[^}]*?env\.invoke_contract[^}]*?for.*\{[^}]*?env\.invoke_contract")?;
+        
+        self.add_pattern(VulnerabilityType::EscrowReleaseGasRisk,
+            r"fn\s+release_escrow.*\{[^}]*?for.*in.*\{[^}]*?transfer[^}]*?\}")?;
+        
+        self.add_pattern(VulnerabilityType::EmergencyDistributionGasRisk,
+            r"fn\s+emergency.*\{[^}]*?for.*in.*\{[^}]*?reward[^}]*?\}")?;
+        
+        self.add_pattern(VulnerabilityType::BatchOperationGasLimit,
+            r"for.*\{[^}]*?env\.invoke_contract[^}]*?\}[^}]*?for.*\{[^}]*?env\.invoke_contract")?;
+
         Ok(())
     }
 

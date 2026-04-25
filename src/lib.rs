@@ -17,6 +17,7 @@ pub mod session;
 pub mod time_travel_debugger;
 pub mod differential_fuzzing;
 pub mod emergency_stop;
+pub mod gas_limits;
 
 
 pub use scanners::{SecurityScanner, InvariantScanner};
@@ -41,6 +42,7 @@ pub use differential_fuzzing::{
     SdkVersion, TestInput, ExecutionResult, DiscrepancyDetector, NonDeterministicBehavior
 };
 pub use emergency_stop::{EmergencyStop, StopCommand, StopReason, EmergencyStopExt};
+pub use gas_limits::{GasLimitManager, GasLimitConfig, GasEstimation, GasValidationResult, OperationComplexity, GasRiskLevel};
 
 #[derive(Debug, Clone)]
 pub struct ScanResult {

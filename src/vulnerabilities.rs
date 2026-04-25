@@ -94,6 +94,13 @@ pub enum VulnerabilityType {
     DenialOfService,
     InformationLeakage,
     CentralizationRisk,
+    
+    // Gas Limit Vulnerabilities
+    InsufficientGasLimitConsiderations,
+    ComplexOperationGasExhaustion,
+    EscrowReleaseGasRisk,
+    EmergencyDistributionGasRisk,
+    BatchOperationGasLimit,
 }
 
 impl VulnerabilityType {
@@ -161,6 +168,12 @@ impl VulnerabilityType {
             VulnerabilityType::DenialOfService => "Contract vulnerable to DoS attacks",
             VulnerabilityType::InformationLeakage => "Sensitive information is exposed",
             VulnerabilityType::CentralizationRisk => "Excessive centralization in contract logic",
+            
+            VulnerabilityType::InsufficientGasLimitConsiderations => "Complex operations don't account for gas limits",
+            VulnerabilityType::ComplexOperationGasExhaustion => "Complex operations may exhaust gas limits",
+            VulnerabilityType::EscrowReleaseGasRisk => "Escrow release operations have gas limit risks",
+            VulnerabilityType::EmergencyDistributionGasRisk => "Emergency reward distribution may exceed gas limits",
+            VulnerabilityType::BatchOperationGasLimit => "Batch operations don't consider gas limit constraints",
         }
     }
 
@@ -229,6 +242,12 @@ impl VulnerabilityType {
             VulnerabilityType::DenialOfService => Severity::Medium,
             VulnerabilityType::InformationLeakage => Severity::Low,
             VulnerabilityType::CentralizationRisk => Severity::Medium,
+            
+            VulnerabilityType::InsufficientGasLimitConsiderations => Severity::High,
+            VulnerabilityType::ComplexOperationGasExhaustion => Severity::Critical,
+            VulnerabilityType::EscrowReleaseGasRisk => Severity::High,
+            VulnerabilityType::EmergencyDistributionGasRisk => Severity::Critical,
+            VulnerabilityType::BatchOperationGasLimit => Severity::High,
         }
     }
 
@@ -302,6 +321,12 @@ impl VulnerabilityType {
             VulnerabilityType::DenialOfService => "Implement rate limiting and resource management",
             VulnerabilityType::InformationLeakage => "Remove sensitive information from public interfaces",
             VulnerabilityType::CentralizationRisk => "Implement decentralized governance or multi-sig controls",
+            
+            VulnerabilityType::InsufficientGasLimitConsiderations => "Add gas limit estimation and validation for complex operations",
+            VulnerabilityType::ComplexOperationGasExhaustion => "Break down complex operations or implement gas optimization",
+            VulnerabilityType::EscrowReleaseGasRisk => "Implement gas-efficient escrow release with batch processing",
+            VulnerabilityType::EmergencyDistributionGasRisk => "Add gas limit checks and priority-based emergency distribution",
+            VulnerabilityType::BatchOperationGasLimit => "Implement dynamic gas limit calculation for batch operations",
         }
     }
 }
