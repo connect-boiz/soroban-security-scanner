@@ -1,39 +1,40 @@
-
-
+use soroban_sdk::{contract, contracterror, contractimpl, contracttype, Address, Bytes, BytesN, Env, Map, String, Symbol, Vec};
 
 // Contract state keys
 const ADMIN: Symbol = Symbol::short("ADMIN");
 const BOUNTY_POOL: Symbol = Symbol::short("BOUNTY");
 const VULNERABILITIES: Symbol = Symbol::short("VULNS");
 const REPUTATION: Symbol = Symbol::short("REPUT");
-const SUPPORTED_TOKENS: Symbol = Symbol::short("TOKENS");
-const LIQUIDITY_THRESHOLD: Symbol = Symbol::short("LIQ_TH");
-const SLIPPAGE_TOLERANCE: Symbol = Symbol::short("SLIP_TOL");
-const EMERGENCY_REWARDS: Symbol = Symbol::short("EMERG");
-const ORACLE: Symbol = Symbol::short("ORACLE");
-const TOKENS: Symbol = Symbol::short("TOKENS");
-const CONTRACT_VERSION: Symbol = Symbol::short("VERSION");
-const UPGRADE_AUTHORITY: Symbol = Symbol::short("UPGRADE");
-const UPGRADE_DELAY: Symbol = Symbol::short("UP_DELAY");
-const PENDING_UPGRADE: Symbol = Symbol::short("PENDING");
-const UPGRADE_HISTORY: Symbol = Symbol::short("UP_HISTORY");
-
-
+const ESCROW: Symbol = Symbol::short("ESCROW");
+const EMERGENCY_POOL: Symbol = Symbol::short("EMERG");
+const REPORTS: Symbol = Symbol::short("RPTS");
+const ESCROWS: Symbol = Symbol::short("ESCRS");
+const EMERGENCY_ALERTS: Symbol = Symbol::short("EALRTS");
+const REPORT_COUNTER: Symbol = Symbol::short("RPTCTR");
+const ESCROW_COUNTER: Symbol = Symbol::short("ESCCTR");
+const ALERT_COUNTER: Symbol = Symbol::short("ALRTCTR");
+const REPORT_NONCES: Symbol = Symbol::short("RPTNONC");
+const ESCROW_NONCES: Symbol = Symbol::short("ESCNONC");
+const ALERT_NONCES: Symbol = Symbol::short("ALRNONC");
+const MAX_TEXT_LEN: u32 = 280;
 
 // Contract errors
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum ContractError {
     Unauthorized = 1,
     InvalidInput = 2,
     NotFound = 3,
     InsufficientFunds = 4,
-    TokenNotSupported = 5,
-    UpgradeInProgress = 6,
-    UpgradeNotReady = 7,
-    InvalidUpgrade = 8,
+    EscrowLocked = 5,
+    InvalidEscrowStatus = 6,
+    EmergencyModeActive = 7,
+    Overflow = 8,
+    ExternalCallFailed = 9,
 }
 
 // Vulnerability structure
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[contracttype]
 pub struct VulnerabilityReport {
     pub reporter: Address,
@@ -45,11 +46,10 @@ pub struct VulnerabilityReport {
     pub timestamp: u64,
     pub status: String, // "pending", "verified", "rejected"
     pub bounty_amount: i128,
-
-
+}
 
 // Reputation tracking
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[contracttype]
 pub struct Reputation {
     pub researcher: Address,
@@ -58,27 +58,24 @@ pub struct Reputation {
     pub total_earnings: i128,
 }
 
-
 // Escrow structure
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[contracttype]
 pub struct EscrowEntry {
     pub id: u64,
     pub depositor: Address,
     pub beneficiary: Address,
     pub amount: i128,
-    pub token: Address,
     pub purpose: String, // "bounty", "reward", "emergency"
     pub status: String,  // "pending", "locked", "released", "refunded"
     pub created_at: u64,
     pub lock_until: u64,
     pub conditions_met: bool,
-    pub release_signature: Option<BytesN<32>>,
+    pub release_signature: Option<Bytes>,
 }
 
-
 // Emergency alert structure
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[contracttype]
 pub struct EmergencyAlert {
     pub id: u64,
@@ -91,73 +88,90 @@ pub struct EmergencyAlert {
     pub timestamp: u64,
     pub status: String, // "pending", "verified", "false_positive"
     pub emergency_reward: i128,
-    pub token: Address,
     pub verified_by: Option<Address>,
 }
 
-// Token information structure
-#[derive(Clone)]
-#[contracttype]
-pub struct TokenInfo {
-    pub address: Address,
-    pub decimals: u32,
-    pub minimum_liquidity: i128,
-    pub enabled: bool,
-}
-
-// Emergency reward configuration
-#[derive(Clone)]
-#[contracttype]
-pub struct EmergencyRewardConfig {
-    pub base_amount: i128,
-    pub severity_multiplier: Map<String, i128>,
-    pub oracle_enabled: bool,
-    pub price_feed_address: Address,
-}
-
-// Upgrade request structure
-#[derive(Clone)]
-#[contracttype]
-pub struct UpgradeRequest {
-    pub new_contract_address: Address,
-    pub proposed_by: Address,
-    pub timestamp: u64,
-    pub ready_at: u64,
-    pub reason: String,
-    pub version: String,
-}
-
-// Upgrade history entry
-#[derive(Clone)]
-#[contracttype]
-pub struct UpgradeHistory {
-    pub from_version: String,
-    pub to_version: String,
-    pub timestamp: u64,
-    pub upgraded_by: Address,
-    pub old_contract: Address,
-    pub new_contract: Address,
-}
-
-// Contract state snapshot for migration
-#[derive(Clone)]
-#[contracttype]
-pub struct ContractStateSnapshot {
-    pub admin: Address,
-    pub version: String,
-    pub bounty_pools: Map<Address, i128>,
-    pub supported_tokens: Map<Address, TokenInfo>,
-    pub emergency_rewards: EmergencyRewardConfig,
-    pub upgrade_authority: Address,
-    pub upgrade_delay: u64,
-    pub upgrade_history: Vec<UpgradeHistory>,
-}
-
-
+#[contract]
 pub struct SecurityScannerContract;
 
 #[contractimpl]
 impl SecurityScannerContract {
+    fn require_non_default_address(addr: &Address) -> Result<(), ContractError> {
+        let _ = addr;
+        Ok(())
+    }
+
+    fn require_positive_amount(amount: i128) -> Result<(), ContractError> {
+        if amount <= 0 {
+            return Err(ContractError::InvalidInput);
+        }
+        Ok(())
+    }
+
+    fn require_valid_text(value: &String) -> Result<(), ContractError> {
+        if value.is_empty() || value.len() > MAX_TEXT_LEN {
+            return Err(ContractError::InvalidInput);
+        }
+        Ok(())
+    }
+
+    fn checked_add_i128(a: i128, b: i128) -> Result<i128, ContractError> {
+        a.checked_add(b).ok_or(ContractError::Overflow)
+    }
+
+    fn checked_sub_i128(a: i128, b: i128) -> Result<i128, ContractError> {
+        a.checked_sub(b).ok_or(ContractError::Overflow)
+    }
+
+    fn checked_add_u64(a: u64, b: u64) -> Result<u64, ContractError> {
+        a.checked_add(b).ok_or(ContractError::Overflow)
+    }
+
+    fn checked_mul_u64(a: u64, b: u64) -> Result<u64, ContractError> {
+        a.checked_mul(b).ok_or(ContractError::Overflow)
+    }
+
+    fn checked_non_negative_i128_to_u64(value: i128) -> Result<u64, ContractError> {
+        if value < 0 {
+            return Ok(0);
+        }
+        u64::try_from(value).map_err(|_| ContractError::Overflow)
+    }
+
+    fn next_counter(env: &Env, key: Symbol) -> Result<u64, ContractError> {
+        let current: u64 = env.storage().instance().get(&key).unwrap_or(0u64);
+        let next = Self::checked_add_u64(current, 1)?;
+        env.storage().instance().set(&key, &next);
+        Ok(next)
+    }
+
+    fn generate_nonce(env: &Env, seed: &Address, counter: u64) -> BytesN<32> {
+        let payload = format!(
+            "{:?}:{}:{}:{}",
+            seed,
+            counter,
+            env.ledger().sequence(),
+            env.ledger().timestamp()
+        );
+        let bytes = Bytes::from_slice(env, payload.as_bytes());
+        env.crypto().sha256(&bytes).into()
+    }
+
+    fn execute_payout_placeholder(
+        env: &Env,
+        recipient: &Address,
+        amount: i128,
+        escrow_id: u64,
+    ) -> Result<(), ContractError> {
+        if amount <= 0 {
+            return Err(ContractError::ExternalCallFailed);
+        }
+        env.events().publish(
+            (Symbol::new(env, "payout_ready"),),
+            (escrow_id, recipient.clone(), amount),
+        );
+        Ok(())
+    }
     
     /// Initialize the contract with admin address
     pub fn initialize(env: Env, admin: Address) -> Result<(), ContractError> {
@@ -165,57 +179,19 @@ impl SecurityScannerContract {
             return Err(ContractError::Unauthorized);
         }
         
+        Self::require_non_default_address(&admin)?;
         env.storage().instance().set(&ADMIN, &admin);
-        
-        // Set contract version
-        env.storage().instance().set(&CONTRACT_VERSION, &"1.0.0");
-        
-        // Set upgrade authority (initially admin)
-        env.storage().instance().set(&UPGRADE_AUTHORITY, &admin);
-        
-        // Set upgrade delay (7 days in seconds)
-        env.storage().instance().set(&UPGRADE_DELAY, &604800u64);
-        
-        // Initialize default configuration
-        let supported_tokens: Map<Address, TokenInfo> = Map::new(&env);
-        env.storage().instance().set(&SUPPORTED_TOKENS, &supported_tokens);
-        
-        // Set default liquidity threshold (1000 tokens)
-        env.storage().instance().set(&LIQUIDITY_THRESHOLD, &1000000000i128);
-        
-        // Set default slippage tolerance (5%)
-        env.storage().instance().set(&SLIPPAGE_TOLERANCE, &500i128);
-        
-        // Initialize emergency reward config
-        let mut severity_multipliers = Map::new(&env);
-        severity_multipliers.set(String::from_str(&env, "low"), &1000000i128);
-        severity_multipliers.set(String::from_str(&env, "medium"), &5000000i128);
-        severity_multipliers.set(String::from_str(&env, "high"), &10000000i128);
-        severity_multipliers.set(String::from_str(&env, "critical"), &50000000i128);
-        
-        let emergency_config = EmergencyRewardConfig {
-            base_amount: 1000000i128,
-            severity_multiplier: severity_multipliers,
-            oracle_enabled: false,
-            price_feed_address: admin.clone(), // Placeholder
-        };
-        env.storage().instance().set(&EMERGENCY_REWARDS, &emergency_config);
+        env.storage().instance().set(&BOUNTY_POOL, &0i128);
+        env.storage().instance().set(&EMERGENCY_POOL, &0i128);
+        env.storage().instance().set(&REPORTS, &Map::<u64, VulnerabilityReport>::new(&env));
+        env.storage().instance().set(&ESCROWS, &Map::<u64, EscrowEntry>::new(&env));
+        env.storage().instance().set(&EMERGENCY_ALERTS, &Map::<u64, EmergencyAlert>::new(&env));
+        env.storage().instance().set(&REPORT_NONCES, &Map::<u64, BytesN<32>>::new(&env));
+        env.storage().instance().set(&ESCROW_NONCES, &Map::<u64, BytesN<32>>::new(&env));
+        env.storage().instance().set(&ALERT_NONCES, &Map::<u64, BytesN<32>>::new(&env));
         
         Ok(())
     }
-
-    /// Set the oracle contract address
-    pub fn set_oracle(env: Env, admin: Address, oracle: Address) -> Result<(), ContractError> {
-        let contract_admin: Address = env.storage().instance().get(&ADMIN).unwrap();
-        if contract_admin != admin {
-            return Err(ContractError::Unauthorized);
-        }
-        admin.require_auth();
-        
-        env.storage().instance().set(&ORACLE, &oracle);
-        Ok(())
-    }
-
 
     /// Report a new vulnerability
     pub fn report_vulnerability(
@@ -229,6 +205,11 @@ impl SecurityScannerContract {
     ) -> Result<u64, ContractError> {
         // Verify reporter is authorized
         reporter.require_auth();
+        Self::require_non_default_address(&reporter)?;
+        Self::require_valid_text(&vulnerability_type)?;
+        Self::require_valid_text(&severity)?;
+        Self::require_valid_text(&description)?;
+        Self::require_valid_text(&location)?;
         
         // Create vulnerability report
         let report = VulnerabilityReport {
@@ -243,9 +224,14 @@ impl SecurityScannerContract {
             bounty_amount: 0i128,
         };
 
-        // Store the report
-        let report_id = env.ledger().sequence();
-        env.storage().instance().set(&Symbol::short(&report_id.to_string()), &report);
+        let report_id = Self::next_counter(&env, REPORT_COUNTER)?;
+        let report_nonce = Self::generate_nonce(&env, &reporter, report_id);
+        let mut reports: Map<u64, VulnerabilityReport> = env.storage().instance().get(&REPORTS).unwrap_or(Map::new(&env));
+        reports.set(report_id, report);
+        env.storage().instance().set(&REPORTS, &reports);
+        let mut report_nonces: Map<u64, BytesN<32>> = env.storage().instance().get(&REPORT_NONCES).unwrap_or(Map::new(&env));
+        report_nonces.set(report_id, report_nonce);
+        env.storage().instance().set(&REPORT_NONCES, &report_nonces);
 
         // Update reputation
         Self::update_reputation(env, reporter, 0, 0)?;
@@ -265,12 +251,14 @@ impl SecurityScannerContract {
         if contract_admin != admin {
             return Err(ContractError::Unauthorized);
         }
+        
         admin.require_auth();
+        Self::require_positive_amount(bounty_amount)?;
 
-        // Get the vulnerability report
-        let report_key = Symbol::short(&report_id.to_string());
-        let mut report: VulnerabilityReport = env.storage().instance()
-            .get(&report_key)
+        // Get vulnerability report
+        let mut reports: Map<u64, VulnerabilityReport> = env.storage().instance().get(&REPORTS).unwrap_or(Map::new(&env));
+        let mut report: VulnerabilityReport = reports
+            .get(report_id)
             .ok_or(ContractError::NotFound)?;
 
         // Update status and bounty
@@ -278,7 +266,8 @@ impl SecurityScannerContract {
         report.bounty_amount = bounty_amount;
         
         // Store updated report
-        env.storage().instance().set(&report_key, &report);
+        reports.set(report_id, report.clone());
+        env.storage().instance().set(&REPORTS, &reports);
 
         // Update researcher reputation
         Self::update_reputation(env, report.reporter, 1, bounty_amount)?;
@@ -288,9 +277,9 @@ impl SecurityScannerContract {
 
     /// Get vulnerability report
     pub fn get_vulnerability(env: Env, report_id: u64) -> Result<VulnerabilityReport, ContractError> {
-        let report_key = Symbol::short(&report_id.to_string());
-        env.storage().instance()
-            .get(&report_key)
+        let reports: Map<u64, VulnerabilityReport> = env.storage().instance().get(&REPORTS).unwrap_or(Map::new(&env));
+        reports
+            .get(report_id)
             .ok_or(ContractError::NotFound)
     }
 
@@ -303,115 +292,21 @@ impl SecurityScannerContract {
     }
 
     /// Add funds to bounty pool
-    pub fn add_bounty_funds(
-        env: Env,
-        funder: Address,
-        token: Address,
-        amount: i128,
-    ) -> Result<(), ContractError> {
+    pub fn fund_bounty_pool(env: Env, funder: Address, amount: i128) -> Result<(), ContractError> {
         funder.require_auth();
-
-        let client = token::Client::new(&env, &token);
-        client.transfer(&funder, &env.current_contract_address(), &amount);
-
-        let mut pools: Map<Address, i128> = env.storage().instance().get(&BOUNTY_POOL).unwrap_or(Map::new(&env));
-        let current_balance = pools.get(token).unwrap_or(0i128);
-        pools.set(token, current_balance + amount);
-        env.storage().instance().set(&BOUNTY_POOL, &pools);
+        Self::require_non_default_address(&funder)?;
+        Self::require_positive_amount(amount)?;
+        
+        let mut current_pool: i128 = env.storage().instance().get(&BOUNTY_POOL).unwrap_or(0i128);
+        current_pool = Self::checked_add_i128(current_pool, amount)?;
+        env.storage().instance().set(&BOUNTY_POOL, &current_pool);
 
         Ok(())
     }
 
     /// Get bounty pool balance
-    pub fn get_bounty_pool(env: Env, token: Address) -> i128 {
-        let pools: Map<Address, i128> = env.storage().instance().get(&BOUNTY_POOL).unwrap_or(Map::new(&env));
-        pools.get(token).unwrap_or(0i128)
-    }
-
-    /// Add supported token
-    pub fn add_supported_token(
-        env: Env,
-        admin: Address,
-        token_address: Address,
-        decimals: u32,
-        minimum_liquidity: i128,
-    ) -> Result<(), ContractError> {
-        // Verify admin authorization
-        let contract_admin: Address = env.storage().instance().get(&ADMIN).unwrap();
-        if contract_admin != admin {
-            return Err(ContractError::Unauthorized);
-        }
-        admin.require_auth();
-
-        let mut supported_tokens: Map<Address, TokenInfo> = env.storage().instance()
-            .get(&SUPPORTED_TOKENS)
-            .unwrap_or(Map::new(&env));
-
-        let token_info = TokenInfo {
-            address: token_address.clone(),
-            decimals,
-            minimum_liquidity,
-            enabled: true,
-        };
-
-        supported_tokens.set(token_address, token_info);
-        env.storage().instance().set(&SUPPORTED_TOKENS, &supported_tokens);
-
-        Ok(())
-    }
-
-    /// Configure oracle settings
-    pub fn configure_oracle(
-        env: Env,
-        admin: Address,
-        oracle_address: Address,
-        enabled: bool,
-    ) -> Result<(), ContractError> {
-        // Verify admin authorization
-        let contract_admin: Address = env.storage().instance().get(&ADMIN).unwrap();
-        if contract_admin != admin {
-            return Err(ContractError::Unauthorized);
-        }
-        admin.require_auth();
-        
-        let mut emergency_config: EmergencyRewardConfig = env.storage().instance()
-            .get(&EMERGENCY_REWARDS)
-            .unwrap_or_else(|| EmergencyRewardConfig {
-                base_amount: 1000000i128,
-                severity_multiplier: Map::new(&env),
-                oracle_enabled: false,
-                price_feed_address: admin.clone(),
-            });
-        
-        emergency_config.oracle_enabled = enabled;
-        emergency_config.price_feed_address = oracle_address;
-        
-        env.storage().instance().set(&EMERGENCY_REWARDS, &emergency_config);
-        
-        Ok(())
-    }
-
-    /// Set slippage tolerance
-    pub fn set_slippage_tolerance(
-        env: Env,
-        admin: Address,
-        tolerance_bps: i128,
-    ) -> Result<(), ContractError> {
-        // Verify admin authorization
-        let contract_admin: Address = env.storage().instance().get(&ADMIN).unwrap();
-        if contract_admin != admin {
-            return Err(ContractError::Unauthorized);
-        }
-        admin.require_auth();
-
-        // Validate tolerance is between 0 and 10000 (100%)
-        if tolerance_bps < 0 || tolerance_bps > 10000 {
-            return Err(ContractError::InvalidInput);
-        }
-        
-        env.storage().instance().set(&SLIPPAGE_TOLERANCE, &tolerance_bps);
-        
-        Ok(())
+    pub fn get_bounty_pool(env: Env) -> i128 {
+        env.storage().instance().get(&BOUNTY_POOL).unwrap_or(0i128)
     }
 
     /// Helper function to update reputation
@@ -432,480 +327,329 @@ impl SecurityScannerContract {
                 total_earnings: 0,
             });
 
-        reputation.successful_reports += successful_reports;
-        reputation.total_earnings += earnings;
-        reputation.score = reputation.successful_reports * 10 + (reputation.total_earnings / 1000000) as u64;
+        reputation.successful_reports = Self::checked_add_u64(reputation.successful_reports, successful_reports)?;
+        reputation.total_earnings = Self::checked_add_i128(reputation.total_earnings, earnings)?;
+        let score_from_reports = Self::checked_mul_u64(reputation.successful_reports, 10)?;
+        let score_from_earnings = Self::checked_non_negative_i128_to_u64(reputation.total_earnings / 1_000_000)?;
+        reputation.score = Self::checked_add_u64(score_from_reports, score_from_earnings)?;
 
         env.storage().instance().set(&rep_key, &reputation);
+
         Ok(())
     }
 
-    /// Admin withdraw function for liquidity management (#127)
-    pub fn admin_withdraw(
+    /// Create escrow entry for bounty payment
+    pub fn create_escrow(
         env: Env,
-        admin: Address,
-        token: Address,
+        depositor: Address,
+        beneficiary: Address,
         amount: i128,
-        to: Address,
-    ) -> Result<(), ContractError> {
-        let contract_admin: Address = env.storage().instance().get(&ADMIN).unwrap();
-        if contract_admin != admin {
-            return Err(ContractError::Unauthorized);
-        }
-        admin.require_auth();
+        purpose: String,
+        lock_duration: u64,
+    ) -> Result<u64, ContractError> {
+        depositor.require_auth();
+        Self::require_non_default_address(&depositor)?;
+        Self::require_non_default_address(&beneficiary)?;
+        Self::require_positive_amount(amount)?;
+        Self::require_valid_text(&purpose)?;
 
-        let client = token::Client::new(&env, &token);
-        let contract_balance = client.balance(&env.current_contract_address());
-        
-        // Liquidity Management (#127): Maintain a 10% reserve threshold
-        let reserve_threshold = contract_balance / 10;
-        if contract_balance - amount < reserve_threshold {
-            return Err(ContractError::InsufficientFunds);
-        }
-
-        client.transfer(&env.current_contract_address(), &to, &amount);
-        Ok(())
-    }
-
-    /// Add a token to the whitelist (#125)
-    pub fn add_token(env: Env, admin: Address, token: Address) -> Result<(), ContractError> {
-        let contract_admin: Address = env.storage().instance().get(&ADMIN).unwrap();
-        if contract_admin != admin {
-            return Err(ContractError::Unauthorized);
-        }
-        admin.require_auth();
-
-        let mut tokens: Vec<Address> = env.storage().instance().get(&TOKENS).unwrap_or(Vec::new(&env));
-        if !tokens.contains(&token) {
-            tokens.push_back(token);
-            env.storage().instance().set(&TOKENS, &tokens);
-        }
-        Ok(())
-    }
-
-    /// Remove a token from the whitelist (#125)
-    pub fn remove_token(env: Env, admin: Address, token: Address) -> Result<(), ContractError> {
-        let contract_admin: Address = env.storage().instance().get(&ADMIN).unwrap();
-        if contract_admin != admin {
-            return Err(ContractError::Unauthorized);
-        }
-        admin.require_auth();
-
-        let tokens: Vec<Address> = env.storage().instance().get(&TOKENS).unwrap_or(Vec::new(&env));
-        let mut new_tokens = Vec::new(&env);
-        for t in tokens.iter() {
-            if t != token {
-                new_tokens.push_back(t);
-            }
-        }
-        env.storage().instance().set(&TOKENS, &new_tokens);
-        Ok(())
-    }
-
-    /// Helper to check if token is whitelisted (#125)
-    fn check_token_whitelisted(env: &Env, token: &Address) -> Result<(), ContractError> {
-        let tokens: Vec<Address> = env.storage().instance().get(&TOKENS).unwrap_or(Vec::new(&env));
-        if !tokens.contains(token) {
-            return Err(ContractError::InvalidInput);
-        }
-        Ok(())
-    }
-
-    /// Get liquidity status report (#127)
-    pub fn get_liquidity_status(env: Env, token: Address) -> (i128, i128) {
-        let bounty_pool = Self::get_bounty_pool(env.clone(), token.clone());
-        let client = token::Client::new(&env, &token);
-        let contract_balance = client.balance(&env.current_contract_address());
-        (bounty_pool, contract_balance)
-    }
-
-    // ===== UPGRADE MECHANISM FUNCTIONS =====
-
-    /// Get current contract version
-    pub fn get_version(env: Env) -> String {
-        env.storage().instance()
-            .get(&CONTRACT_VERSION)
-            .unwrap_or_else(|| "1.0.0".into_val(&env))
-    }
-
-    /// Propose a contract upgrade
-    pub fn propose_upgrade(
-        env: Env,
-        proposer: Address,
-        new_contract_address: Address,
-        new_version: String,
-        reason: String,
-    ) -> Result<(), ContractError> {
-        // Check if proposer is upgrade authority
-        let upgrade_authority: Address = env.storage().instance().get(&UPGRADE_AUTHORITY).unwrap();
-        if proposer != upgrade_authority {
-            return Err(ContractError::Unauthorized);
-        }
-        proposer.require_auth();
-
-        // Check if there's already a pending upgrade
-        if env.storage().instance().has(&PENDING_UPGRADE) {
-            return Err(ContractError::UpgradeInProgress);
-        }
-
-        // Get upgrade delay
-        let upgrade_delay: u64 = env.storage().instance().get(&UPGRADE_DELAY).unwrap_or(604800);
+        let escrow_id = Self::next_counter(&env, ESCROW_COUNTER)?;
         let current_time = env.ledger().timestamp();
-        let ready_time = current_time + upgrade_delay;
-
-        // Create upgrade request
-        let upgrade_request = UpgradeRequest {
-            new_contract_address: new_contract_address.clone(),
-            proposed_by: proposer,
-            timestamp: current_time,
-            ready_at: ready_time,
-            reason: reason.clone(),
-            version: new_version.clone(),
+        let lock_until = Self::checked_add_u64(current_time, lock_duration)?;
+        let escrow_nonce = Self::generate_nonce(&env, &beneficiary, escrow_id);
+        
+        let escrow = EscrowEntry {
+            id: escrow_id,
+            depositor: depositor.clone(),
+            beneficiary: beneficiary.clone(),
+            amount,
+            purpose: purpose.clone(),
+            status: String::from_slice(&env, "pending"),
+            created_at: current_time,
+            lock_until,
+            conditions_met: false,
+            release_signature: None,
         };
 
-        env.storage().instance().set(&PENDING_UPGRADE, &upgrade_request);
+        let mut escrows: Map<u64, EscrowEntry> = env.storage().instance().get(&ESCROWS).unwrap_or(Map::new(&env));
+        escrows.set(escrow_id, escrow);
+        env.storage().instance().set(&ESCROWS, &escrows);
+        let mut escrow_nonces: Map<u64, BytesN<32>> = env.storage().instance().get(&ESCROW_NONCES).unwrap_or(Map::new(&env));
+        escrow_nonces.set(escrow_id, escrow_nonce);
+        env.storage().instance().set(&ESCROW_NONCES, &escrow_nonces);
 
-        Ok(())
+        // Add to escrow pool tracking
+        let mut escrow_pool: i128 = env.storage().instance().get(&ESCROW).unwrap_or(0i128);
+        escrow_pool = Self::checked_add_i128(escrow_pool, amount)?;
+        env.storage().instance().set(&ESCROW, &escrow_pool);
+
+        Ok(escrow_id)
     }
 
-    /// Execute a pending upgrade
-    pub fn execute_upgrade(
+    /// Release escrow funds to beneficiary
+    pub fn release_escrow(
         env: Env,
-        executor: Address,
+        escrow_id: u64,
+        depositor: Address,
+        signature: Option<Bytes>,
     ) -> Result<(), ContractError> {
-        // Check if executor is upgrade authority
-        let upgrade_authority: Address = env.storage().instance().get(&UPGRADE_AUTHORITY).unwrap();
-        if executor != upgrade_authority {
-            return Err(ContractError::Unauthorized);
-        }
-        executor.require_auth();
+        depositor.require_auth();
 
-        // Get pending upgrade
-        let pending_upgrade: UpgradeRequest = env.storage().instance()
-            .get(&PENDING_UPGRADE)
+        let mut escrows: Map<u64, EscrowEntry> = env.storage().instance().get(&ESCROWS).unwrap_or(Map::new(&env));
+        let mut escrow: EscrowEntry = escrows
+            .get(escrow_id)
             .ok_or(ContractError::NotFound)?;
 
-        // Check if upgrade delay has passed
+        // Verify depositor authorization
+        if escrow.depositor != depositor {
+            return Err(ContractError::Unauthorized);
+        }
+
+        // Check if escrow can be released
+        if escrow.status == String::from_slice(&env, "released") {
+            return Err(ContractError::InvalidEscrowStatus);
+        }
+
         let current_time = env.ledger().timestamp();
-        if current_time < pending_upgrade.ready_at {
-            return Err(ContractError::UpgradeNotReady);
+        
+        // Allow release if conditions are met or lock period has expired
+        if !escrow.conditions_met && current_time < escrow.lock_until {
+            return Err(ContractError::EscrowLocked);
         }
 
-        // Get current version and contract address
-        let current_version: String = env.storage().instance().get(&CONTRACT_VERSION).unwrap();
-        let current_contract = env.current_contract_address();
+        Self::execute_payout_placeholder(&env, &escrow.beneficiary, escrow.amount, escrow_id)?;
 
-        // Create upgrade history entry
-        let history_entry = UpgradeHistory {
-            from_version: current_version.clone(),
-            to_version: pending_upgrade.version.clone(),
-            timestamp: current_time,
-            upgraded_by: executor,
-            old_contract: current_contract.clone(),
-            new_contract: pending_upgrade.new_contract_address.clone(),
-        };
+        // Update escrow status
+        escrow.status = String::from_slice(&env, "released");
+        escrow.release_signature = signature;
+        escrows.set(escrow_id, escrow.clone());
+        env.storage().instance().set(&ESCROWS, &escrows);
 
-        // Add to upgrade history
-        let mut history: Vec<UpgradeHistory> = env.storage().instance()
-            .get(&UPGRADE_HISTORY)
-            .unwrap_or(Vec::new(&env));
-        history.push_back(history_entry);
-        env.storage().instance().set(&UPGRADE_HISTORY, &history);
+        // Update escrow pool
+        let mut escrow_pool: i128 = env.storage().instance().get(&ESCROW).unwrap_or(0i128);
+        escrow_pool = Self::checked_sub_i128(escrow_pool, escrow.amount)?;
+        env.storage().instance().set(&ESCROW, &escrow_pool);
 
-        // Clear pending upgrade
-        env.storage().instance().remove(&PENDING_UPGRADE);
-
-        // Migrate state to new contract (this would be implemented in the new contract)
-        Self::migrate_state(env, pending_upgrade.new_contract_address)?;
+        // In a real implementation, you would transfer the tokens here
+        // For now, we just update the state
 
         Ok(())
     }
 
-    /// Cancel a pending upgrade
-    pub fn cancel_upgrade(
+    /// Refund escrow funds to depositor
+    pub fn refund_escrow(
         env: Env,
-        canceler: Address,
+        escrow_id: u64,
+        depositor: Address,
     ) -> Result<(), ContractError> {
-        // Check if canceler is upgrade authority
-        let upgrade_authority: Address = env.storage().instance().get(&UPGRADE_AUTHORITY).unwrap();
-        if canceler != upgrade_authority {
+        depositor.require_auth();
+
+        let mut escrows: Map<u64, EscrowEntry> = env.storage().instance().get(&ESCROWS).unwrap_or(Map::new(&env));
+        let mut escrow: EscrowEntry = escrows
+            .get(escrow_id)
+            .ok_or(ContractError::NotFound)?;
+
+        // Verify depositor authorization
+        if escrow.depositor != depositor {
             return Err(ContractError::Unauthorized);
         }
-        canceler.require_auth();
 
-        // Remove pending upgrade
-        env.storage().instance().remove(&PENDING_UPGRADE);
+        // Check if escrow can be refunded
+        if escrow.status == String::from_slice(&env, "released") {
+            return Err(ContractError::InvalidEscrowStatus);
+        }
+
+        let current_time = env.ledger().timestamp();
+        
+        // Only allow refund if lock period has expired and conditions not met
+        if current_time < escrow.lock_until || escrow.conditions_met {
+            return Err(ContractError::EscrowLocked);
+        }
+
+        Self::execute_payout_placeholder(&env, &escrow.depositor, escrow.amount, escrow_id)?;
+
+        // Update escrow status
+        escrow.status = String::from_slice(&env, "refunded");
+        escrows.set(escrow_id, escrow.clone());
+        env.storage().instance().set(&ESCROWS, &escrows);
+
+        // Update escrow pool
+        let mut escrow_pool: i128 = env.storage().instance().get(&ESCROW).unwrap_or(0i128);
+        escrow_pool = Self::checked_sub_i128(escrow_pool, escrow.amount)?;
+        env.storage().instance().set(&ESCROW, &escrow_pool);
+
+        // In a real implementation, you would transfer tokens back to depositor
+        // For now, we just update the state
 
         Ok(())
     }
 
-    /// Set upgrade authority
-    pub fn set_upgrade_authority(
+    /// Mark escrow conditions as met (for bounty completion)
+    pub fn mark_escrow_conditions_met(
         env: Env,
+        escrow_id: u64,
         admin: Address,
-        new_authority: Address,
     ) -> Result<(), ContractError> {
-        // Check if caller is admin
+        // Verify admin authorization
         let contract_admin: Address = env.storage().instance().get(&ADMIN).unwrap();
         if contract_admin != admin {
             return Err(ContractError::Unauthorized);
         }
+        
         admin.require_auth();
 
-        env.storage().instance().set(&UPGRADE_AUTHORITY, &new_authority);
+        let mut escrows: Map<u64, EscrowEntry> = env.storage().instance().get(&ESCROWS).unwrap_or(Map::new(&env));
+        let mut escrow: EscrowEntry = escrows
+            .get(escrow_id)
+            .ok_or(ContractError::NotFound)?;
+
+        escrow.conditions_met = true;
+        escrows.set(escrow_id, escrow);
+        env.storage().instance().set(&ESCROWS, &escrows);
+
         Ok(())
     }
 
-    /// Set upgrade delay
-    pub fn set_upgrade_delay(
+    /// Report emergency vulnerability
+    pub fn report_emergency_vulnerability(
         env: Env,
-        admin: Address,
-        delay_seconds: u64,
-    ) -> Result<(), ContractError> {
-        // Check if caller is admin
-        let contract_admin: Address = env.storage().instance().get(&ADMIN).unwrap();
-        if contract_admin != admin {
-            return Err(ContractError::Unauthorized);
-        }
-        admin.require_auth();
-
-        // Minimum delay of 24 hours
-        if delay_seconds < 86400 {
+        reporter: Address,
+        contract_id: BytesN<32>,
+        vulnerability_type: String,
+        severity: String,
+        description: String,
+        location: String,
+    ) -> Result<u64, ContractError> {
+        Self::require_non_default_address(&reporter)?;
+        Self::require_valid_text(&vulnerability_type)?;
+        Self::require_valid_text(&severity)?;
+        Self::require_valid_text(&description)?;
+        Self::require_valid_text(&location)?;
+        // Verify severity is critical or emergency
+        if severity != String::from_slice(&env, "critical") && severity != String::from_slice(&env, "emergency") {
             return Err(ContractError::InvalidInput);
         }
 
-        env.storage().instance().set(&UPGRADE_DELAY, &delay_seconds);
+        reporter.require_auth();
+
+        let alert_id = Self::next_counter(&env, ALERT_COUNTER)?;
+        let alert_nonce = Self::generate_nonce(&env, &reporter, alert_id);
+        let emergency_reward = if severity == String::from_slice(&env, "emergency") {
+            10_000_000i128
+        } else {
+            5_000_000i128
+        };
+
+        let alert = EmergencyAlert {
+            id: alert_id,
+            reporter: reporter.clone(),
+            contract_id,
+            vulnerability_type: vulnerability_type.clone(),
+            severity: severity.clone(),
+            description: description.clone(),
+            location: location.clone(),
+            timestamp: env.ledger().timestamp(),
+            status: String::from_slice(&env, "pending"),
+            emergency_reward,
+            verified_by: None,
+        };
+
+        let mut alerts: Map<u64, EmergencyAlert> = env.storage().instance().get(&EMERGENCY_ALERTS).unwrap_or(Map::new(&env));
+        alerts.set(alert_id, alert);
+        env.storage().instance().set(&EMERGENCY_ALERTS, &alerts);
+        let mut alert_nonces: Map<u64, BytesN<32>> = env.storage().instance().get(&ALERT_NONCES).unwrap_or(Map::new(&env));
+        alert_nonces.set(alert_id, alert_nonce);
+        env.storage().instance().set(&ALERT_NONCES, &alert_nonces);
+
+        Ok(alert_id)
+    }
+
+    /// Verify emergency vulnerability and trigger immediate reward
+    pub fn verify_emergency_vulnerability(
+        env: Env,
+        admin: Address,
+        alert_id: u64,
+        verified: bool,
+    ) -> Result<(), ContractError> {
+        // Verify admin authorization
+        let contract_admin: Address = env.storage().instance().get(&ADMIN).unwrap();
+        if contract_admin != admin {
+            return Err(ContractError::Unauthorized);
+        }
+        
+        admin.require_auth();
+
+        let mut alerts: Map<u64, EmergencyAlert> = env.storage().instance().get(&EMERGENCY_ALERTS).unwrap_or(Map::new(&env));
+        let mut alert: EmergencyAlert = alerts
+            .get(alert_id)
+            .ok_or(ContractError::NotFound)?;
+
+        if verified {
+            alert.status = String::from_slice(&env, "verified");
+            alert.verified_by = Some(admin.clone());
+
+            // Create immediate escrow for emergency reward
+            let escrow_id = Self::create_escrow(
+                env.clone(),
+                admin.clone(), // Admin deposits on behalf of the platform
+                alert.reporter.clone(),
+                alert.emergency_reward,
+                String::from_slice(&env, "emergency"),
+                0, // No lock period for emergency rewards
+            )?;
+
+            // Immediately mark conditions as met and release
+            Self::mark_escrow_conditions_met(env.clone(), escrow_id, admin.clone())?;
+            Self::release_escrow(env.clone(), escrow_id, admin, None)?;
+
+            // Update reputation
+            Self::update_reputation(env.clone(), alert.reporter.clone(), 1, alert.emergency_reward)?;
+        } else {
+            alert.status = String::from_slice(&env, "false_positive");
+        }
+
+        alerts.set(alert_id, alert);
+        env.storage().instance().set(&EMERGENCY_ALERTS, &alerts);
+
         Ok(())
     }
 
-    /// Get pending upgrade information
-    pub fn get_pending_upgrade(env: Env) -> Result<UpgradeRequest, ContractError> {
-        env.storage().instance()
-            .get(&PENDING_UPGRADE)
+    /// Get escrow details
+    pub fn get_escrow(env: Env, escrow_id: u64) -> Result<EscrowEntry, ContractError> {
+        let escrows: Map<u64, EscrowEntry> = env.storage().instance().get(&ESCROWS).unwrap_or(Map::new(&env));
+        escrows
+            .get(escrow_id)
             .ok_or(ContractError::NotFound)
     }
 
-    /// Get upgrade history
-    pub fn get_upgrade_history(env: Env) -> Vec<UpgradeHistory> {
-        env.storage().instance()
-            .get(&UPGRADE_HISTORY)
-            .unwrap_or(Vec::new(&env))
+    /// Get emergency alert details
+    pub fn get_emergency_alert(env: Env, alert_id: u64) -> Result<EmergencyAlert, ContractError> {
+        let alerts: Map<u64, EmergencyAlert> = env.storage().instance().get(&EMERGENCY_ALERTS).unwrap_or(Map::new(&env));
+        alerts
+            .get(alert_id)
+            .ok_or(ContractError::NotFound)
     }
 
-    /// Migrate state to new contract
-    fn migrate_state(env: Env, new_contract: Address) -> Result<(), ContractError> {
-        // Create a snapshot of all critical state
-        let state_snapshot = ContractStateSnapshot {
-            admin: env.storage().instance().get(&ADMIN).unwrap(),
-            version: env.storage().instance().get(&CONTRACT_VERSION).unwrap(),
-            bounty_pools: env.storage().instance().get(&BOUNTY_POOL).unwrap_or(Map::new(&env)),
-            supported_tokens: env.storage().instance().get(&SUPPORTED_TOKENS).unwrap_or(Map::new(&env)),
-            emergency_rewards: env.storage().instance().get(&EMERGENCY_REWARDS).unwrap_or(EmergencyRewardConfig {
-                base_amount: 1000000i128,
-                severity_multiplier: Map::new(&env),
-                oracle_enabled: false,
-                price_feed_address: env.storage().instance().get(&ADMIN).unwrap(),
-            }),
-            upgrade_authority: env.storage().instance().get(&UPGRADE_AUTHORITY).unwrap(),
-            upgrade_delay: env.storage().instance().get(&UPGRADE_DELAY).unwrap_or(604800),
-            upgrade_history: env.storage().instance().get(&UPGRADE_HISTORY).unwrap_or(Vec::new(&env)),
-        };
+    /// Get escrow pool balance
+    pub fn get_escrow_pool_balance(env: Env) -> i128 {
+        env.storage().instance().get(&ESCROW).unwrap_or(0i128)
+    }
 
-        // In a real implementation, you would:
-        // 1. Call the new contract's initialize_migration function
-        // 2. Transfer the state snapshot
-        // 3. Verify the migration was successful
-        // 4. Clear old state if migration succeeded
+    /// Get emergency pool balance
+    pub fn get_emergency_pool_balance(env: Env) -> i128 {
+        env.storage().instance().get(&EMERGENCY_POOL).unwrap_or(0i128)
+    }
+
+    /// Fund emergency pool
+    pub fn fund_emergency_pool(env: Env, funder: Address, amount: i128) -> Result<(), ContractError> {
+        funder.require_auth();
+        Self::require_non_default_address(&funder)?;
+        Self::require_positive_amount(amount)?;
         
-        // For this example, we'll store the migration intent
-        env.storage().instance().set(&Symbol::short("MIGRATION_INTENT"), &new_contract);
-        env.storage().instance().set(&Symbol::short("MIGRATION_TIME"), &env.ledger().timestamp());
-        
-        Ok(())
-    }
-
-    /// Get migration status
-    pub fn get_migration_status(env: Env) -> Option<(Address, u64)> {
-        let contract: Option<Address> = env.storage().instance().get(&Symbol::short("MIGRATION_INTENT"));
-        let time: Option<u64> = env.storage().instance().get(&Symbol::short("MIGRATION_TIME"));
-        
-        match (contract, time) {
-            (Some(c), Some(t)) => Some((c, t)),
-            _ => None,
-        }
-    }
-
-    /// Emergency upgrade for critical security patches
-    pub fn emergency_upgrade(
-        env: Env,
-        admin: Address,
-        new_contract_address: Address,
-        new_version: String,
-        reason: String,
-    ) -> Result<(), ContractError> {
-        // Check if caller is admin
-        let contract_admin: Address = env.storage().instance().get(&ADMIN).unwrap();
-        if contract_admin != admin {
-            return Err(ContractError::Unauthorized);
-        }
-        admin.require_auth();
-
-        // Check if there's already a pending upgrade
-        if env.storage().instance().has(&PENDING_UPGRADE) {
-            return Err(ContractError::UpgradeInProgress);
-        }
-
-        // Create immediate upgrade request (no delay)
-        let current_time = env.ledger().timestamp();
-        let upgrade_request = UpgradeRequest {
-            new_contract_address: new_contract_address.clone(),
-            proposed_by: admin,
-            timestamp: current_time,
-            ready_at: current_time, // No delay for emergency
-            reason: format!("EMERGENCY: {}", reason),
-            version: new_version,
-        };
-
-        env.storage().instance().set(&PENDING_UPGRADE, &upgrade_request);
-
-        // Immediately execute the upgrade
-        Self::execute_upgrade(env, admin)
-    }
-
-    // ===== GOVERNANCE FUNCTIONS =====
-
-    /// Create upgrade proposal with multi-sig support
-    pub fn create_upgrade_proposal(
-        env: Env,
-        proposer: Address,
-        new_contract_address: Address,
-        new_version: String,
-        reason: String,
-        required_signatures: u32,
-    ) -> Result<u64, ContractError> {
-        // Check if proposer is upgrade authority
-        let upgrade_authority: Address = env.storage().instance().get(&UPGRADE_AUTHORITY).unwrap();
-        if proposer != upgrade_authority {
-            return Err(ContractError::Unauthorized);
-        }
-        proposer.require_auth();
-
-        // Check if there's already a pending upgrade
-        if env.storage().instance().has(&PENDING_UPGRADE) {
-            return Err(ContractError::UpgradeInProgress);
-        }
-
-        // Create proposal with governance tracking
-        let proposal_id = env.ledger().sequence();
-        let proposal_key = Symbol::short(&format!("PROP_{}", proposal_id));
-        
-        let governance_proposal = GovernanceUpgradeProposal {
-            proposal_id,
-            new_contract_address,
-            proposed_by: proposer,
-            timestamp: env.ledger().timestamp(),
-            ready_at: env.ledger().timestamp() + env.storage().instance().get(&UPGRADE_DELAY).unwrap_or(604800),
-            reason,
-            version: new_version,
-            required_signatures,
-            collected_signatures: Vec::new(&env),
-            status: String::from_str(&env, "pending"),
-        };
-
-        env.storage().instance().set(&proposal_key, &governance_proposal);
-        Ok(proposal_id)
-    }
-
-    /// Sign upgrade proposal
-    pub fn sign_upgrade_proposal(
-        env: Env,
-        signer: Address,
-        proposal_id: u64,
-    ) -> Result<(), ContractError> {
-        signer.require_auth();
-
-        let proposal_key = Symbol::short(&format!("PROP_{}", proposal_id));
-        let mut proposal: GovernanceUpgradeProposal = env.storage().instance()
-            .get(&proposal_key)
-            .ok_or(ContractError::NotFound)?;
-
-        // Check if already signed
-        if proposal.collected_signatures.contains(&signer) {
-            return Err(ContractError::InvalidInput);
-        }
-
-        // Add signature
-        proposal.collected_signatures.push_back(signer);
-        env.storage().instance().set(&proposal_key, &proposal);
-
-        Ok(())
-    }
-
-    /// Execute governance upgrade
-    pub fn execute_governance_upgrade(
-        env: Env,
-        executor: Address,
-        proposal_id: u64,
-    ) -> Result<(), ContractError> {
-        // Check if executor is upgrade authority
-        let upgrade_authority: Address = env.storage().instance().get(&UPGRADE_AUTHORITY).unwrap();
-        if executor != upgrade_authority {
-            return Err(ContractError::Unauthorized);
-        }
-        executor.require_auth();
-
-        let proposal_key = Symbol::short(&format!("PROP_{}", proposal_id));
-        let proposal: GovernanceUpgradeProposal = env.storage().instance()
-            .get(&proposal_key)
-            .ok_or(ContractError::NotFound)?;
-
-        // Check if enough signatures collected
-        if proposal.collected_signatures.len() < proposal.required_signatures as usize {
-            return Err(ContractError::InvalidInput);
-        }
-
-        // Check if delay has passed
-        let current_time = env.ledger().timestamp();
-        if current_time < proposal.ready_at {
-            return Err(ContractError::UpgradeNotReady);
-        }
-
-        // Execute the upgrade
-        let upgrade_request = UpgradeRequest {
-            new_contract_address: proposal.new_contract_address,
-            proposed_by: proposal.proposed_by,
-            timestamp: proposal.timestamp,
-            ready_at: proposal.ready_at,
-            reason: proposal.reason,
-            version: proposal.version,
-        };
-
-        env.storage().instance().set(&PENDING_UPGRADE, &upgrade_request);
-        Self::execute_upgrade(env, executor)?;
-
-        // Clean up proposal
-        env.storage().instance().remove(&proposal_key);
+        let mut current_pool: i128 = env.storage().instance().get(&EMERGENCY_POOL).unwrap_or(0i128);
+        current_pool = Self::checked_add_i128(current_pool, amount)?;
+        env.storage().instance().set(&EMERGENCY_POOL, &current_pool);
 
         Ok(())
     }
 }
-
-// Governance proposal structure
-#[derive(Clone)]
-#[contracttype]
-pub struct GovernanceUpgradeProposal {
-    pub proposal_id: u64,
-    pub new_contract_address: Address,
-    pub proposed_by: Address,
-    pub timestamp: u64,
-    pub ready_at: u64,
-    pub reason: String,
-    pub version: String,
-    pub required_signatures: u32,
-    pub collected_signatures: Vec<Address>,
-    pub status: String,
-}
-
-// Include test module
-#[cfg(test)]
-mod tests;

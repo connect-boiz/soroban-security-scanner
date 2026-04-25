@@ -4,8 +4,8 @@
 //! holding XLM in escrow until bugs are verified and approved.
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, Address, Env, Symbol, panic_with_error, 
-    Map, Vec, i128, u64
+    contract, contractimpl, contracttype, panic_with_error, Address, Bytes, BytesN, Env, Map,
+    Symbol, Vec, i128, u64,
 };
 
 // Contract state keys
@@ -15,6 +15,7 @@ const BOUNTY_COUNTER: Symbol = Symbol::short("BOUNTY_C");
 const BOUNTIES: Symbol = Symbol::short("BOUNTIES");
 const RESEARCHER_ASSIGNMENTS: Symbol = Symbol::short("RESEARCHER");
 const PENDING_APPROVALS: Symbol = Symbol::short("PENDING");
+const BOUNTY_NONCES: Symbol = Symbol::short("BNONCES");
 const TIMELOCK_PERIOD: u64 = 7 * 24 * 60 * 60; // 7 days in seconds
 
 // Bounty status
@@ -81,6 +82,62 @@ pub struct BountyMarketplace;
 
 #[contractimpl]
 impl BountyMarketplace {
+    fn require_non_default_address(env: &Env, address: &Address) {
+        let _ = (env, address);
+    }
+
+    fn require_positive_amount(env: &Env, amount: i128) {
+        if amount <= 0 {
+            panic_with_error!(env, "Amount must be positive");
+        }
+    }
+
+    fn require_valid_symbol(env: &Env, value: &Symbol, field_name: &str) {
+        if value.is_empty() {
+            panic_with_error!(env, field_name);
+        }
+    }
+
+    fn checked_add_u64(env: &Env, a: u64, b: u64) -> u64 {
+        a.checked_add(b)
+            .unwrap_or_else(|| panic_with_error!(env, "u64 overflow"))
+    }
+
+    fn checked_add_i128(env: &Env, a: i128, b: i128) -> i128 {
+        a.checked_add(b)
+            .unwrap_or_else(|| panic_with_error!(env, "i128 overflow"))
+    }
+
+    fn checked_mul_i128(env: &Env, a: i128, b: i128) -> i128 {
+        a.checked_mul(b)
+            .unwrap_or_else(|| panic_with_error!(env, "i128 overflow"))
+    }
+
+    fn checked_div_i128(env: &Env, a: i128, b: i128) -> i128 {
+        a.checked_div(b)
+            .unwrap_or_else(|| panic_with_error!(env, "division error"))
+    }
+
+    fn generate_nonce(env: &Env, seed: &Address, counter: u64) -> BytesN<32> {
+        let payload = format!(
+            "{:?}:{}:{}:{}",
+            seed,
+            counter,
+            env.ledger().sequence(),
+            env.ledger().timestamp()
+        );
+        let bytes = Bytes::from_slice(env, payload.as_bytes());
+        env.crypto().sha256(&bytes).into()
+    }
+
+    fn emit_payout_ready(env: &Env, bounty_id: u64, recipient: &Address, amount: i128) {
+        if amount <= 0 {
+            panic_with_error!(env, "Invalid payout");
+        }
+        env.events()
+            .publish(Symbol::new(env, "payout_ready"), (bounty_id, recipient.clone(), amount));
+    }
+
     // Initialize the contract with admin and owner
     pub fn initialize(env: Env, admin: Address, owner: Address) {
         // Check if already initialized
@@ -89,9 +146,8 @@ impl BountyMarketplace {
         }
 
         // Validate addresses
-        if admin == Address::default() || owner == Address::default() {
-            panic_with_error!(&env, "Invalid addresses provided");
-        }
+        admin.require_auth();
+        owner.require_auth();
 
         // Set admin and owner
         env.storage().persistent().set(&ADMIN, &admin);
@@ -102,6 +158,7 @@ impl BountyMarketplace {
         env.storage().persistent().set(&BOUNTIES, &Map::<Address, Vec<Bounty>>::new(&env));
         env.storage().persistent().set(&RESEARCHER_ASSIGNMENTS, &Map::<Address, Vec<u64>>::new(&env));
         env.storage().persistent().set(&PENDING_APPROVALS, &Map::<u64, MultiSigApproval>::new(&env));
+        env.storage().persistent().set(&BOUNTY_NONCES, &Map::<u64, BytesN<32>>::new(&env));
 
         env.events().publish(
             Symbol::new(&env, "contract_initialized"),
@@ -119,24 +176,27 @@ impl BountyMarketplace {
         severity: Severity,
     ) -> u64 {
         // Validate input
-        if amount <= 0 {
-            panic_with_error!(&env, "Amount must be positive");
-        }
-        if title.is_empty() || description.is_empty() {
-            panic_with_error!(&env, "Title and description cannot be empty");
-        }
+        Self::require_non_default_address(&env, &creator);
+        Self::require_positive_amount(&env, amount);
+        Self::require_valid_symbol(&env, &title, "Invalid title");
+        Self::require_valid_symbol(&env, &description, "Invalid description");
 
         // Check authorization
         creator.require_auth();
 
         // Get current time
         let current_time = env.ledger().timestamp();
-        let timelock_until = current_time + TIMELOCK_PERIOD;
+        let timelock_until = Self::checked_add_u64(&env, current_time, TIMELOCK_PERIOD);
 
         // Generate bounty ID
         let mut bounty_counter: u64 = env.storage().persistent().get(&BOUNTY_COUNTER).unwrap_or(0);
-        bounty_counter += 1;
+        bounty_counter = Self::checked_add_u64(&env, bounty_counter, 1);
         env.storage().persistent().set(&BOUNTY_COUNTER, &bounty_counter);
+        let nonce = Self::generate_nonce(&env, &creator, bounty_counter);
+        let mut bounty_nonces: Map<u64, BytesN<32>> =
+            env.storage().persistent().get(&BOUNTY_NONCES).unwrap_or_else(|| Map::new(&env));
+        bounty_nonces.set(bounty_counter, nonce);
+        env.storage().persistent().set(&BOUNTY_NONCES, &bounty_nonces);
 
         // Create bounty
         let bounty = Bounty {
@@ -221,9 +281,18 @@ impl BountyMarketplace {
         let reward_amount = match bounty.severity {
             Severity::Critical => bounty.amount,
             Severity::High => bounty.amount,
-            Severity::Medium => bounty.amount * bounty.severity.reward_percentage() / 100,
-            Severity::Low => bounty.amount * bounty.severity.reward_percentage() / 100,
+            Severity::Medium => Self::checked_div_i128(
+                &env,
+                Self::checked_mul_i128(&env, bounty.amount, bounty.severity.reward_percentage()),
+                100,
+            ),
+            Severity::Low => Self::checked_div_i128(
+                &env,
+                Self::checked_mul_i128(&env, bounty.amount, bounty.severity.reward_percentage()),
+                100,
+            ),
         };
+        Self::emit_payout_ready(&env, bounty_id, &researcher, reward_amount);
 
         // Update bounty status to completed
         Self::update_bounty_status(&env, bounty_id, BountyStatus::Completed);
@@ -354,11 +423,10 @@ impl BountyMarketplace {
     pub fn withdraw(env: Env, researcher: Address, amount: i128) {
         // Check authorization
         researcher.require_auth();
+        Self::require_non_default_address(&env, &researcher);
 
         // Validate amount
-        if amount <= 0 {
-            panic_with_error!(&env, "Amount must be positive");
-        }
+        Self::require_positive_amount(&env, amount);
 
         // Get researcher's assigned bounties
         let assignments: Map<Address, Vec<u64>> = env.storage().persistent().get(&RESEARCHER_ASSIGNMENTS)
@@ -375,10 +443,18 @@ impl BountyMarketplace {
                 let reward = match bounty.severity {
                     Severity::Critical => bounty.amount,
                     Severity::High => bounty.amount,
-                    Severity::Medium => bounty.amount * bounty.severity.reward_percentage() / 100,
-                    Severity::Low => bounty.amount * bounty.severity.reward_percentage() / 100,
+                    Severity::Medium => Self::checked_div_i128(
+                        &env,
+                        Self::checked_mul_i128(&env, bounty.amount, bounty.severity.reward_percentage()),
+                        100,
+                    ),
+                    Severity::Low => Self::checked_div_i128(
+                        &env,
+                        Self::checked_mul_i128(&env, bounty.amount, bounty.severity.reward_percentage()),
+                        100,
+                    ),
                 };
-                total_available += reward;
+                total_available = Self::checked_add_i128(&env, total_available, reward);
             }
         }
 
@@ -386,6 +462,7 @@ impl BountyMarketplace {
             panic_with_error!(&env, "Insufficient available rewards");
         }
 
+        Self::emit_payout_ready(&env, 0u64, &researcher, amount);
         // Emit event (in a real implementation, this would transfer XLM)
         env.events().publish(
             Symbol::new(&env, "withdrawal"),
