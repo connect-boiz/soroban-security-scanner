@@ -154,6 +154,22 @@ impl SecurityScanner {
         self.add_pattern(VulnerabilityType::EventLoggingBypass,
             r"if.*condition.*\{[^}]*?return[^}]*?\}[^}]*?event!\(")?;
 
+        // Randomness and ID Generation Vulnerabilities
+        self.add_pattern(VulnerabilityType::PredictableLedgerSequenceIds,
+            r"env\.ledger\(\)\.sequence\(\).*id|id.*env\.ledger\(\)\.sequence\(\)")?;
+        
+        self.add_pattern(VulnerabilityType::WeakRandomnessInIdGeneration,
+            r"generate.*id.*\{[^}]*?ledger\.sequence[^}]*?\}")?;
+        
+        self.add_pattern(VulnerabilityType::InsufficientEntropySources,
+            r"fn.*generate.*random.*\{[^}]*?(timestamp|sequence)[^}]*?\}")?;
+        
+        self.add_pattern(VulnerabilityType::DeterministicNonceGeneration,
+            r"generate.*nonce.*\{[^}]*?(format|concat)[^}]*?\}")?;
+        
+        self.add_pattern(VulnerabilityType::IdCollisionVulnerability,
+            r"hash.*\{[^}]*?(simple|weak|predictable)[^}]*?\}.*id")?;
+
         Ok(())
     }
 

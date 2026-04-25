@@ -108,6 +108,13 @@ pub enum VulnerabilityType {
     InsufficientEventMetadata,
     EventLoggingBypass,
     CriticalOperationWithoutEvents,
+    
+    // Randomness and ID Generation Vulnerabilities
+    WeakRandomnessInIdGeneration,
+    PredictableLedgerSequenceIds,
+    InsufficientEntropySources,
+    IdCollisionVulnerability,
+    DeterministicNonceGeneration,
 }
 
 impl VulnerabilityType {
@@ -187,6 +194,12 @@ impl VulnerabilityType {
             VulnerabilityType::InsufficientEventMetadata => "Events lack sufficient metadata for auditing",
             VulnerabilityType::EventLoggingBypass => "Event logging can be bypassed or disabled",
             VulnerabilityType::CriticalOperationWithoutEvents => "Critical operations execute without event emission",
+            
+            VulnerabilityType::WeakRandomnessInIdGeneration => "IDs are generated using weak or predictable randomness",
+            VulnerabilityType::PredictableLedgerSequenceIds => "Ledger sequence numbers used for ID generation create predictable IDs",
+            VulnerabilityType::InsufficientEntropySources => "Insufficient entropy sources used for random number generation",
+            VulnerabilityType::IdCollisionVulnerability => "ID generation algorithm vulnerable to collisions",
+            VulnerabilityType::DeterministicNonceGeneration => "Nonces are generated deterministically, creating replay attack risks",
         }
     }
 
@@ -267,6 +280,12 @@ impl VulnerabilityType {
             VulnerabilityType::InsufficientEventMetadata => Severity::Medium,
             VulnerabilityType::EventLoggingBypass => Severity::High,
             VulnerabilityType::CriticalOperationWithoutEvents => Severity::Critical,
+            
+            VulnerabilityType::WeakRandomnessInIdGeneration => Severity::Critical,
+            VulnerabilityType::PredictableLedgerSequenceIds => Severity::Critical,
+            VulnerabilityType::InsufficientEntropySources => Severity::High,
+            VulnerabilityType::IdCollisionVulnerability => Severity::High,
+            VulnerabilityType::DeterministicNonceGeneration => Severity::Critical,
         }
     }
 
@@ -352,6 +371,12 @@ impl VulnerabilityType {
             VulnerabilityType::InsufficientEventMetadata => "Include detailed metadata in all critical events",
             VulnerabilityType::EventLoggingBypass => "Implement mandatory event logging that cannot be bypassed",
             VulnerabilityType::CriticalOperationWithoutEvents => "Add event emission before and after critical operations",
+            
+            VulnerabilityType::WeakRandomnessInIdGeneration => "Replace weak randomness with cryptographically secure ID generation",
+            VulnerabilityType::PredictableLedgerSequenceIds => "Remove ledger sequence dependency from ID generation",
+            VulnerabilityType::InsufficientEntropySources => "Use multiple entropy sources for random number generation",
+            VulnerabilityType::IdCollisionVulnerability => "Implement collision detection and prevention in ID generation",
+            VulnerabilityType::DeterministicNonceGeneration => "Use cryptographically secure nonce generation with proper entropy",
         }
     }
 }

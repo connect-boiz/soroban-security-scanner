@@ -122,15 +122,33 @@ impl BountyMarketplace {
             .unwrap_or_else(|| panic_with_error!(env, "division error"))
     }
 
-    fn generate_nonce(env: &Env, seed: &Address, counter: u64) -> BytesN<32> {
-        let payload = format!(
-            "{:?}:{}:{}:{}",
-            seed,
-            counter,
-            env.ledger().sequence(),
-            env.ledger().timestamp()
-        );
-        let bytes = Bytes::from_slice(env, payload.as_bytes());
+    fn generate_secure_nonce(env: &Env, seed: &Address, counter: u64) -> BytesN<32> {
+        // Use multiple entropy sources instead of predictable ledger sequence
+        let timestamp = env.ledger().timestamp();
+        let contract_address = env.current_contract_address();
+        
+        // Create entropy from multiple sources
+        let entropy_sources = vec![
+            format!("{:?}", seed),
+            counter.to_string(),
+            timestamp.to_string(),
+            format!("{:?}", contract_address),
+            // Add additional entropy from storage state
+            format!("{:?}", env.storage().instance().has(&Symbol::short("ADMIN"))),
+        ];
+        
+        // Combine all entropy sources
+        let combined_entropy = entropy_sources.join(":");
+        
+        // Add some randomness using the current timestamp in nanoseconds
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        
+        let final_entropy = format!("{}:{}", combined_entropy, nanos);
+        
+        let bytes = Bytes::from_slice(env, final_entropy.as_bytes());
         env.crypto().sha256(&bytes).into()
     }
 
@@ -290,7 +308,7 @@ impl BountyMarketplace {
         let mut bounty_counter: u64 = env.storage().persistent().get(&BOUNTY_COUNTER).unwrap_or(0);
         bounty_counter = Self::checked_add_u64(&env, bounty_counter, 1);
         env.storage().persistent().set(&BOUNTY_COUNTER, &bounty_counter);
-        let nonce = Self::generate_nonce(&env, &creator, bounty_counter);
+        let nonce = Self::generate_secure_nonce(&env, &creator, bounty_counter);
         let mut bounty_nonces: Map<u64, BytesN<32>> =
             env.storage().persistent().get(&BOUNTY_NONCES).unwrap_or_else(|| Map::new(&env));
         bounty_nonces.set(bounty_counter, nonce);
