@@ -2,7 +2,7 @@
 
 use clap::{Parser, Subcommand};
 use colored::*;
-use stellar_security_scanner::{scanners::{SecurityScanner, InvariantScanner}, analysis::AnalysisResult, report::{SecurityReport, ReportFormat}, config::ScannerConfig, kubernetes::{K8sScanManager, ScanPodConfig, ScanAutoScaler}, time_travel_debugger::{TimeTravelDebugger, TimeTravelConfig, ForkedState, TestResult}, differential_fuzzing::{DifferentialFuzzer, DifferentialFuzzingConfig, SdkVersion}};
+use stellar_security_scanner::{scanners::{SecurityScanner, InvariantScanner}, analysis::AnalysisResult, report::{SecurityReport, ReportFormat}, config::ScannerConfig, kubernetes::{K8sScanManager, ScanPodConfig, ScanAutoScaler}, time_travel_debugger::{TimeTravelDebugger, TimeTravelConfig, ForkedState, TestResult}, differential_fuzzing::{DifferentialFuzzer, DifferentialFuzzingConfig, SdkVersion}, emergency_stop::{EmergencyStop, StopCommand}};
 use std::path::PathBuf;
 use std::time::{Instant, Duration};
 use anyhow::Result;
@@ -160,6 +160,12 @@ enum Commands {
     DifferentialFuzzing {
         #[command(subcommand)]
         action: DifferentialFuzzingAction,
+    },
+    
+    /// Emergency Stop Management
+    EmergencyStop {
+        #[command(subcommand)]
+        action: EmergencyStopAction,
     },
 }
 
@@ -530,6 +536,22 @@ enum DifferentialFuzzingAction {
     },
 }
 
+#[derive(Subcommand)]
+enum EmergencyStopAction {
+    /// Trigger emergency stop manually
+    Trigger {
+        /// Reason for emergency stop
+        #[arg(short, long)]
+        reason: Option<String>,
+    },
+    
+    /// Check emergency stop status
+    Status,
+    
+    /// Test emergency stop functionality
+    Test,
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
     
@@ -574,7 +596,8 @@ fn run_security_scan(path: PathBuf, format: String, output: Option<PathBuf>, con
     println!("{}", "🔍 Starting Stellar Security Scan".bold().cyan());
     
     let config = load_config(config_path)?;
-    let scanner = SecurityScanner::new()?;
+    let emergency_stop = EmergencyStop::new()?;
+    let scanner = SecurityScanner::new_with_emergency_stop(emergency_stop.clone())?;
     
     if verbose {
         println!("Scanning path: {}", path.display());
@@ -582,11 +605,28 @@ fn run_security_scan(path: PathBuf, format: String, output: Option<PathBuf>, con
         if let Some(ref output_path) = output {
             println!("Output file: {}", output_path.display());
         }
+        println!("🛑 Emergency stop system enabled");
     }
     
     let start_time = Instant::now();
     let results = scanner.scan_directory(&path)?;
     let scan_duration = start_time.elapsed().as_millis() as u64;
+    
+    // Check if scan was stopped
+    if scanner.emergency_stop.is_stopped() {
+        println!("⚠️  Scan was stopped due to emergency stop condition");
+        println!("📊 Partial results: {} files scanned", results.len());
+        
+        // Generate partial report if we have results
+        if !results.is_empty() {
+            let analysis = AnalysisResult::new(results, scan_duration);
+            let report_format = parse_report_format(&format)?;
+            let report = SecurityReport::new(report_format);
+            report.generate(&analysis, output.as_deref())?;
+        }
+        
+        return Ok(());
+    }
     
     if verbose {
         println!("Scanned {} files in {}ms", results.len(), scan_duration);
@@ -1328,6 +1368,59 @@ fn run_differential_fuzzing_action(action: DifferentialFuzzingAction) -> Result<
         }
         DifferentialFuzzingAction::ValidateDeterministic { .. } => {
             println!("Validating deterministic behavior");
+        }
+    }
+    
+    Ok(())
+}
+
+fn run_emergency_stop_action(action: EmergencyStopAction) -> Result<()> {
+    println!("{}", "🛑 Emergency Stop Management".bold().red());
+    
+    match action {
+        EmergencyStopAction::Trigger { reason } => {
+            let emergency_stop = EmergencyStop::new()?;
+            let stop_reason = reason.unwrap_or_else(|| "Manual trigger".to_string());
+            
+            println!("⚠️  Triggering emergency stop: {}", stop_reason);
+            emergency_stop.trigger_stop(StopCommand::UserInitiated {
+                reason: stop_reason,
+            })?;
+            
+            println!("✅ Emergency stop triggered successfully");
+        }
+        
+        EmergencyStopAction::Status => {
+            let emergency_stop = EmergencyStop::new()?;
+            
+            if emergency_stop.is_stopped() {
+                println!("🔴 Emergency stop is ACTIVE");
+            } else {
+                println!("🟢 Emergency stop is INACTIVE");
+            }
+            
+            println!("📊 Emergency stop system is operational");
+        }
+        
+        EmergencyStopAction::Test => {
+            println!("🧪 Testing emergency stop functionality...");
+            
+            let emergency_stop = EmergencyStop::new()?;
+            
+            // Test basic functionality
+            assert!(!emergency_stop.is_stopped(), "Emergency stop should be inactive initially");
+            
+            // Test trigger
+            emergency_stop.trigger_stop(StopCommand::UserInitiated {
+                reason: "Test trigger".to_string(),
+            })?;
+            
+            // Give some time for async processing
+            std::thread::sleep(std::time::Duration::from_millis(200));
+            
+            assert!(emergency_stop.is_stopped(), "Emergency stop should be active after trigger");
+            
+            println!("✅ Emergency stop test passed");
         }
     }
     

@@ -121,6 +121,27 @@ For detailed documentation, see [BATCH_OPERATIONS.md](BATCH_OPERATIONS.md).
 - Race Conditions
 - Front-running Susceptibility
 
+### Gas Limit Considerations
+- Insufficient Gas Limit Considerations
+- Complex Operation Gas Exhaustion
+- Escrow Release Gas Risk
+- Emergency Distribution Gas Risk
+- Batch Operation Gas Limit
+
+### Event Logging Vulnerabilities
+- Missing Critical Event Logging
+- Incomplete Event Audit Trail
+- Insufficient Event Metadata
+- Event Logging Bypass
+- Critical Operation Without Events
+
+### Randomness and ID Generation Vulnerabilities
+- Weak Randomness in ID Generation
+- Predictable Ledger Sequence IDs
+- Insufficient Entropy Sources
+- ID Collision Vulnerability
+- Deterministic Nonce Generation
+
 ### Stellar-Specific
 - Insufficient Fee Bump
 - Invalid Time Bounds
