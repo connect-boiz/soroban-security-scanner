@@ -64,6 +64,9 @@ const BATCH_ESCROW_RELEASES: Symbol = Symbol::short("BATCH_ESC");
 const BATCH_VERIFICATIONS: Symbol = Symbol::short("BATCH_VER");
 const BATCH_COUNTER: Symbol = Symbol::short("BATCH_CNT");
 const BATCH_RESULTS: Symbol = Symbol::short("BATCH_RES");
+const BATCH_CLEANUP_TIMESTAMP: Symbol = Symbol::short("BATCH_CLEAN");
+const MAX_BATCH_HISTORY: u64 = 1000; // Maximum batch operations to retain
+const BATCH_RETENTION_DAYS: u64 = 30; // Retain batch data for 30 days
 
 #[contract]
 pub struct BatchOperations;
@@ -80,6 +83,7 @@ impl BatchOperations {
         env.storage().instance().set(&BATCH_ESCROW_RELEASES, &Map::<u64, BatchEscrowReleaseRequest>::new(&env));
         env.storage().instance().set(&BATCH_VERIFICATIONS, &Map::<u64, BatchVerificationRequest>::new(&env));
         env.storage().instance().set(&BATCH_RESULTS, &Map::<u64, BatchOperationSummary>::new(&env));
+        env.storage().instance().set(&BATCH_CLEANUP_TIMESTAMP, &env.ledger().timestamp());
     }
 
     /// Create a batch escrow release request
@@ -481,6 +485,106 @@ impl BatchOperations {
         }
     }
 
+    /// Clean up old batch operations to optimize storage
+    pub fn cleanup_old_batches(env: Env) -> u64 {
+        let now = env.ledger().timestamp();
+        let retention_seconds = BATCH_RETENTION_DAYS * 24 * 60 * 60;
+        let cutoff_time = now.saturating_sub(retention_seconds);
+        
+        let mut cleaned_count = 0u64;
+        
+        // Clean up old batch results
+        let mut batch_results: Map<u64, BatchOperationSummary> = env.storage().instance()
+            .get(&BATCH_RESULTS)
+            .unwrap_or_else(|| Map::new(&env));
+        
+        let expired_batches: Vec<u64> = batch_results.iter()
+            .filter(|(_, summary)| summary.timestamp < cutoff_time)
+            .map(|(batch_id, _)| batch_id)
+            .collect();
+        
+        for batch_id in expired_batches {
+            batch_results.remove(batch_id);
+            cleaned_count += 1;
+        }
+        
+        // Also enforce maximum history limit
+        if batch_results.len() > MAX_BATCH_HISTORY {
+            let mut sorted_batches: Vec<(u64, u64)> = batch_results.iter()
+                .map(|(batch_id, summary)| (*batch_id, summary.timestamp))
+                .collect();
+            
+            sorted_batches.sort_by_key(|&(_, timestamp)| timestamp);
+            
+            let excess_count = batch_results.len() - MAX_BATCH_HISTORY;
+            for i in 0..excess_count {
+                batch_results.remove(sorted_batches[i].0);
+                cleaned_count += 1;
+            }
+        }
+        
+        env.storage().instance().set(&BATCH_RESULTS, &batch_results);
+        
+        // Clean up old escrow release requests
+        let mut escrow_releases: Map<u64, BatchEscrowReleaseRequest> = env.storage().instance()
+            .get(&BATCH_ESCROW_RELEASES)
+            .unwrap_or_else(|| Map::new(&env));
+        
+        let expired_escrow: Vec<u64> = escrow_releases.iter()
+            .filter(|(_, request)| request.timestamp < cutoff_time)
+            .map(|(batch_id, _)| batch_id)
+            .collect();
+        
+        for batch_id in expired_escrow {
+            escrow_releases.remove(batch_id);
+        }
+        
+        env.storage().instance().set(&BATCH_ESCROW_RELEASES, &escrow_releases);
+        
+        // Clean up old verification requests
+        let mut verifications: Map<u64, BatchVerificationRequest> = env.storage().instance()
+            .get(&BATCH_VERIFICATIONS)
+            .unwrap_or_else(|| Map::new(&env));
+        
+        let expired_verifications: Vec<u64> = verifications.iter()
+            .filter(|(_, request)| request.timestamp < cutoff_time)
+            .map(|(batch_id, _)| batch_id)
+            .collect();
+        
+        for batch_id in expired_verifications {
+            verifications.remove(batch_id);
+        }
+        
+        env.storage().instance().set(&BATCH_VERIFICATIONS, &verifications);
+        
+        // Update cleanup timestamp
+        env.storage().instance().set(&BATCH_CLEANUP_TIMESTAMP, &now);
+        
+        cleaned_count
+    }
+
+    /// Get storage usage statistics
+    pub fn get_storage_stats(env: Env) -> StorageStats {
+        let batch_results: Map<u64, BatchOperationSummary> = env.storage().instance()
+            .get(&BATCH_RESULTS)
+            .unwrap_or_else(|| Map::new(&env));
+        
+        let escrow_releases: Map<u64, BatchEscrowReleaseRequest> = env.storage().instance()
+            .get(&BATCH_ESCROW_RELEASES)
+            .unwrap_or_else(|| Map::new(&env));
+        
+        let verifications: Map<u64, BatchVerificationRequest> = env.storage().instance()
+            .get(&BATCH_VERIFICATIONS)
+            .unwrap_or_else(|| Map::new(&env));
+        
+        StorageStats {
+            total_batch_results: batch_results.len(),
+            total_escrow_releases: escrow_releases.len(),
+            total_verifications: verifications.len(),
+            last_cleanup: env.storage().instance().get(&BATCH_CLEANUP_TIMESTAMP).unwrap_or(0),
+        }
+    }
+
     /// Internal helper: Verify single vulnerability
     fn verify_single_vulnerability(env: &Env, vuln_id: u64, verifier: Address) -> Result<(), ContractError> {
         // This would integrate with the existing vulnerability verification logic
@@ -488,7 +592,7 @@ impl BatchOperations {
         
         if let Some(_vulnerability) = env.storage().instance().get::<Symbol, VulnerabilityReport>(&vuln_key) {
             // In a real implementation, this would:
-            // 1. Verify the vulnerability exists
+            // 1. Verify vulnerability exists
             // 2. Check verifier authorization
             // 3. Update vulnerability status to verified
             // 4. Calculate and award bounty
@@ -499,4 +603,13 @@ impl BatchOperations {
             Err(ContractError::NotFound)
         }
     }
+}
+
+// Storage statistics structure
+#[derive(Clone, Debug, contracttype)]
+pub struct StorageStats {
+    pub total_batch_results: u64,
+    pub total_escrow_releases: u64,
+    pub total_verifications: u64,
+    pub last_cleanup: u64,
 }

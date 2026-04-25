@@ -15,7 +15,10 @@ const SCANNER_PUBLIC_KEY: Symbol = Symbol::short("SCANNER");
 const CERTIFICATE_COUNTER: Symbol = Symbol::short("CERT_C");
 const CERTIFICATES: Symbol = Symbol::short("CERTS");
 const CONTRACT_CERTIFICATES: Symbol = Symbol::short("CONTRACT_CERTS");
+const CLEANUP_TIMESTAMP: Symbol = Symbol::short("CLEANUP_TS");
 const VALIDITY_PERIOD: u64 = 30 * 24 * 60 * 60; // 30 days in seconds
+const MAX_CERTIFICATES_PER_CONTRACT: u64 = 10; // Limit history per contract
+const CERTIFICATE_RETENTION_DAYS: u64 = 90; // Keep certificates for 90 days
 
 // Certificate status
 #[derive(Clone, Debug, PartialEq, Eq, contracttype)]
@@ -135,6 +138,7 @@ impl AuditProofOfScan {
         // Initialize empty storage maps
         env.storage().instance().set(&CERTIFICATES, &Map::<u64, SecurityCertificate>::new(&env));
         env.storage().instance().set(&CONTRACT_CERTIFICATES, &Map::<Address, u64>::new(&env));
+        env.storage().instance().set(&CLEANUP_TIMESTAMP, &env.ledger().timestamp());
     }
 
     /// Mint a security certificate (scanner only)
@@ -466,6 +470,110 @@ impl AuditProofOfScan {
         env.storage().instance().set(&CERTIFICATES, &certificates);
     }
 
+    /// Clean up old and expired certificates to optimize storage
+    pub fn cleanup_certificates(env: Env) -> u64 {
+        let now = env.ledger().timestamp();
+        let retention_seconds = CERTIFICATE_RETENTION_DAYS * 24 * 60 * 60;
+        let cutoff_time = now.saturating_sub(retention_seconds);
+        
+        let mut cleaned_count = 0u64;
+        
+        // Get all certificates
+        let mut certificates = Self::get_certificates(&env);
+        let mut contract_certs = Self::get_contract_certificates(&env);
+        
+        // Find expired and old certificates
+        let expired_certificates: Vec<u64> = certificates.iter()
+            .filter(|(_, cert)| {
+                cert.status == CertificateStatus::Expired || 
+                cert.status == CertificateStatus::Revoked ||
+                cert.timestamp < cutoff_time
+            })
+            .map(|(cert_id, _)| cert_id)
+            .collect();
+        
+        // Remove expired/old certificates
+        for cert_id in expired_certificates {
+            let certificate = certificates.get(cert_id).unwrap();
+            
+            // Remove from certificates map
+            certificates.remove(cert_id);
+            
+            // Remove from contract certificates mapping if this was the current certificate
+            if let Some(&current_cert_id) = contract_certs.get(&certificate.contract_id) {
+                if current_cert_id == cert_id {
+                    contract_certs.remove(certificate.contract_id);
+                }
+            }
+            
+            cleaned_count += 1;
+        }
+        
+        // Enforce maximum certificates per contract
+        let mut contract_cert_counts: Map<Address, u64> = Map::new(&env);
+        for cert in certificates.iter() {
+            let contract_id = cert.1.contract_id;
+            let count = contract_cert_counts.get(contract_id).unwrap_or(0) + 1;
+            contract_cert_counts.set(contract_id, count);
+        }
+        
+        // Remove excess certificates per contract
+        for (contract_id, count) in contract_cert_counts.iter() {
+            if count > MAX_CERTIFICATES_PER_CONTRACT {
+                // Get all certificates for this contract
+                let contract_certs_list: Vec<(u64, &SecurityCertificate)> = certificates.iter()
+                    .filter(|(_, cert)| cert.contract_id == contract_id)
+                    .collect();
+                
+                // Sort by timestamp (oldest first)
+                let mut sorted_certs = contract_certs_list;
+                sorted_certs.sort_by_key(|(_, cert)| cert.timestamp);
+                
+                // Keep only the most recent ones
+                let excess_count = count - MAX_CERTIFICATES_PER_CONTRACT;
+                for i in 0..excess_count {
+                    let cert_id = sorted_certs[i].0;
+                    certificates.remove(cert_id);
+                    cleaned_count += 1;
+                }
+            }
+        }
+        
+        // Update storage
+        env.storage().instance().set(&CERTIFICATES, &certificates);
+        env.storage().instance().set(&CONTRACT_CERTIFICATES, &contract_certs);
+        env.storage().instance().set(&CLEANUP_TIMESTAMP, &now);
+        
+        cleaned_count
+    }
+
+    /// Get certificate storage statistics
+    pub fn get_storage_stats(env: Env) -> CertificateStorageStats {
+        let certificates = Self::get_certificates(&env);
+        let contract_certs = Self::get_contract_certificates(&env);
+        
+        let mut active_count = 0u64;
+        let mut expired_count = 0u64;
+        let mut revoked_count = 0u64;
+        
+        for cert in certificates.iter() {
+            match cert.1.status {
+                CertificateStatus::Active => active_count += 1,
+                CertificateStatus::Expired => expired_count += 1,
+                CertificateStatus::Revoked => revoked_count += 1,
+            }
+        }
+        
+        CertificateStorageStats {
+            total_certificates: certificates.len(),
+            active_certificates: active_count,
+            expired_certificates: expired_count,
+            revoked_certificates: revoked_count,
+            contracts_with_certificates: contract_certs.len(),
+            last_cleanup: env.storage().instance().get(&CLEANUP_TIMESTAMP).unwrap_or(0),
+        }
+    }
+
     fn validate_ipfs_cid(ipfs_cid: &String) {
         // Basic IPFS CID validation
         if ipfs_cid.is_empty() || ipfs_cid.len() < 10 {
@@ -478,4 +586,15 @@ impl AuditProofOfScan {
             panic_with_error!(soroban_sdk::Env::default(), AuditError::InvalidIPFSCID);
         }
     }
+}
+
+// Certificate storage statistics
+#[derive(Clone, Debug, contracttype)]
+pub struct CertificateStorageStats {
+    pub total_certificates: u64,
+    pub active_certificates: u64,
+    pub expired_certificates: u64,
+    pub revoked_certificates: u64,
+    pub contracts_with_certificates: u64,
+    pub last_cleanup: u64,
 }

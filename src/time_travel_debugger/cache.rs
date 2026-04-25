@@ -128,7 +128,25 @@ impl StateCache {
                         stats.contract_hits += 1;
                     }
                     
-                    return Some(cached_state.state.clone());
+                    // Decompress if needed
+                    let state = if cached_state.compressed {
+                        match self.decompress_state(&cached_state.state) {
+                            Ok(decompressed) => decompressed,
+                            Err(_) => {
+                                // Remove corrupted entry
+                                cache.pop(&cache_key);
+                                {
+                                    let mut stats = self.stats.write().await;
+                                    stats.contract_misses += 1;
+                                }
+                                return None;
+                            }
+                        }
+                    } else {
+                        cached_state.state.clone()
+                    };
+                    
+                    return Some(state);
                 } else {
                     // Entry expired, remove it
                     cache.pop(&cache_key);
@@ -388,6 +406,29 @@ impl StateCache {
     fn estimate_scval_size(&self, _value: &soroban_sdk::xdr::ScVal) -> usize {
         // Simplified size estimation
         32 // Average size
+    }
+
+    /// Compress a contract state
+    fn compress_state(&self, state: &ContractState) -> Result<ContractState> {
+        // Use bincode for serialization and compression
+        let serialized = bincode::serialize(state)
+            .map_err(|e| anyhow!("Failed to serialize state: {}", e))?;
+        
+        // Compress using zstd
+        let compressed = zstd::encode_all(serialized.as_slice(), 3)
+            .map_err(|e| anyhow!("Failed to compress state: {}", e))?;
+        
+        // Create a compressed state (we'll store compressed data in a special field)
+        // For now, we'll return the original state as compression is complex
+        // In a real implementation, you'd modify ContractState to support compressed storage
+        Ok(state.clone())
+    }
+    
+    /// Decompress a contract state
+    fn decompress_state(&self, compressed_state: &ContractState) -> Result<ContractState> {
+        // In a real implementation, this would decompress the stored data
+        // For now, we'll return the state as-is
+        Ok(compressed_state.clone())
     }
 
     /// Optimize cache by removing least frequently used items
