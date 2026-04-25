@@ -62,7 +62,57 @@ soroban-security-scanner/
 └── README.md               # This file
 ```
 
-## 🔍 Supported Vulnerability Types
+## � Emergency Stop Mechanism
+
+The scanner includes a comprehensive emergency stop mechanism that allows for graceful shutdown when critical conditions are detected or when users need to interrupt scanning operations.
+
+### Features
+- **Signal Handling**: Captures SIGINT (Ctrl+C) and SIGTERM signals for graceful shutdown
+- **Critical Vulnerability Detection**: Automatically stops when critical vulnerabilities are found
+- **Resource Protection**: Stops on resource exhaustion or timeout conditions
+- **Partial Result Preservation**: Saves scan progress even when stopped mid-operation
+- **Cross-platform Support**: Works on Windows, Linux, and macOS
+
+### Usage
+
+```bash
+# Manual emergency stop trigger
+stellar-scanner emergency-stop trigger --reason "User requested stop"
+
+# Check emergency stop status
+stellar-scanner emergency-stop status
+
+# Test emergency stop functionality
+stellar-scanner emergency-stop test
+
+# Regular scan with automatic emergency stop on critical vulnerabilities
+stellar-scanner scan --verbose
+
+# Scan with manual stop capability (Ctrl+C)
+stellar-scanner security /path/to/contracts
+```
+
+### Emergency Stop Conditions
+
+The scanner will automatically trigger emergency stop when:
+- **Critical Vulnerabilities**: When CRITICAL severity vulnerabilities are detected
+- **User Signals**: When Ctrl+C or SIGTERM is received
+- **Timeout**: When scanning exceeds configured timeout limits
+- **Resource Exhaustion**: When memory or CPU limits are exceeded
+
+### Configuration
+
+Emergency stop behavior can be configured in `stellar-scanner.toml`:
+
+```toml
+[emergency_stop]
+enabled = true
+stop_on_critical = true
+save_partial_results = true
+timeout_seconds = 300
+```
+
+## �🔍 Supported Vulnerability Types
 
 ### Access Control
 - Missing Access Control
