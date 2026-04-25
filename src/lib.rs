@@ -16,6 +16,7 @@ pub mod audit_proof_of_scan;
 pub mod session;
 pub mod time_travel_debugger;
 pub mod differential_fuzzing;
+pub mod batch_operations;
 
 
 pub use scanners::{SecurityScanner, InvariantScanner};
@@ -38,6 +39,10 @@ pub use time_travel_debugger::{
 pub use differential_fuzzing::{
     DifferentialFuzzer, DifferentialFuzzingConfig, DifferentialFuzzingReport,
     SdkVersion, TestInput, ExecutionResult, DiscrepancyDetector, NonDeterministicBehavior
+};
+pub use batch_operations::{
+    BatchOperations, BatchOperationStatus, BatchEscrowReleaseRequest, 
+    BatchVerificationRequest, BatchOperationResult, BatchOperationSummary
 };
 
 #[derive(Debug, Clone)]

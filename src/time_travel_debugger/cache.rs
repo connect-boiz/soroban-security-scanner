@@ -152,31 +152,50 @@ impl StateCache {
         // Estimate size of the state
         let size_bytes = self.estimate_contract_state_size(&state);
         
+        // Check if we should compress this entry
+        let should_compress = self.config.enable_compression && size_bytes > 1024; // Compress entries > 1KB
+        
+        let (compressed_state, compressed, actual_size) = if should_compress {
+            match self.compress_state(&state) {
+                Ok(compressed) => (compressed, true, compressed.len()),
+                Err(_) => (state.clone(), false, size_bytes) // Fallback to uncompressed
+            }
+        } else {
+            (state.clone(), false, size_bytes)
+        };
+        
         let cached_state = CachedContractState {
-            state: state.clone(),
+            state: compressed_state,
             cached_at: Instant::now(),
             access_count: 1,
-            size_bytes,
-            compressed: false, // TODO: Implement compression
+            size_bytes: actual_size,
+            compressed,
         };
         
         {
             let mut cache = self.contract_cache.write().await;
             
-            // Check if we're evicting an entry
+            // Check if we're evicting an entry and update size tracking
             let was_full = cache.len() >= self.config.max_contract_states;
+            let evicted_size = if was_full {
+                cache.get(&cache_key).map(|cached| cached.size_bytes).unwrap_or(0)
+            } else {
+                0
+            };
+            
             cache.put(cache_key, cached_state);
             
             if was_full {
                 let mut stats = self.stats.write().await;
                 stats.evictions += 1;
+                stats.total_size_bytes = stats.total_size_bytes.saturating_sub(evicted_size);
             }
         }
         
         // Update statistics
         {
             let mut stats = self.stats.write().await;
-            stats.total_size_bytes += size_bytes;
+            stats.total_size_bytes += actual_size;
         }
         
         Ok(())
