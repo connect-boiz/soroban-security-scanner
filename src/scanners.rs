@@ -122,6 +122,54 @@ impl SecurityScanner {
         self.add_pattern(VulnerabilityType::InformationLeakage,
             r"event!\([^)]*\b(secret|private|password|key)\b")?;
 
+        // Gas Limit Vulnerabilities
+        self.add_pattern(VulnerabilityType::InsufficientGasLimitConsiderations,
+            r"fn\s+(claim_reward|release_escrow|emergency_distribute).*\{[^}]*?(?!gas|limit|estimate)[^}]*?}")?;
+        
+        self.add_pattern(VulnerabilityType::ComplexOperationGasExhaustion,
+            r"for.*\{[^}]*?env\.invoke_contract[^}]*?for.*\{[^}]*?env\.invoke_contract")?;
+        
+        self.add_pattern(VulnerabilityType::EscrowReleaseGasRisk,
+            r"fn\s+release_escrow.*\{[^}]*?for.*in.*\{[^}]*?transfer[^}]*?\}")?;
+        
+        self.add_pattern(VulnerabilityType::EmergencyDistributionGasRisk,
+            r"fn\s+emergency.*\{[^}]*?for.*in.*\{[^}]*?reward[^}]*?\}")?;
+        
+        self.add_pattern(VulnerabilityType::BatchOperationGasLimit,
+            r"for.*\{[^}]*?env\.invoke_contract[^}]*?\}[^}]*?for.*\{[^}]*?env\.invoke_contract")?;
+
+        // Event Logging Vulnerabilities
+        self.add_pattern(VulnerabilityType::MissingCriticalEventLogging,
+            r"fn\s+(transfer|withdraw|claim|approve|release).*\{[^}]*?(?!event|emit)[^}]*?balance.*=")?;
+        
+        self.add_pattern(VulnerabilityType::CriticalOperationWithoutEvents,
+            r"fn\s+(transfer_funds|release_escrow|distribute_rewards).*\{[^}]*?(?!event|emit)[^}]*?\}")?;
+        
+        self.add_pattern(VulnerabilityType::IncompleteEventAuditTrail,
+            r"event!\([^)]*\)[^}]*?balance.*=[^}]*?(?!event|emit)[^}]*?\}")?;
+        
+        self.add_pattern(VulnerabilityType::InsufficientEventMetadata,
+            r"event!\([^)]*\)([^)]*\([^)]*\)){0,1}[^)]*\(,[^)]*\)[^)]*\(,[^)]*\)[^)]*\)")?;
+        
+        self.add_pattern(VulnerabilityType::EventLoggingBypass,
+            r"if.*condition.*\{[^}]*?return[^}]*?\}[^}]*?event!\(")?;
+
+        // Randomness and ID Generation Vulnerabilities
+        self.add_pattern(VulnerabilityType::PredictableLedgerSequenceIds,
+            r"env\.ledger\(\)\.sequence\(\).*id|id.*env\.ledger\(\)\.sequence\(\)")?;
+        
+        self.add_pattern(VulnerabilityType::WeakRandomnessInIdGeneration,
+            r"generate.*id.*\{[^}]*?ledger\.sequence[^}]*?\}")?;
+        
+        self.add_pattern(VulnerabilityType::InsufficientEntropySources,
+            r"fn.*generate.*random.*\{[^}]*?(timestamp|sequence)[^}]*?\}")?;
+        
+        self.add_pattern(VulnerabilityType::DeterministicNonceGeneration,
+            r"generate.*nonce.*\{[^}]*?(format|concat)[^}]*?\}")?;
+        
+        self.add_pattern(VulnerabilityType::IdCollisionVulnerability,
+            r"hash.*\{[^}]*?(simple|weak|predictable)[^}]*?\}.*id")?;
+
         Ok(())
     }
 

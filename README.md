@@ -112,7 +112,254 @@ save_partial_results = true
 timeout_seconds = 300
 ```
 
-## �🔍 Supported Vulnerability Types
+## ⛽ Gas Limit Considerations
+
+The scanner includes comprehensive gas limit analysis for complex operations like escrow release and emergency reward distribution, addressing issue #112: "Insufficient Gas Limit Considerations".
+
+### Features
+- **Gas Estimation**: Predicts gas consumption for complex operations
+- **Risk Assessment**: Evaluates gas exhaustion risks for different operation types
+- **Optimization Suggestions**: Provides gas optimization recommendations
+- **Dynamic Limits**: Configurable gas limits based on operation complexity
+- **Batch Analysis**: Analyzes gas efficiency of batch operations
+
+### Supported Operations
+
+#### Escrow Release Operations
+- **Risk Level**: High
+- **Base Cost**: 50,000 gas + variable factors
+- **Optimizations**: Batch transfers, early exits
+
+#### Emergency Reward Distribution
+- **Risk Level**: Critical
+- **Base Cost**: 100,000 gas + priority calculations
+- **Optimizations**: Priority-based processing, conditional execution
+
+#### Batch Operations
+- **Risk Level**: High
+- **Dynamic Limits**: Up to 100M gas for large batches
+- **Optimizations**: Chunked processing, gas-efficient loops
+
+### Configuration
+
+Gas limit behavior can be configured in `stellar-scanner.toml`:
+
+```toml
+[gas_limits]
+simple_operation_limit = 5000000
+complex_operation_limit = 25000000
+batch_operation_limit = 100000000
+safety_margin_percentage = 10.0
+enable_estimation = true
+enable_optimization = true
+```
+
+### Usage Examples
+
+```bash
+# Scan with gas limit analysis
+stellar-scanner scan --verbose --analyze-gas
+
+# Check gas limit recommendations
+stellar-scanner gas-limits analyze --operation escrow_release
+
+# Generate gas optimization report
+stellar-scanner gas-limits optimize --path ./contracts
+```
+
+## � Event Logging for Critical Operations
+
+The scanner includes comprehensive event logging analysis for critical operations, addressing issue #113: "Missing Event Logging for Critical Operations".
+
+### Features
+- **Critical Operation Detection**: Identifies operations requiring event logging
+- **Audit Trail Analysis**: Ensures complete event audit trails
+- **Metadata Validation**: Verifies sufficient event metadata for auditing
+- **Event Bypass Detection**: Identifies potential event logging bypasses
+- **Comprehensive Coverage**: Covers fund transfers, vulnerability verification, and escrow operations
+
+### Critical Operations Monitored
+
+#### Fund Transfers
+- **Risk Level**: High
+- **Events Required**: Transfer initiation, completion, failure
+- **Metadata**: Amount, sender, recipient, reason, timestamp
+
+#### Vulnerability Verification
+- **Risk Level**: Critical
+- **Events Required**: Verification start, result, approval
+- **Metadata**: Vulnerability type, severity, verifier, timestamp
+
+#### Escrow Operations
+- **Risk Level**: High
+- **Events Required**: Escrow creation, release, refund
+- **Metadata**: Escrow amount, parties, conditions, timestamp
+
+#### Bounty Operations
+- **Risk Level**: Medium to Critical
+- **Events Required**: Creation, approval, claim, payment
+- **Metadata**: Bounty amount, researcher, severity, status changes
+
+### Event Logging Vulnerabilities
+
+#### Missing Critical Event Logging
+- **Severity**: High
+- **Description**: Critical operations lack proper event logging
+- **Impact**: No audit trail for important operations
+
+#### Incomplete Event Audit Trail
+- **Severity**: Medium
+- **Description**: Event audit trail is incomplete or missing
+- **Impact**: Cannot reconstruct operation sequence
+
+#### Insufficient Event Metadata
+- **Severity**: Medium
+- **Description**: Events lack sufficient metadata for auditing
+- **Impact**: Limited forensic analysis capabilities
+
+#### Event Logging Bypass
+- **Severity**: High
+- **Description**: Event logging can be bypassed or disabled
+- **Impact**: Security vulnerabilities can be hidden
+
+#### Critical Operation Without Events
+- **Severity**: Critical
+- **Description**: Critical operations execute without event emission
+- **Impact**: Complete lack of transparency for critical operations
+
+### Configuration
+
+Event logging behavior can be configured in `stellar-scanner.toml`:
+
+```toml
+[event_logging]
+enabled = true
+log_level = "info"
+structured_logging = false
+enable_persistence = true
+max_events_in_memory = 10000
+retention_period_seconds = 2592000
+```
+
+### Usage Examples
+
+```bash
+# Scan with event logging analysis
+stellar-scanner scan --verbose --analyze-events
+
+# Check event logging compliance
+stellar-scanner events check --path ./contracts
+
+# Generate event logging report
+stellar-scanner events report --format json
+```
+
+## 🔐 Secure ID Generation
+
+The scanner includes comprehensive secure ID generation analysis to detect weak randomness in ID generation, addressing issue #114: "Weak Randomness in ID Generation".
+
+### Features
+- **Weak Randomness Detection**: Identifies predictable ID generation patterns
+- **Ledger Sequence Analysis**: Detects reliance on predictable ledger sequences
+- **Entropy Source Validation**: Analyzes entropy sources used for random generation
+- **Collision Vulnerability Assessment**: Identifies ID collision risks
+- **Deterministic Pattern Detection**: Finds deterministic nonce generation
+
+### Security Risks Addressed
+
+#### Predictable Ledger Sequence IDs
+- **Risk Level**: Critical
+- **Issue**: Using `env.ledger().sequence()` creates predictable IDs
+- **Impact**: Attackers can predict future IDs and manipulate operations
+
+#### Insufficient Entropy Sources
+- **Risk Level**: High
+- **Issue**: Limited entropy sources reduce randomness quality
+- **Impact**: Reduces cryptographic security of generated IDs
+
+#### Deterministic Nonce Generation
+- **Risk Level**: Critical
+- **Issue**: Nonces generated deterministically enable replay attacks
+- **Impact**: Compromises transaction security and uniqueness
+
+### Secure ID Generation Solutions
+
+#### Multiple Entropy Sources
+- **System Entropy**: Process ID, thread ID, system time
+- **User Entropy**: User addresses and operation context
+- **Time Entropy**: High-resolution timestamps
+- **Contract Entropy**: Contract state and storage information
+
+#### Collision Detection
+- **Real-time Validation**: Checks for ID collisions during generation
+- **Cache Management**: Maintains ID history for collision prevention
+- **Retry Logic**: Automatic retry with different entropy on collisions
+
+#### Cryptographic Hashing
+- **SHA-256 Hashing**: Ensures cryptographic security
+- **Salt Generation**: Adds randomness to hash inputs
+- **Output Validation**: Validates generated ID quality
+
+### ID Generation Vulnerabilities
+
+#### Weak Randomness in ID Generation
+- **Severity**: Critical
+- **Description**: IDs are generated using weak or predictable randomness
+- **Impact**: Predictable IDs enable manipulation attacks
+
+#### Predictable Ledger Sequence IDs
+- **Severity**: Critical
+- **Description**: Ledger sequence numbers used for ID generation create predictable IDs
+- **Impact**: Future IDs can be predicted and exploited
+
+#### Insufficient Entropy Sources
+- **Severity**: High
+- **Description**: Insufficient entropy sources used for random number generation
+- **Impact**: Reduces cryptographic security and predictability
+
+#### ID Collision Vulnerability
+- **Severity**: High
+- **Description**: ID generation algorithm vulnerable to collisions
+- **Impact**: Duplicate IDs can cause system failures
+
+#### Deterministic Nonce Generation
+- **Severity**: Critical
+- **Description**: Nonces are generated deterministically, creating replay attack risks
+- **Impact**: Compromises transaction security and uniqueness
+
+### Configuration
+
+Secure ID generation behavior can be configured in `stellar-scanner.toml`:
+
+```toml
+[secure_id_generation]
+enabled = true
+method = "CryptographicHash"
+entropy_source = "MultipleSources"
+id_length_bytes = 32
+enable_collision_detection = true
+max_collision_retries = 100
+enable_uniqueness_validation = true
+id_cache_size = 1000
+```
+
+### Usage Examples
+
+```bash
+# Scan with secure ID generation analysis
+stellar-scanner scan --verbose --analyze-ids
+
+# Check ID generation security
+stellar-scanner ids check --path ./contracts
+
+# Generate secure IDs for testing
+stellar-scanner ids generate --type bounty --user alice
+
+# Validate ID uniqueness
+stellar-scanner ids validate --id 12345 --context bounty
+```
+
+## � Supported Vulnerability Types
 
 ### Access Control
 - Missing Access Control
@@ -131,6 +378,27 @@ timeout_seconds = 300
 - Broken Invariants
 - Race Conditions
 - Front-running Susceptibility
+
+### Gas Limit Considerations
+- Insufficient Gas Limit Considerations
+- Complex Operation Gas Exhaustion
+- Escrow Release Gas Risk
+- Emergency Distribution Gas Risk
+- Batch Operation Gas Limit
+
+### Event Logging Vulnerabilities
+- Missing Critical Event Logging
+- Incomplete Event Audit Trail
+- Insufficient Event Metadata
+- Event Logging Bypass
+- Critical Operation Without Events
+
+### Randomness and ID Generation Vulnerabilities
+- Weak Randomness in ID Generation
+- Predictable Ledger Sequence IDs
+- Insufficient Entropy Sources
+- ID Collision Vulnerability
+- Deterministic Nonce Generation
 
 ### Stellar-Specific
 - Insufficient Fee Bump
