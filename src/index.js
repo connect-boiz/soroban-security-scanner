@@ -3,7 +3,6 @@
 const { Command } = require('commander');
 const chalk = require('chalk');
 const fs = require('fs');
-const path = require('path');
 const TimeBasedAttackDetector = require('./detectors/time-based-attack-detector');
 const SecurityReporter = require('./reporters/security-reporter');
 

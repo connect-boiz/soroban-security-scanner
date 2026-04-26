@@ -30,7 +30,7 @@ class TimeBasedAttackDetector {
       },
       // Timestamp arithmetic for locks
       {
-        pattern: /(?:timestamp|current_timestamp|lock_end)\s*[+\-]\s*\d+(?:\s*[*/]\s*\d+)?/,
+        pattern: /(?:timestamp|current_timestamp|lock_end)\s*[+-]\s*\d+(?:\s*[*/]\s*\d+)?/,
         type: 'TIMESTAMP_ARITHMETIC_LOCK',
         severity: 'HIGH',
         description: 'Timestamp arithmetic used for lock calculations without protection'
@@ -56,7 +56,7 @@ class TimeBasedAttackDetector {
     const files = fs.readdirSync(dirPath);
 
     for (const file of files) {
-      if (emergencyStop && emergencyStop.isActive()) break;
+      if (emergencyStop && emergencyStop.isActive()) { break; }
 
       const filePath = path.join(dirPath, file);
       const stat = fs.statSync(filePath);
