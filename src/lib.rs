@@ -9,6 +9,15 @@ pub mod invariants;
 pub mod analysis;
 pub mod report;
 pub mod config;
+pub mod kubernetes;
+pub mod bounty_marketplace;
+pub mod scanner_registry;
+pub mod audit_proof_of_scan;
+pub mod session;
+pub mod time_travel_debugger;
+pub mod differential_fuzzing;
+pub mod batch_operations;
+
 
 pub use scanners::{SecurityScanner, InvariantScanner};
 pub use vulnerabilities::VulnerabilityType;
@@ -16,6 +25,25 @@ pub use invariants::InvariantRule;
 pub use analysis::AnalysisResult;
 pub use report::{SecurityReport, ReportFormat};
 pub use config::ScannerConfig;
+pub use kubernetes::{K8sScanManager, ScanPodConfig, ScanAutoScaler};
+pub use scanner_registry::{ScannerRegistry, ScannerVersion, VersionStatus};
+pub use audit_proof_of_scan::{AuditProofOfScan, SecurityCertificate, CertificateStatus, RiskScore};
+pub use session::stateless::{
+    ExternalSessionStore, InMemorySessionStore, SessionClaims, SessionError,
+    SessionStoreRecord, StatelessSessionManager,
+};
+pub use time_travel_debugger::{
+    TimeTravelDebugger, TimeTravelConfig, LedgerSnapshot, ContractState, 
+    ForkedState, TestResult, UpgradeSimulationResult, CacheStats
+};
+pub use differential_fuzzing::{
+    DifferentialFuzzer, DifferentialFuzzingConfig, DifferentialFuzzingReport,
+    SdkVersion, TestInput, ExecutionResult, DiscrepancyDetector, NonDeterministicBehavior
+};
+pub use batch_operations::{
+    BatchOperations, BatchOperationStatus, BatchEscrowReleaseRequest, 
+    BatchVerificationRequest, BatchOperationResult, BatchOperationSummary
+};
 
 #[derive(Debug, Clone)]
 pub struct ScanResult {

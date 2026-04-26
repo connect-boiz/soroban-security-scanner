@@ -1,0 +1,44 @@
+# Rust build artifacts
+target/
+Cargo.lock
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# Build artifacts
+*.o
+*.rcgu.o
+*.d
+
+# Validation scripts
+validate.ps1
+validate.sh
+validate_dashboard.sh
+validate_fixed.ps1
+validate_contract.8hu8pe3ae7mxwafub8p8w97h5.rcgu.o
+validate_contract.validate_contract.8d339ca6b30484-cgu.0.rcgu.o
+validate_contract.validate_contract.8d339ca6b30484-cgu.1.rcgu.o
+validate_contract.validate_contract.8d339ca6b30484-cgu.2.rcgu.o
+validate_contract.rs
+
+# Config files that shouldn't be tracked
+stellar-scanner.toml
+.env.example
+
+# Documentation files that are part of the repo template
+PULL_REQUEST_TEMPLATE.md
+whitelist.md
