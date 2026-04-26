@@ -25,7 +25,7 @@ class SecurityReporter {
       report += color(`${severity} SEVERITY (${vulns.length}):\n`);
       
       for (const vuln of vulns) {
-        report += color(`  └── ${vuln.description}\n`);
+        report += color(`  └── [${vuln.type}] ${vuln.description}\n`);
         report += chalk.gray(`     File: ${vuln.file}:${vuln.line}\n`);
         report += chalk.yellow(`     Code: ${vuln.code}\n\n`);
       }
