@@ -17,6 +17,7 @@ pub mod session;
 pub mod time_travel_debugger;
 pub mod differential_fuzzing;
 pub mod batch_operations;
+pub mod notification_service;
 
 
 pub use scanners::{SecurityScanner, InvariantScanner};
@@ -43,6 +44,11 @@ pub use differential_fuzzing::{
 pub use batch_operations::{
     BatchOperations, BatchOperationStatus, BatchEscrowReleaseRequest, 
     BatchVerificationRequest, BatchOperationResult, BatchOperationSummary
+};
+pub use notification_service::{
+    NotificationService, NotificationServiceTrait, NotificationTemplate, TemplateManager,
+    DeliveryTracker, NotificationProvider, NotificationChannel, NotificationPriority,
+    DeliveryStatus, Recipient, NotificationMessage, NotificationResult
 };
 
 #[derive(Debug, Clone)]
