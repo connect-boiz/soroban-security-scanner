@@ -1,6 +1,5 @@
-//! Template management system for notifications
-
 const Handlebars = require('handlebars');
+const { t, formatCurrency, formatDate } = require('../i18n/config');
 const {
   NotificationChannel,
   NotificationPriority,
@@ -34,20 +33,16 @@ class TemplateManager {
    * Register custom Handlebars helpers
    */
   registerCustomHelpers() {
-    // Format date helper
-    this.handlebars.registerHelper('format_date', function(date) {
+    // Format date helper with i18n support
+    this.handlebars.registerHelper('format_date', function(date, language = 'en') {
       if (!date) return '';
-      const d = new Date(date);
-      return d.toLocaleDateString();
+      return formatDate(date, language);
     });
 
-    // Format currency helper
-    this.handlebars.registerHelper('format_currency', function(amount) {
+    // Format currency helper with i18n support
+    this.handlebars.registerHelper('format_currency', function(amount, language = 'en') {
       if (typeof amount !== 'number') return '';
-      return new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD'
-      }).format(amount);
+      return formatCurrency(amount, language);
     });
 
     // Truncate helper
@@ -221,29 +216,13 @@ class TemplateManager {
    */
   createDefaultTemplates() {
     const templates = [
-      // Vulnerability alert template
+      // Vulnerability alert template with i18n
       new NotificationTemplate({
         id: 'vulnerability_alert',
-        name: 'Vulnerability Alert',
-        description: 'Template for vulnerability notifications',
-        subjectTemplate: '🚨 {{severity}} Vulnerability Found in {{contract_name}}',
-        bodyTemplate: `Hello {{user_name}},
-
-A {{severity}} vulnerability has been detected in your smart contract:
-
-Contract: {{contract_name}}
-Type: {{vulnerability_type}}
-Description: {{description}}
-Risk Score: {{risk_score}}
-
-{{#if critical}}
-⚠️ This is a critical vulnerability that requires immediate attention!
-{{/if}}
-
-Please review the full scan report at: {{report_url}}
-
-Best regards,
-Soroban Security Scanner`,
+        name: t('notification_service.templates.vulnerability_alert.name'),
+        description: t('notification_service.templates.vulnerability_alert.description'),
+        subjectTemplate: t('notification_service.templates.vulnerability_alert.subject'),
+        bodyTemplate: t('notification_service.templates.vulnerability_alert.body'),
         supportedChannels: [NotificationChannel.EMAIL, NotificationChannel.IN_APP],
         defaultPriority: NotificationPriority.HIGH,
         variables: [
@@ -299,32 +278,13 @@ Soroban Security Scanner`,
         ]
       }),
 
-      // Scan completed template
+      // Scan completed template with i18n
       new NotificationTemplate({
         id: 'scan_completed',
-        name: 'Scan Completed',
-        description: 'Template for scan completion notifications',
-        subjectTemplate: '✅ Security Scan Completed for {{file_path}}',
-        bodyTemplate: `Hello {{user_name}},
-
-Your security scan has completed:
-
-File: {{file_path}}
-Total Issues: {{total_issues}}
-Critical: {{critical_count}}
-High: {{high_count}}
-Medium: {{medium_count}}
-
-{{#if has_issues}}
-⚠️ Issues were found that require your attention. Please review the detailed report.
-{{else}}
-✅ No security issues were found. Your contract looks secure!
-{{/if}}
-
-View full results at: {{report_url}}
-
-Best regards,
-Soroban Security Scanner`,
+        name: t('notification_service.templates.scan_completed.name'),
+        description: t('notification_service.templates.scan_completed.description'),
+        subjectTemplate: t('notification_service.templates.scan_completed.subject'),
+        bodyTemplate: t('notification_service.templates.scan_completed.body'),
         supportedChannels: [NotificationChannel.EMAIL, NotificationChannel.IN_APP],
         defaultPriority: NotificationPriority.NORMAL,
         variables: [

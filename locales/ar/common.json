@@ -1,0 +1,121 @@
+{
+  "scanner": {
+    "name": "ماسح الأمان سوروبان",
+    "description": "ماسح أمان للعقود الذكية سوروبان",
+    "version": "1.0.0"
+  },
+  "commands": {
+    "scan": {
+      "description": "البحث عن ثغرات أمنية",
+      "starting": "🔍 بدء ماسح الأمان سوروبان...",
+      "emergency_stop_enabled": "🛑 نظام التوقف الطوارئ مفعّل",
+      "notifications_enabled": "📬 الإشعارات مفعّلة",
+      "scan_stopped": "⚠️  تم إيقاف الفحص بسبب حالة طوارئ",
+      "partial_results": "📊 نتائج جزئية: تم العثور على {{count}} ثغرة",
+      "report_saved": "📄 تم حفظ التقرير في {{file}}",
+      "notifications_sent": "📬 تم إرسال إشعارات الفحص بنجاح",
+      "some_notifications_failed": "⚠️  فشلت بعض الإشعارات: {{channels}}",
+      "notification_error": "❌ فشل في إرسال الإشعارات: {{error}}",
+      "error": "❌ خطأ: {{error}}"
+    },
+    "emergency_stop": {
+      "description": "إدارة التوقف الطوارئ",
+      "triggered": "🛑 تم تفعيل التوقف الطوارئ: {{reason}}",
+      "manual_trigger": "🛑 تم تفعيل التوقف الطوارئ: {{reason}}",
+      "status_active": "🔴 التوقف الطوارئ نشط",
+      "status_inactive": "🟢 التوقف الطوارئ غير نشط",
+      "testing": "🧪 اختبار وظيفة التوقف الطوارئ...",
+      "test_initial_failed": "❌ يجب أن يكون التوقف الطوارئ غير نشط في البداية",
+      "test_trigger_failed": "❌ يجب أن يكون التوقف الطوارئ نشطًا بعد التفعيل",
+      "test_passed": "✅ اجتاز اختبار التوقف الطوارئ"
+    },
+    "notifications": {
+      "description": "إدارة خدمة الإشعارات",
+      "test": {
+        "description": "اختبار خدمة الإشعارات",
+        "sent": "✅ تم إرسال إشعار الاختبار بنجاح",
+        "delivered_to": "📬 تم التسليم إلى: {{channels}}",
+        "failed": "❌ فشل إشعار الاختبار",
+        "failed_channels": "قنوات فاشلة: {{channels}}",
+        "test_failed": "❌ فشل الاختبار: {{error}}"
+      },
+      "templates": {
+        "description": "قائمة قوالب الإشعارات المتاحة",
+        "available": "📋 القوالب المتاحة:",
+        "template_info": "📄 {{name}} ({{id}})",
+        "no_description": "لا يوجد وصف",
+        "channels": "القنوات: {{channels}}",
+        "variables": "المتغيرات: {{variables}}",
+        "list_failed": "❌ فشل في عرض القوالب: {{error}}"
+      },
+      "in_app": {
+        "list": {
+          "description": "قائمة الإشعارات داخل التطبيق للمستخدم",
+          "notifications_for": "📬 الإشعارات داخل التطبيق لـ {{userId}}:",
+          "no_notifications": "لا توجد إشعارات",
+          "list_failed": "❌ فشل في عرض الإشعارات: {{error}}"
+        }
+      },
+      "provider_health": "🏥 صحة المزود:",
+      "provider_stats": "📊 إحصائيات المزود:",
+      "stats_info": "{{channel}}: {{sent}} تم الإرسال، {{failed}} فشل"
+    }
+  },
+  "reporter": {
+    "no_vulnerabilities": "✅ لم يتم العثور على ثغرات هجوم قائمة على الوقت!",
+    "found_vulnerabilities": "🚨 تم العثور على {{count}} ثغرة هجوم قائمة على الوقت:",
+    "severity": "شدة {{severity}} ({{count}}):",
+    "file": "ملف: {{file}}:{{line}}",
+    "code": "الكود: {{code}}",
+    "recommendations": "📋 التوصيات:",
+    "high_priority": "أولوية عالية:",
+    "medium_priority": "أولوية متوسطة:",
+    "general_protection": "تدابير الحماية العامة:",
+    "timestamp_validation": "تنفيذ التحقق من الطوابع الزمنية باستخدام أوراكل موثوقة",
+    "timestamp_bounds": "إضافة حدود دنيا/قصوى للطوابع الزمنية",
+    "block_heights": "استخدام ارتفاعات الكتل بدلاً من الطوابع الزمنية عند الإمكان",
+    "replay_protection": "تنفيذ الحماية ضد هجمات إعادة التشغيل",
+    "timestamp_drift": "إضافة تسامح انحراف الطابع الزمني",
+    "time_window": "تنفيذ التحقق من نافذة الوقت",
+    "monotonic_counters": "استخدام عدادات رتيبة للعمليات الحاسمة",
+    "validate_ranges": "التحقق من نطاقات الطوابع الزمنية دائمًا",
+    "multiple_sources": "استخدام مصادر زمنية متعددة عند الإمكان",
+    "rate_limiting": "تنفيذ تحديد المعدل للعمليات الحساسة للوقت",
+    "consider_blocks": "النظر في استخدام أرقام الكتل بدلاً من الطوابع الزمنية"
+  },
+  "notification_service": {
+    "initialized": "📬 تم تهيئة خدمة الإشعارات",
+    "templates": {
+      "vulnerability_alert": {
+        "name": "تنبيه الثغرة",
+        "description": "قالب لإشعارات الثغرات",
+        "subject": "🚨 تم العثور على ثغرة {{severity}} في {{contract_name}}",
+        "body": "مرحباً {{user_name}}،\n\nتم اكتشاف ثغرة {{severity}} في عقودك الذكية:\n\nالعقد: {{contract_name}}\nالنوع: {{vulnerability_type}}\nالوصف: {{description}}\nنقاط المخاطرة: {{risk_score}}\n\n{{#critical}}⚠️ هذه ثغرة حرجة تتطلب اهتمامًا فوريًا!\n{{/critical}}\n\nيرجى مراجعة تقرير الفحص الكامل على: {{report_url}}\n\nمع أطيب التحيات،\nماسح الأمان سوروبان"
+      },
+      "scan_completed": {
+        "name": "اكتمل الفحص",
+        "description": "قالب لإشعارات اكتمال الفحص",
+        "subject": "✅ اكتمل فحص الأمان لـ {{file_path}}",
+        "body": "مرحباً {{user_name}}،\n\nاكتمل فحص الأمان الخاص بك:\n\nالملف: {{file_path}}\nإجمالي المشاكل: {{total_issues}}\nحرج: {{critical_count}}\nعالي: {{high_count}}\nمتوسط: {{medium_count}}\n\n{{#has_issues}}⚠️ تم العثور على مشاكل تتطلب اهتمامك. يرجى مراجعة التقرير المفصل.\n{{/has_issues}}{{^has_issues}}✅ لم يتم العثور على مشاكل أمنية! عقدك يبدو آمنًا.\n{{/has_issues}}\n\nعرض النتائج الكاملة على: {{report_url}}\n\nمع أطيب التحيات،\nماسح الأمان سوروبان"
+      }
+    }
+  },
+  "errors": {
+    "deprecated_usage": "⚠️  استخدام الوسيطة المباشرة مهمل. استخدم الأمر \"scan\" بدلاً من ذلك.",
+    "template_not_found": "القالب غير موجود: {{id}}",
+    "compilation_failed": "فشل تجميع القالب: {{error}}",
+    "render_failed": "فشل عرض القالب: {{error}}",
+    "invalid_template": "لا يمكن أن يكون قالب النص فارغًا",
+    "variable_not_found": "المتغير المطلوب '{{variable}}' غير موجود في القالب",
+    "missing_variable": "المتغير المطلوب '{{variable}}' مفقود من السياق"
+  },
+  "formats": {
+    "currency": {
+      "USD": "ar-SA"
+    },
+    "date": {
+      "short": "ar-SA",
+      "long": "ar-SA"
+    }
+  }
+}

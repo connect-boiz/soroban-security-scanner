@@ -1,4 +1,5 @@
 const chalk = require('chalk');
+const { t } = require('./i18n/config');
 
 class SecurityReporter {
   generate(vulnerabilities, format = 'text') {
@@ -12,22 +13,22 @@ class SecurityReporter {
     let report = '';
     
     if (vulnerabilities.length === 0) {
-      report += chalk.green('✅ No time-based attack vulnerabilities found!\n');
+      report += chalk.green(t('reporter.no_vulnerabilities') + '\n');
       return report;
     }
 
-    report += chalk.red(`🚨 Found ${vulnerabilities.length} time-based attack vulnerabilities:\n\n`);
+    report += chalk.red(t('reporter.found_vulnerabilities', { count: vulnerabilities.length }) + '\n\n');
 
     const groupedVulns = this.groupBySeverity(vulnerabilities);
     
     for (const [severity, vulns] of Object.entries(groupedVulns)) {
       const color = this.getSeverityColor(severity);
-      report += color(`${severity} SEVERITY (${vulns.length}):\n`);
+      report += color(t('reporter.severity', { severity, count: vulns.length }) + '\n');
       
       for (const vuln of vulns) {
         report += color(`  └── [${vuln.type}] ${vuln.description}\n`);
-        report += chalk.gray(`     File: ${vuln.file}:${vuln.line}\n`);
-        report += chalk.yellow(`     Code: ${vuln.code}\n\n`);
+        report += chalk.gray(t('reporter.file', { file: vuln.file, line: vuln.line }) + '\n');
+        report += chalk.yellow(t('reporter.code', { code: vuln.code }) + '\n\n');
       }
     }
 
@@ -78,28 +79,28 @@ class SecurityReporter {
   }
 
   generateRecommendations(groupedVulns) {
-    let recommendations = chalk.blue('📋 RECOMMENDATIONS:\n\n');
+    let recommendations = chalk.blue(t('reporter.recommendations') + '\n\n');
     
     if (groupedVulns.HIGH) {
-      recommendations += chalk.red('HIGH PRIORITY:\n');
-      recommendations += '1. Implement timestamp validation using trusted oracles\n';
-      recommendations += '2. Add minimum/maximum timestamp bounds\n';
-      recommendations += '3. Use block heights instead of timestamps when possible\n';
-      recommendations += '4. Implement replay attack protection\n\n';
+      recommendations += chalk.red(t('reporter.high_priority') + '\n');
+      recommendations += '1. ' + t('reporter.timestamp_validation') + '\n';
+      recommendations += '2. ' + t('reporter.timestamp_bounds') + '\n';
+      recommendations += '3. ' + t('reporter.block_heights') + '\n';
+      recommendations += '4. ' + t('reporter.replay_protection') + '\n\n';
     }
     
     if (groupedVulns.MEDIUM) {
-      recommendations += chalk.yellow('MEDIUM PRIORITY:\n');
-      recommendations += '1. Add timestamp drift tolerance\n';
-      recommendations += '2. Implement time window validation\n';
-      recommendations += '3. Use monotonic counters for critical operations\n\n';
+      recommendations += chalk.yellow(t('reporter.medium_priority') + '\n');
+      recommendations += '1. ' + t('reporter.timestamp_drift') + '\n';
+      recommendations += '2. ' + t('reporter.time_window') + '\n';
+      recommendations += '3. ' + t('reporter.monotonic_counters') + '\n\n';
     }
     
-    recommendations += chalk.blue('GENERAL PROTECTION MEASURES:\n');
-    recommendations += '• Always validate timestamp ranges\n';
-    recommendations += '• Use multiple time sources when possible\n';
-    recommendations += '• Implement rate limiting for time-sensitive operations\n';
-    recommendations += '• Consider using block numbers instead of timestamps\n';
+    recommendations += chalk.blue(t('reporter.general_protection') + '\n');
+    recommendations += '• ' + t('reporter.validate_ranges') + '\n';
+    recommendations += '• ' + t('reporter.multiple_sources') + '\n';
+    recommendations += '• ' + t('reporter.rate_limiting') + '\n';
+    recommendations += '• ' + t('reporter.consider_blocks') + '\n';
     
     return recommendations;
   }
