@@ -2,10 +2,18 @@
 
 use clap::{Parser, Subcommand};
 use colored::*;
-use stellar_security_scanner::{scanners::{SecurityScanner, InvariantScanner}, analysis::AnalysisResult, report::{SecurityReport, ReportFormat}, config::ScannerConfig, kubernetes::{K8sScanManager, ScanPodConfig, ScanAutoScaler}, time_travel_debugger::{TimeTravelDebugger, TimeTravelConfig, ForkedState, TestResult}, differential_fuzzing::{DifferentialFuzzer, DifferentialFuzzingConfig, SdkVersion}};
+use stellar_security_scanner::{
+    scanners::{SecurityScanner, InvariantScanner}, 
+    analysis::AnalysisResult, 
+    report::{SecurityReport, ReportFormat}, 
+    config::ScannerConfig, 
+    kubernetes::{K8sScanManager, ScanPodConfig, ScanAutoScaler}, 
+    time_travel_debugger::{TimeTravelDebugger, TimeTravelConfig, ForkedState, TestResult}, 
+    differential_fuzzing::{DifferentialFuzzer, DifferentialFuzzingConfig, SdkVersion},
+    error::{ScannerError, ScannerResult, ErrorHandler, ErrorContext, IntoScannerError}
+};
 use std::path::PathBuf;
 use std::time::{Instant, Duration};
-use anyhow::Result;
 use uuid;
 
 #[derive(Parser)]
@@ -530,48 +538,168 @@ enum DifferentialFuzzingAction {
     },
 }
 
-fn main() -> Result<()> {
-    let cli = Cli::parse();
-    
-    match cli.command {
+fn main() -> std::process::ExitCode {
+    // Initialize error handler
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(e) => {
+            eprintln!("{} {}", "❌".red().bold(), e.to_string().red());
+            eprintln!("\n{}", "💡 Use --help for usage information".yellow());
+            return std::process::ExitCode::from(2);
+        }
+    };
+
+    // Determine verbosity for error handler
+    let verbose = match &cli.command {
+        Commands::Security { verbose, .. } |
+        Commands::Invariants { verbose, .. } |
+        Commands::Scan { verbose, .. } |
+        Commands::K8sScan { verbose, .. } => *verbose,
+        _ => false,
+    };
+
+    let error_handler = ErrorHandler::new(verbose);
+
+    // Execute command with proper error handling
+    let result = match cli.command {
         Commands::Security { path, format, output, config, verbose } => {
             run_security_scan(path, format, output, config, verbose)
+                .map_err(|e| convert_anyhow_error(e, "security_scan"))
         }
         Commands::Invariants { path, format, output, config, verbose } => {
             run_invariant_scan(path, format, output, config, verbose)
+                .map_err(|e| convert_anyhow_error(e, "invariant_scan"))
         }
         Commands::Scan { path, format, output, config, verbose } => {
             run_comprehensive_scan(path, format, output, config, verbose)
+                .map_err(|e| convert_anyhow_error(e, "comprehensive_scan"))
         }
         Commands::Init { path } => {
             generate_config(path)
+                .map_err(|e| convert_anyhow_error(e, "config_generation"))
         }
         Commands::ListChecks { severity } => {
             list_vulnerability_checks(severity)
+                .map_err(|e| convert_anyhow_error(e, "list_vulnerabilities"))
         }
         Commands::ListInvariants { severity } => {
             list_invariant_rules(severity)
+                .map_err(|e| convert_anyhow_error(e, "list_invariants"))
         }
         Commands::K8sScan { path, format, output, config, verbose, cpu_limit, memory_limit, timeout } => {
             run_k8s_scan(path, format, output, config, verbose, cpu_limit, memory_limit, timeout)
+                .map_err(|e| convert_anyhow_error(e, "k8s_scan"))
         }
         Commands::K8sManage { action } => {
             run_k8s_management(action)
+                .map_err(|e| convert_anyhow_error(e, "k8s_management"))
         }
         Commands::TimeTravel { action } => {
             run_time_travel_action(action)
+                .map_err(|e| convert_anyhow_error(e, "time_travel"))
         }
         Commands::DifferentialFuzzing { action } => {
             run_differential_fuzzing_action(action)
+                .map_err(|e| convert_anyhow_error(e, "differential_fuzzing"))
         }
         Commands::Batch { action } => {
             run_batch_action(action)
+                .map_err(|e| convert_anyhow_error(e, "batch_operation"))
+        }
+    };
+
+    match result {
+        Ok(_) => std::process::ExitCode::SUCCESS,
+        Err(error) => {
+            let exit_code = error_handler.handle_error(&error);
+            std::process::ExitCode::from(exit_code as u8)
         }
     }
 }
 
-fn run_security_scan(path: PathBuf, format: String, output: Option<PathBuf>, config_path: Option<PathBuf>, verbose: bool) -> Result<()> {
-    println!("{}", "🔍 Starting Stellar Security Scan".bold().cyan());
+/// Convert anyhow errors to ScannerError with context and enhanced error recovery
+fn convert_anyhow_error(error: anyhow::Error, operation: &str) -> ScannerError {
+    let context = ErrorContext::new(operation, "main");
+    
+    // Try to extract specific error types with enhanced handling
+    if let Some(io_error) = error.downcast_ref::<std::io::Error>() {
+        let message = match io_error.kind() {
+            std::io::ErrorKind::NotFound => "File or directory not found".to_string(),
+            std::io::ErrorKind::PermissionDenied => "Permission denied".to_string(),
+            std::io::ErrorKind::ConnectionRefused => "Network connection refused".to_string(),
+            std::io::ErrorKind::ConnectionTimedOut => "Network connection timed out".to_string(),
+            std::io::ErrorKind::InvalidInput => "Invalid input provided".to_string(),
+            _ => format!("I/O error: {}", io_error),
+        };
+        return ScannerError::FileError {
+            path: "unknown".to_string(),
+            source: io_error.clone(),
+        };
+    }
+    
+    if let Some(parse_error) = error.downcast_ref::<serde_json::Error>() {
+        return ScannerError::ParseError {
+            message: format!("Parse error in {}: Invalid JSON/TOML format", operation),
+            source: parse_error.clone(),
+        };
+    }
+    
+    if let Some(toml_error) = error.downcast_ref::<toml::de::Error>() {
+        return ScannerError::ParseError {
+            message: format!("TOML parse error in {}: {}", operation, toml_error),
+            source: std::io::Error::new(std::io::ErrorKind::InvalidData, toml_error.to_string()),
+        };
+    }
+    
+    if let Some(regex_error) = error.downcast_ref::<regex::Error>() {
+        return ScannerError::InitializationError {
+            message: format!("Invalid regex pattern in {}: {}", operation, regex_error),
+        };
+    }
+    
+    // Handle network-related errors
+    if error.to_string().contains("network") || error.to_string().contains("connection") {
+        return ScannerError::NetworkError {
+            operation: operation.to_string(),
+            source: reqwest::Error::from(std::io::Error::new(
+                std::io::ErrorKind::ConnectionRefused, 
+                error.to_string()
+            )),
+        };
+    }
+    
+    // Handle timeout errors
+    if error.to_string().contains("timeout") || error.to_string().contains("timed out") {
+        return ScannerError::TimeoutError { seconds: 300 };
+    }
+    
+    // Default to internal error for unhandled cases with sanitized message
+    let sanitized_message = if error.to_string().len() > 200 {
+        format!("{}: {}...", operation, &error.to_string()[..200])
+    } else {
+        format!("{}: {}", operation, error)
+    };
+    
+    ScannerError::InternalError {
+        message: sanitized_message,
+    }
+}
+
+fn run_security_scan(path: PathBuf, format: String, output: Option<PathBuf>, config_path: Option<PathBuf>, verbose: bool) -> ScannerResult<()> {
+    println!("🔍 Starting Stellar Security Scan".bold().cyan());
+    
+    // Validate input parameters
+    if !path.exists() {
+        return Err(ScannerError::ValidationError {
+            message: format!("Path does not exist: {}", path.display()),
+        });
+    }
+    
+    if !path.is_dir() {
+        return Err(ScannerError::ValidationError {
+            message: format!("Path is not a directory: {}", path.display()),
+        });
+    }
     
     let config = load_config(config_path)?;
     let scanner = SecurityScanner::new()?;
@@ -585,20 +713,41 @@ fn run_security_scan(path: PathBuf, format: String, output: Option<PathBuf>, con
     }
     
     let start_time = Instant::now();
-    let results = scanner.scan_directory(&path)?;
+    
+    // Enhanced error handling for scanning
+    let results = scanner.scan_directory(&path).map_err(|e| {
+        match e {
+            ScannerError::FileError { .. } => e,
+            _ => ScannerError::InternalError {
+                message: format!("Failed to scan directory: {}", e.user_message()),
+            },
+        }
+    })?;
+    
     let scan_duration = start_time.elapsed().as_millis() as u64;
     
     if verbose {
         println!("Scanned {} files in {}ms", results.len(), scan_duration);
     }
     
+    // Validate scan results
+    if results.is_empty() {
+        println!("⚠️  No Rust files found to scan");
+        return Ok(());
+    }
+    
     // Combine results for analysis
     let analysis = AnalysisResult::new(results, scan_duration);
     
-    // Generate report
+    // Generate report with error handling
     let report_format = parse_report_format(&format)?;
     let report = SecurityReport::new(report_format);
-    report.generate(&analysis, output.as_deref())?;
+    
+    report.generate(&analysis, output.as_deref()).map_err(|e| {
+        ScannerError::InternalError {
+            message: format!("Failed to generate report: {}", e),
+        }
+    })?;
     
     // Exit with error code if critical issues found
     if analysis.risk_score.risk_level == stellar_security_scanner::analysis::RiskLevel::Critical {
@@ -608,7 +757,7 @@ fn run_security_scan(path: PathBuf, format: String, output: Option<PathBuf>, con
     Ok(())
 }
 
-fn run_invariant_scan(path: PathBuf, format: String, output: Option<PathBuf>, config_path: Option<PathBuf>, verbose: bool) -> Result<()> {
+fn run_invariant_scan(path: PathBuf, format: String, output: Option<PathBuf>, config_path: Option<PathBuf>, verbose: bool) -> ScannerResult<()> {
     println!("{}", "🔒 Starting Stellar Invariant Scan".bold().cyan());
     
     let config = load_config(config_path)?;
@@ -641,7 +790,7 @@ fn run_invariant_scan(path: PathBuf, format: String, output: Option<PathBuf>, co
     Ok(())
 }
 
-fn run_comprehensive_scan(path: PathBuf, format: String, output: Option<PathBuf>, config_path: Option<PathBuf>, verbose: bool) -> Result<()> {
+fn run_comprehensive_scan(path: PathBuf, format: String, output: Option<PathBuf>, config_path: Option<PathBuf>, verbose: bool) -> ScannerResult<()> {
     println!("{}", "🚀 Starting Comprehensive Stellar Security & Invariant Scan".bold().cyan());
     
     let config = load_config(config_path)?;
@@ -696,7 +845,7 @@ fn run_comprehensive_scan(path: PathBuf, format: String, output: Option<PathBuf>
     Ok(())
 }
 
-fn generate_config(path: PathBuf) -> Result<()> {
+fn generate_config(path: PathBuf) -> ScannerResult<()> {
     println!("📝 Generating default configuration file: {}", path.display());
     
     let config = ScannerConfig::default();
@@ -708,7 +857,7 @@ fn generate_config(path: PathBuf) -> Result<()> {
     Ok(())
 }
 
-fn list_vulnerability_checks(severity_filter: Option<String>) -> Result<()> {
+fn list_vulnerability_checks(severity_filter: Option<String>) -> ScannerResult<()> {
     println!("{}", "🚨 Available Vulnerability Checks".bold().red());
     println!("{}", "═".repeat(50).red());
     
@@ -767,7 +916,7 @@ fn list_vulnerability_checks(severity_filter: Option<String>) -> Result<()> {
     Ok(())
 }
 
-fn list_invariant_rules(severity_filter: Option<String>) -> Result<()> {
+fn list_invariant_rules(severity_filter: Option<String>) -> ScannerResult<()> {
     println!("{}", "🔒 Available Invariant Rules".bold().yellow());
     println!("{}", "═".repeat(50).yellow());
     
@@ -822,7 +971,7 @@ fn list_invariant_rules(severity_filter: Option<String>) -> Result<()> {
     Ok(())
 }
 
-fn load_config(config_path: Option<PathBuf>) -> Result<ScannerConfig> {
+fn load_config(config_path: Option<PathBuf>) -> ScannerResult<ScannerConfig> {
     match config_path {
         Some(path) => {
             if path.exists() {
@@ -852,13 +1001,15 @@ fn load_config(config_path: Option<PathBuf>) -> Result<ScannerConfig> {
     }
 }
 
-fn parse_report_format(format: &str) -> Result<ReportFormat> {
+fn parse_report_format(format: &str) -> ScannerResult<ReportFormat> {
     match format.to_lowercase().as_str() {
         "console" => Ok(ReportFormat::Console),
         "json" => Ok(ReportFormat::Json),
         "html" => Ok(ReportFormat::Html),
         "markdown" | "md" => Ok(ReportFormat::Markdown),
-        _ => anyhow::bail!("Invalid output format: {}. Use: console, json, html, markdown", format),
+        _ => Err(ScannerError::ValidationError {
+            message: format!("Invalid output format: {}. Use: console, json, html, markdown", format),
+        }),
     }
 }
 
@@ -871,10 +1022,14 @@ fn run_k8s_scan(
     cpu_limit: String,
     memory_limit: String,
     timeout: u64,
-) -> Result<()> {
+) -> ScannerResult<()> {
     println!("{}", "🚀 Starting Kubernetes Isolated Scan".bold().cyan());
     
-    let rt = tokio::runtime::Runtime::new()?;
+    let rt = tokio::runtime::Runtime::new()
+        .map_err(|e| ScannerError::InternalError {
+            message: format!("Failed to create async runtime: {}", e),
+        })?;
+    
     rt.block_on(async {
         // Load configuration
         let config = load_config(config_path)?;
@@ -927,14 +1082,20 @@ fn run_k8s_scan(
             }
         }
         
-        Ok::<(), anyhow::Error>(())
-    })
+        Ok::<(), ScannerError>(())
+    }).map_err(|e| ScannerError::InternalError {
+        message: format!("K8s scan failed: {}", e),
+    })?;
+    Ok(())
 }
 
-fn run_k8s_management(action: K8sAction) -> Result<()> {
+fn run_k8s_management(action: K8sAction) -> ScannerResult<()> {
     println!("{}", "⚙️  Kubernetes Scan Management".bold().cyan());
     
-    let rt = tokio::runtime::Runtime::new()?;
+    let rt = tokio::runtime::Runtime::new()
+        .map_err(|e| ScannerError::InternalError {
+            message: format!("Failed to create async runtime: {}", e),
+        })?;
     rt.block_on(async {
         let manager = K8sScanManager::new(Default::default()).await?;
         
@@ -969,14 +1130,20 @@ fn run_k8s_management(action: K8sAction) -> Result<()> {
             }
         }
         
-        Ok::<(), anyhow::Error>(())
-    })
+        Ok::<(), ScannerError>(())
+    }).map_err(|e| ScannerError::InternalError {
+        message: format!("K8s management failed: {}", e),
+    })?;
+    Ok(())
 }
 
-fn run_time_travel_action(action: TimeTravelAction) -> Result<()> {
+fn run_time_travel_action(action: TimeTravelAction) -> ScannerResult<()> {
     println!("{}", "⏰ Time Travel Debugger".bold().cyan());
     
-    let rt = tokio::runtime::Runtime::new()?;
+    let rt = tokio::runtime::Runtime::new()
+        .map_err(|e| ScannerError::InternalError {
+            message: format!("Failed to create async runtime: {}", e),
+        })?;
     rt.block_on(async {
         match action {
             TimeTravelAction::Fork { ledger_sequence, rpc_url, network_passphrase, cache_size } => {
@@ -1135,11 +1302,14 @@ fn run_time_travel_action(action: TimeTravelAction) -> Result<()> {
             }
         }
         
-        Ok::<(), anyhow::Error>(())
-    })
+        Ok::<(), ScannerError>(())
+    }).map_err(|e| ScannerError::InternalError {
+        message: format!("Time travel action failed: {}", e),
+    })?;
+    Ok(())
 }
 
-fn run_batch_action(action: BatchAction) -> Result<()> {
+fn run_batch_action(action: BatchAction) -> ScannerResult<()> {
     println!("{}", "⚡ Batch Operations".bold().cyan());
     
     // Initialize batch operations
@@ -1304,7 +1474,7 @@ fn run_batch_action(action: BatchAction) -> Result<()> {
     Ok(())
 }
 
-fn run_differential_fuzzing_action(action: DifferentialFuzzingAction) -> Result<()> {
+fn run_differential_fuzzing_action(action: DifferentialFuzzingAction) -> ScannerResult<()> {
     println!("{}", "🔄 Differential Fuzzing".bold().cyan());
     println!("Differential fuzzing functionality is now integrated!");
     println!("Use the various subcommands to run comprehensive analysis.");

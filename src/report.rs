@@ -25,6 +25,11 @@ impl SecurityReport {
     }
 
     pub fn generate(&self, analysis: &AnalysisResult, output_path: Option<&Path>) -> anyhow::Result<()> {
+        // Validate analysis data
+        if analysis.scan_summary.total_files_scanned == 0 {
+            println!("⚠️  No files were scanned in the analysis");
+        }
+        
         match self.format {
             ReportFormat::Console => self.generate_console_report(analysis),
             ReportFormat::Json => self.generate_json_report(analysis, output_path),
@@ -161,12 +166,22 @@ impl SecurityReport {
     }
 
     fn generate_json_report(&self, analysis: &AnalysisResult, output_path: Option<&Path>) -> anyhow::Result<()> {
-        let json = serde_json::to_string_pretty(analysis)?;
+        let json = serde_json::to_string_pretty(analysis)
+            .map_err(|e| anyhow::anyhow!("Failed to serialize JSON report: {}", e))?;
         
         match output_path {
             Some(path) => {
-                fs::write(path, json)?;
-                println!("JSON report saved to: {}", path.display());
+                // Validate output path
+                if let Some(parent) = path.parent() {
+                    if !parent.exists() {
+                        fs::create_dir_all(parent)
+                            .map_err(|e| anyhow::anyhow!("Failed to create output directory {}: {}", parent.display(), e))?;
+                    }
+                }
+                
+                fs::write(path, json)
+                    .map_err(|e| anyhow::anyhow!("Failed to write JSON report to {}: {}", path.display(), e))?;
+                println!("✅ JSON report saved to: {}", path.display());
             }
             None => {
                 println!("{}", json);
@@ -181,11 +196,21 @@ impl SecurityReport {
         
         match output_path {
             Some(path) => {
-                fs::write(path, html)?;
-                println!("HTML report saved to: {}", path.display());
+                // Validate output path
+                if let Some(parent) = path.parent() {
+                    if !parent.exists() {
+                        fs::create_dir_all(parent)
+                            .map_err(|e| anyhow::anyhow!("Failed to create output directory {}: {}", parent.display(), e))?;
+                    }
+                }
+                
+                fs::write(path, html)
+                    .map_err(|e| anyhow::anyhow!("Failed to write HTML report to {}: {}", path.display(), e))?;                
+                println!("✅ HTML report saved to: {}", path.display());
             }
             None => {
-                println!("HTML report generated (no output path specified)");
+                println!("⚠️  HTML report content is too large for console output. Please specify an output file.");
+                println!("💡 Use: --output report.html --format html");
             }
         }
         
@@ -359,8 +384,17 @@ impl SecurityReport {
         
         match output_path {
             Some(path) => {
-                fs::write(path, markdown)?;
-                println!("Markdown report saved to: {}", path.display());
+                // Validate output path
+                if let Some(parent) = path.parent() {
+                    if !parent.exists() {
+                        fs::create_dir_all(parent)
+                            .map_err(|e| anyhow::anyhow!("Failed to create output directory {}: {}", parent.display(), e))?;
+                    }
+                }
+                
+                fs::write(path, markdown)
+                    .map_err(|e| anyhow::anyhow!("Failed to write Markdown report to {}: {}", path.display(), e))?;
+                println!("✅ Markdown report saved to: {}", path.display());
             }
             None => {
                 println!("{}", markdown);

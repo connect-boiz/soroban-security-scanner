@@ -294,14 +294,14 @@ impl K8sScanManager {
                     ..Default::default()
                 },
             ]),
-            volume_mounts: vec![
+            volume_mounts: Some(vec![
                 VolumeMount {
                     name: "var-log".to_string(),
                     mount_path: "/var/log".to_string(),
                     read_only: Some(true),
                     ..Default::default()
                 }
-            ],
+            ]),
             ..Default::default()
         };
         

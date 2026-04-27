@@ -109,6 +109,26 @@ impl SecurityAnalyzer {
     /// - All findings include line/column/function for reproducibility
     /// - Recommend correlating scan ID with system audit logs
     pub fn analyze(&self, code: &str, filename: &str) -> Result<ScanReport> {
+        // Enhanced input validation
+        if code.is_empty() {
+            return Err(anyhow::anyhow!("Code input is empty for file: {}", filename));
+        }
+        
+        if filename.is_empty() {
+            return Err(anyhow::anyhow!("Filename cannot be empty"));
+        }
+        
+        // Check for extremely large input to prevent memory exhaustion
+        const MAX_CODE_SIZE: usize = 10 * 1024 * 1024; // 10MB limit
+        if code.len() > MAX_CODE_SIZE {
+            return Err(anyhow::anyhow!(
+                "Code input too large ({} bytes) for file: {}. Maximum allowed: {} bytes",
+                code.len(),
+                filename,
+                MAX_CODE_SIZE
+            ));
+        }
+        
         let scan_id = uuid::Uuid::new_v4().to_string();
         debug!(
             "Starting security analysis: scan_id={}, filename={}, code_size={}",
@@ -119,44 +139,80 @@ impl SecurityAnalyzer {
 
         let mut vulnerabilities = Vec::new();
 
-        // Parse the code into AST - SECURITY: Fails on invalid syntax
+        // Parse the code into AST - Enhanced error handling
         let ast = parse_str::<syn::File>(code).map_err(|e| {
             error!(
-                "Failed to parse code (scan_id={}): {}",
-                scan_id, e
+                "Failed to parse code (scan_id={}, filename={}): {}",
+                scan_id, filename, e
             );
-            anyhow::anyhow!("Failed to parse code: {}", e)
+            
+            // Provide more helpful error messages
+            let error_msg = if e.to_string().contains("unexpected token") {
+                format!("Syntax error in {}: Invalid Rust syntax - unexpected token found", filename)
+            } else if e.to_string().contains("unclosed") {
+                format!("Syntax error in {}: Unclosed delimiter (bracket, brace, or parenthesis)", filename)
+            } else if e.to_string().contains("expected") {
+                format!("Syntax error in {}: Missing expected syntax element", filename)
+            } else {
+                format!("Failed to parse Rust code in {}: {}", filename, e)
+            };
+            
+            anyhow::anyhow!(error_msg)
         })?;
 
-        // Perform pattern matching - SECURITY: Runs regex on each line
-        debug!(\"Running pattern matching analysis (scan_id={})\", scan_id);
-        vulnerabilities.extend(self.pattern_match_analysis(code, filename)?);
+        // Perform pattern matching - Enhanced error handling
+        debug!("Running pattern matching analysis (scan_id={})", scan_id);
+        match self.pattern_match_analysis(code, filename) {
+            Ok(pattern_vulns) => vulnerabilities.extend(pattern_vulns),
+            Err(e) => {
+                error!("Pattern matching analysis failed (scan_id={}): {}", scan_id, e);
+                // Continue with other analyses even if pattern matching fails
+            }
+        }
 
-        // Perform AST analysis - SECURITY: Traverses entire AST
-        debug!(\"Running AST analysis (scan_id={})\", scan_id);
-        vulnerabilities.extend(self.ast_analysis(&ast, filename)?);
+        // Perform AST analysis - Enhanced error handling
+        debug!("Running AST analysis (scan_id={})", scan_id);
+        match self.ast_analysis(&ast, filename) {
+            Ok(ast_vulns) => vulnerabilities.extend(ast_vulns),
+            Err(e) => {
+                error!("AST analysis failed (scan_id={}): {}", scan_id, e);
+                // Continue with other analyses even if AST analysis fails
+            }
+        }
 
-        // Perform deep analysis if requested - SECURITY: Expensive, use with caution
+        // Perform deep analysis if requested - Enhanced error handling
         if self.deep_analysis {
-            debug!(\"Running deep control flow analysis (scan_id={})\", scan_id);
-            vulnerabilities.extend(self.deep_analysis_checks(&ast, filename)?);
+            debug!("Running deep control flow analysis (scan_id={})", scan_id);
+            match self.deep_analysis_checks(&ast, filename) {
+                Ok(deep_vulns) => vulnerabilities.extend(deep_vulns),
+                Err(e) => {
+                    error!("Deep analysis failed (scan_id={}): {}", scan_id, e);
+                    // Continue with other analyses
+                }
+            }
         }
 
-        // Perform invariant checking if requested - SECURITY: Uses heuristics
+        // Perform invariant checking if requested - Enhanced error handling
         if self.check_invariants {
-            debug!(\"Running invariant violation analysis (scan_id={})\", scan_id);
-            vulnerabilities.extend(self.invariant_analysis(&ast, filename)?);
+            debug!("Running invariant violation analysis (scan_id={})", scan_id);
+            match self.invariant_analysis(&ast, filename) {
+                Ok(invariant_vulns) => vulnerabilities.extend(invariant_vulns),
+                Err(e) => {
+                    error!("Invariant analysis failed (scan_id={}): {}", scan_id, e);
+                    // Continue with other analyses
+                }
+            }
         }
 
-        // Calculate metrics - SECURITY: Scores based on severity classification
+        // Calculate metrics - Enhanced error handling
         let metrics = self.calculate_metrics(&vulnerabilities, code);
 
         let risk_score = metrics
-            .get(\"risk_score\")
+            .get("risk_score")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
         debug!(
-            \"Scan completed (scan_id={}): found {} vulnerabilities, risk_score={}\",
+            "Scan completed (scan_id={}): found {} vulnerabilities, risk_score={}",
             scan_id,
             vulnerabilities.len(),
             risk_score
@@ -188,12 +244,32 @@ impl SecurityAnalyzer {
     fn pattern_match_analysis(&self, code: &str, filename: &str) -> Result<Vec<Vulnerability>> {
         let mut vulnerabilities = Vec::new();
         let lines: Vec<&str> = code.lines().collect();
+        
+        // Prevent excessive processing on very large files
+        const MAX_LINES: usize = 100_000;
+        if lines.len() > MAX_LINES {
+            return Err(anyhow::anyhow!(
+                "File too large for pattern matching: {} lines. Maximum allowed: {} lines",
+                lines.len(),
+                MAX_LINES
+            ));
+        }
 
         for pattern in &self.patterns {
+            // Validate pattern before use
+            if pattern.pattern.is_empty() {
+                continue; // Skip empty patterns
+            }
+            
             let regex = Regex::new(&pattern.pattern)
                 .map_err(|e| anyhow::anyhow!("Invalid regex pattern {}: {}", pattern.id, e))?;
 
             for (line_num, line) in lines.iter().enumerate() {
+                // Skip very long lines to prevent regex DoS
+                if line.len() > 10_000 {
+                    continue;
+                }
+                
                 if let Some(mat) = regex.find(line) {
                     let vulnerability = Vulnerability::new(
                         pattern.vulnerability_type.clone(),
