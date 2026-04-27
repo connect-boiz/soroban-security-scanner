@@ -2,12 +2,14 @@
 
 use crate::notification_service::types::{
     NotificationMessage, Recipient, NotificationChannel, DeliveryStatus, 
-    DeliveryTracking, ProviderConfig, NotificationResult
+    DeliveryTracking, ProviderConfig, NotificationResult, ProviderStats, ProviderError
 };
 use async_trait::async_trait;
 use chrono::Utc;
 use std::collections::HashMap;
 use uuid::Uuid;
+use lettre::{Message, SmtpTransport, Transport};
+use reqwest::Client;
 
 /// Trait for notification providers
 #[async_trait]
@@ -27,6 +29,116 @@ pub trait NotificationProvider: Send + Sync {
 
     /// Get provider statistics
     async fn get_stats(&self) -> ProviderStats;
+}
+
+/// SMTP client for email delivery
+pub struct SmtpClient {
+    transport: SmtpTransport,
+    from_email: String,
+    from_name: String,
+}
+
+impl SmtpClient {
+    pub fn new(config: &ProviderConfig) -> Result<Self, ProviderError> {
+        let smtp_host = config.config.get("smtp_host")
+            .ok_or_else(|| ProviderError::InvalidConfiguration("smtp_host missing".to_string()))?;
+        let smtp_port = config.config.get("smtp_port")
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(587);
+        let username = config.config.get("username")
+            .ok_or_else(|| ProviderError::InvalidConfiguration("username missing".to_string()))?;
+        let password = config.config.get("password")
+            .ok_or_else(|| ProviderError::InvalidConfiguration("password missing".to_string()))?;
+        let from_email = config.config.get("from_email")
+            .ok_or_else(|| ProviderError::InvalidConfiguration("from_email missing".to_string()))?;
+        let from_name = config.config.get("from_name")
+            .unwrap_or("Soroban Security Scanner");
+
+        let creds = lettre::transport::smtp::authentication::Credentials::new(username.clone(), password.clone());
+        
+        let transport = SmtpTransport::relay(smtp_host)
+            .map_err(|e| ProviderError::InvalidConfiguration(format!("SMTP configuration error: {}", e)))?
+            .port(smtp_port)
+            .credentials(creds)
+            .build();
+
+        Ok(Self {
+            transport,
+            from_email: from_email.clone(),
+            from_name: from_name.to_string(),
+        })
+    }
+
+    pub async fn send_email(&self, to: &str, subject: &str, body: &str) -> Result<String, ProviderError> {
+        let email = Message::builder()
+            .from(format!("{} <{}>", self.from_name, self.from_email).parse().unwrap())
+            .to(to.parse().unwrap())
+            .subject(subject)
+            .body(body.to_string())
+            .map_err(|e| ProviderError::InvalidConfiguration(format!("Email format error: {}", e)))?;
+
+        self.transport.send(&email)
+            .map(|_| Uuid::new_v4().to_string())
+            .map_err(|e| ProviderError::NetworkError(format!("SMTP send error: {}", e)))
+    }
+
+    pub async fn health_check(&self) -> Result<bool, ProviderError> {
+        // Simple health check - try to connect to SMTP server
+        match self.transport.test_connection() {
+            Ok(_) => Ok(true),
+            Err(_) => Ok(false),
+        }
+    }
+}
+
+/// SMS client for SMS delivery
+pub struct SmsClient {
+    client: Client,
+    account_sid: String,
+    auth_token: String,
+    from_number: String,
+}
+
+impl SmsClient {
+    pub fn new(config: &ProviderConfig) -> Result<Self, ProviderError> {
+        let account_sid = config.config.get("account_sid")
+            .ok_or_else(|| ProviderError::InvalidConfiguration("account_sid missing".to_string()))?;
+        let auth_token = config.config.get("auth_token")
+            .ok_or_else(|| ProviderError::InvalidConfiguration("auth_token missing".to_string()))?;
+        let from_number = config.config.get("from_number")
+            .ok_or_else(|| ProviderError::InvalidConfiguration("from_number missing".to_string()))?;
+
+        Ok(Self {
+            client: Client::new(),
+            account_sid: account_sid.clone(),
+            auth_token: auth_token.clone(),
+            from_number: from_number.to_string(),
+        })
+    }
+
+    pub async fn send_sms(&self, to: &str, body: &str) -> Result<String, ProviderError> {
+        let url = format!("https://api.twilio.com/2010-04-01/Accounts/{}/Messages.json", self.account_sid);
+        
+        let form_data = HashMap::from([
+            ("To", to),
+            ("From", &self.from_number),
+            ("Body", body),
+        ]);
+
+        let response = self.client
+            .post(&url)
+            .basic_auth(&self.account_sid, Some(&self.auth_token))
+            .form(&form_data)
+            .send()
+            .await
+            .map_err(|e| ProviderError::NetworkError(format!("SMS send error: {}", e)))?;
+
+        if response.status().is_success() {
+            Ok(Uuid::new_v4().to_string())
+        } else {
+            Err(ProviderError::NetworkError(format!("SMS API error: {}", response.status())))
+        }
+    }
 }
 
 /// Email notification provider
@@ -418,139 +530,83 @@ impl NotificationProvider for InAppProvider {
     }
 }
 
-/// Provider statistics
-#[derive(Debug, Clone)]
-pub struct ProviderStats {
-    pub channel: NotificationChannel,
-    pub total_sent: u64,
-    pub total_failed: u64,
-    pub average_delivery_time_ms: u64,
-    pub last_success: Option<chrono::DateTime<chrono::Utc>>,
-    pub last_failure: Option<chrono::DateTime<chrono::Utc>>,
+
+/// Push notification client
+pub struct PushClient {
+    fcm_key: Option<String>,
+    apns_key: Option<String>,
+    client: Client,
 }
-
-/// Provider errors
-#[derive(Debug, thiserror::Error)]
-pub enum ProviderError {
-    #[error("Provider is disabled")]
-    ProviderDisabled,
-    
-    #[error("Provider not configured")]
-    ProviderNotConfigured,
-    
-    #[error("Missing recipient data: {0}")]
-    MissingRecipientData(String),
-    
-    #[error("Configuration error: {0}")]
-    ConfigurationError(String),
-    
-    #[error("Rate limit exceeded")]
-    RateLimitExceeded,
-    
-    #[error("API error: {0}")]
-    ApiError(String),
-    
-    #[error("Network error: {0}")]
-    NetworkError(String),
-    
-    #[error("Authentication error")]
-    AuthenticationError,
-    
-    #[error("Invalid message format: {0}")]
-    InvalidMessageFormat(String),
-}
-
-// Mock implementations for client types (would be real implementations in production)
-#[derive(Debug)]
-struct SmtpClient;
-
-impl SmtpClient {
-    fn new(_config: &ProviderConfig) -> Result<Self, ProviderError> {
-        // In real implementation, would configure SMTP client
-        Ok(Self)
-    }
-    
-    async fn send_email(&self, _to: &str, _subject: &str, _body: &str) -> Result<String, ProviderError> {
-        // Mock implementation
-        Ok("email_id_123".to_string())
-    }
-    
-    async fn health_check(&self) -> Result<bool, ProviderError> {
-        Ok(true)
-    }
-}
-
-#[derive(Debug)]
-struct SmsClient;
-
-impl SmsClient {
-    fn new(_config: &ProviderConfig) -> Result<Self, ProviderError> {
-        // In real implementation, would configure SMS client (Twilio, etc.)
-        Ok(Self)
-    }
-    
-    async fn send_sms(&self, _to: &str, _body: &str) -> Result<String, ProviderError> {
-        // Mock implementation
-        Ok("sms_id_456".to_string())
-    }
-    
-    async fn health_check(&self) -> Result<bool, ProviderError> {
-        Ok(true)
-    }
-}
-
-#[derive(Debug)]
-struct PushClient;
 
 impl PushClient {
-    fn new(_config: &ProviderConfig) -> Result<Self, ProviderError> {
-        // In real implementation, would configure push client (FCM, APNS, etc.)
-        Ok(Self)
+    pub fn new(config: &ProviderConfig) -> Result<Self, ProviderError> {
+        let fcm_key = config.config.get("fcm_server_key").cloned();
+        let apns_key = config.config.get("apns_key_id").cloned();
+
+        Ok(Self {
+            fcm_key,
+            apns_key,
+            client: Client::new(),
+        })
     }
-    
-    async fn send_push(
-        &self, 
-        _token: &str, 
-        _title: &str, 
-        _body: &str, 
-        _data: &HashMap<String, String>
+
+    pub async fn send_push(
+        &self,
+        token: &str,
+        title: &str,
+        body: &str,
+        data: &HashMap<String, String>,
     ) -> Result<String, ProviderError> {
-        // Mock implementation
-        Ok("push_id_789".to_string())
+        // For now, mock implementation - would integrate with FCM/APNS in production
+        Ok(Uuid::new_v4().to_string())
     }
-    
-    async fn health_check(&self) -> Result<bool, ProviderError> {
+
+    pub async fn health_check(&self) -> Result<bool, ProviderError> {
         Ok(true)
     }
 }
 
-#[derive(Debug)]
-struct InAppStorage;
+/// In-app notification storage
+pub struct InAppStorage {
+    notifications: std::sync::Arc<tokio::sync::RwLock<Vec<InAppNotification>>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct InAppNotification {
+    pub id: String,
+    pub user_id: String,
+    pub title: String,
+    pub body: String,
+    pub data: HashMap<String, String>,
+    pub priority: NotificationPriority,
+    pub read: bool,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
+}
 
 impl InAppStorage {
-    fn new() -> Self {
-        Self
+    pub fn new() -> Self {
+        Self {
+            notifications: std::sync::Arc::new(tokio::sync::RwLock::new(Vec::new())),
+        }
     }
-    
-    async fn store_notification(&self, _notification: InAppNotification) -> Result<(), ProviderError> {
-        // Mock implementation - would store in database
+
+    pub async fn store_notification(&self, notification: InAppNotification) -> Result<(), ProviderError> {
+        let mut notifications = self.notifications.write().await;
+        notifications.push(notification);
         Ok(())
     }
-    
-    async fn health_check(&self) -> Result<bool, ProviderError> {
+
+    pub async fn get_user_notifications(&self, user_id: &str) -> Vec<InAppNotification> {
+        let notifications = self.notifications.read().await;
+        notifications
+            .iter()
+            .filter(|n| n.user_id == user_id)
+            .cloned()
+            .collect()
+    }
+
+    pub async fn health_check(&self) -> Result<bool, ProviderError> {
         Ok(true)
     }
-}
-
-#[derive(Debug)]
-struct InAppNotification {
-    id: String,
-    user_id: String,
-    title: String,
-    body: String,
-    data: HashMap<String, String>,
-    priority: crate::notification_service::types::NotificationPriority,
-    read: bool,
-    created_at: chrono::DateTime<chrono::Utc>,
-    expires_at: Option<chrono::DateTime<chrono::Utc>>,
 }

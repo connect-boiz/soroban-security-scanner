@@ -6,7 +6,8 @@ use crate::notification_service::{
     tracking::DeliveryTracker,
     types::{
         NotificationMessage, Recipient, NotificationChannel, NotificationResult,
-        TemplateContext, ProviderConfig, NotificationPriority
+        TemplateContext, ProviderConfig, NotificationPriority, ServiceError, 
+        TemplateError, TrackingError, ProviderError
     },
 };
 use async_trait::async_trait;
@@ -171,27 +172,27 @@ impl NotificationService {
     }
 
     /// Add a new template
-    pub async fn add_template(&self, template: crate::notification_service::templates::NotificationTemplate) -> Result<(), ServiceError> {
+    pub async fn add_template(&self, template: crate::notification_service::types::NotificationTemplate) -> Result<(), ServiceError> {
         let mut template_manager = self.template_manager.write().await;
         template_manager.add_template(template).map_err(ServiceError::TemplateError)?;
         Ok(())
     }
 
     /// Update a template
-    pub async fn update_template(&self, template: crate::notification_service::templates::NotificationTemplate) -> Result<(), ServiceError> {
+    pub async fn update_template(&self, template: crate::notification_service::types::NotificationTemplate) -> Result<(), ServiceError> {
         let mut template_manager = self.template_manager.write().await;
         template_manager.update_template(template).map_err(ServiceError::TemplateError)?;
         Ok(())
     }
 
     /// Get a template
-    pub async fn get_template(&self, template_id: &str) -> Result<Option<crate::notification_service::templates::NotificationTemplate>, ServiceError> {
+    pub async fn get_template(&self, template_id: &str) -> Result<Option<crate::notification_service::types::NotificationTemplate>, ServiceError> {
         let template_manager = self.template_manager.read().await;
         Ok(template_manager.get_template(template_id).cloned())
     }
 
     /// List all templates
-    pub async fn list_templates(&self) -> Result<Vec<crate::notification_service::templates::NotificationTemplate>, ServiceError> {
+    pub async fn list_templates(&self) -> Result<Vec<crate::notification_service::types::NotificationTemplate>, ServiceError> {
         let template_manager = self.template_manager.read().await;
         Ok(template_manager.list_templates().into_iter().cloned().collect())
     }
@@ -215,7 +216,7 @@ impl NotificationService {
         notification_id: &str,
         recipient_id: &str,
         channel: NotificationChannel,
-    ) -> Result<Option<crate::notification_service::tracking::DeliveryTracking>, ServiceError> {
+    ) -> Result<Option<crate::notification_service::types::DeliveryTracking>, ServiceError> {
         let tracker = self.delivery_tracker.read().await;
         tracker.get_tracking(notification_id, recipient_id, channel).await.map_err(ServiceError::TrackingError)
     }
@@ -225,7 +226,7 @@ impl NotificationService {
         &self,
         start_time: chrono::DateTime<chrono::Utc>,
         end_time: chrono::DateTime<chrono::Utc>,
-    ) -> Result<crate::notification_service::tracking::DeliveryStats, ServiceError> {
+    ) -> Result<crate::notification_service::types::DeliveryStats, ServiceError> {
         let tracker = self.delivery_tracker.read().await;
         tracker.get_delivery_stats(start_time, end_time).await.map_err(ServiceError::TrackingError)
     }
@@ -243,7 +244,7 @@ impl NotificationService {
     }
 
     /// Get provider statistics
-    pub async fn get_provider_stats(&self) -> HashMap<NotificationChannel, crate::notification_service::providers::ProviderStats> {
+    pub async fn get_provider_stats(&self) -> HashMap<NotificationChannel, crate::notification_service::types::ProviderStats> {
         let mut stats = HashMap::new();
         
         for (channel, provider) in &self.providers {
@@ -358,30 +359,6 @@ impl RateLimiter {
     }
 }
 
-/// Service errors
-#[derive(Debug, thiserror::Error)]
-pub enum ServiceError {
-    #[error("Provider not found: {0}")]
-    ProviderNotFound(NotificationChannel),
-    
-    #[error("Template error: {0}")]
-    TemplateError(#[from] crate::notification_service::templates::TemplateError),
-    
-    #[error("Tracking error: {0}")]
-    TrackingError(#[from] crate::notification_service::tracking::TrackingError),
-    
-    #[error("Provider error: {0}")]
-    ProviderError(#[from] crate::notification_service::providers::ProviderError),
-    
-    #[error("Configuration error: {0}")]
-    ConfigurationError(String),
-    
-    #[error("Rate limit exceeded")]
-    RateLimitExceeded,
-    
-    #[error("Invalid notification: {0}")]
-    InvalidNotification(String),
-}
 
 /// Trait for notification services
 #[async_trait]

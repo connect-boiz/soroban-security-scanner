@@ -143,3 +143,124 @@ impl Default for QuietHours {
         }
     }
 }
+
+/// Provider statistics
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProviderStats {
+    pub channel: NotificationChannel,
+    pub total_sent: u64,
+    pub total_failed: u64,
+    pub average_delivery_time_ms: u64,
+    pub last_success: Option<DateTime<Utc>>,
+    pub last_failure: Option<DateTime<Utc>>,
+}
+
+/// Service error types
+#[derive(Debug, thiserror::Error)]
+pub enum ServiceError {
+    #[error("Provider not found: {0}")]
+    ProviderNotFound(NotificationChannel),
+    #[error("Template error: {0}")]
+    TemplateError(#[from] TemplateError),
+    #[error("Provider error: {0}")]
+    ProviderError(#[from] ProviderError),
+    #[error("Rate limit exceeded")]
+    RateLimitExceeded,
+    #[error("Invalid configuration: {0}")]
+    InvalidConfiguration(String),
+    #[error("Internal error: {0}")]
+    InternalError(String),
+}
+
+/// Template error types
+#[derive(Debug, thiserror::Error)]
+pub enum TemplateError {
+    #[error("Template not found: {0}")]
+    TemplateNotFound(String),
+    #[error("Template validation failed: {0}")]
+    ValidationFailed(String),
+    #[error("Template rendering failed: {0}")]
+    RenderingFailed(String),
+    #[error("Invalid template: {0}")]
+    InvalidTemplate(String),
+    #[error("Render error: {0}")]
+    RenderError(String),
+    #[error("Missing variable: {0}")]
+    MissingVariable(String),
+    #[error("Handlebars error: {0}")]
+    HandlebarsError(#[from] handlebars::TemplateRenderError),
+}
+
+/// Tracking error types
+#[derive(Debug, thiserror::Error)]
+pub enum TrackingError {
+    #[error("Storage error: {0}")]
+    StorageError(String),
+    #[error("Tracking record not found")]
+    NotFound,
+    #[error("Invalid tracking data: {0}")]
+    InvalidData(String),
+    #[error("Database connection error")]
+    DatabaseError,
+}
+
+/// Provider error types
+#[derive(Debug, thiserror::Error)]
+pub enum ProviderError {
+    #[error("Provider is disabled")]
+    ProviderDisabled,
+    #[error("Provider not configured")]
+    ProviderNotConfigured,
+    #[error("Missing recipient data: {0}")]
+    MissingRecipientData(String),
+    #[error("Authentication failed")]
+    AuthenticationFailed,
+    #[error("Rate limit exceeded")]
+    RateLimitExceeded,
+    #[error("Network error: {0}")]
+    NetworkError(String),
+    #[error("Invalid configuration: {0}")]
+    InvalidConfiguration(String),
+    #[error("Internal error: {0}")]
+    InternalError(String),
+}
+
+/// Template variable definition
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TemplateVariable {
+    pub name: String,
+    pub description: Option<String>,
+    pub required: bool,
+    pub default_value: Option<String>,
+    pub variable_type: VariableType,
+}
+
+/// Variable types for template validation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum VariableType {
+    String,
+    Number,
+    Email,
+    Phone,
+    Url,
+    Datetime,
+    Boolean,
+    Custom,
+}
+
+/// Notification template
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NotificationTemplate {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub subject_template: Option<String>,
+    pub body_template: String,
+    pub supported_channels: Vec<NotificationChannel>,
+    pub default_priority: NotificationPriority,
+    pub variables: Vec<TemplateVariable>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub version: u32,
+    pub active: bool,
+}

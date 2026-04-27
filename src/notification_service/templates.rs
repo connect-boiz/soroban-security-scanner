@@ -1,49 +1,11 @@
 //! Template management system for notifications
 
-use crate::notification_service::types::{TemplateContext, NotificationChannel};
+use crate::notification_service::types::{
+    TemplateContext, NotificationChannel, NotificationTemplate, TemplateVariable, VariableType, TemplateError
+};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use handlebars::{Handlebars, TemplateRenderError};
-
-/// Template definition
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NotificationTemplate {
-    pub id: String,
-    pub name: String,
-    pub description: Option<String>,
-    pub subject_template: Option<String>,
-    pub body_template: String,
-    pub supported_channels: Vec<NotificationChannel>,
-    pub default_priority: crate::notification_service::types::NotificationPriority,
-    pub variables: Vec<TemplateVariable>,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    pub updated_at: chrono::DateTime<chrono::Utc>,
-    pub version: u32,
-    pub active: bool,
-}
-
-/// Template variable definition
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TemplateVariable {
-    pub name: String,
-    pub description: Option<String>,
-    pub required: bool,
-    pub default_value: Option<String>,
-    pub variable_type: VariableType,
-}
-
-/// Variable types for template validation
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum VariableType {
-    String,
-    Number,
-    Email,
-    Phone,
-    Url,
-    DateTime,
-    Boolean,
-    Custom(String),
-}
 
 /// Template manager for handling notification templates
 #[derive(Debug, Clone)]
@@ -219,24 +181,6 @@ pub struct TemplateRender {
     pub template_id: String,
 }
 
-/// Template errors
-#[derive(Debug, Clone, thiserror::Error)]
-pub enum TemplateError {
-    #[error("Template not found: {0}")]
-    TemplateNotFound(String),
-    
-    #[error("Invalid template: {0}")]
-    InvalidTemplate(String),
-    
-    #[error("Render error: {0}")]
-    RenderError(String),
-    
-    #[error("Missing variable: {0}")]
-    MissingVariable(String),
-    
-    #[error("Handlebars error: {0}")]
-    HandlebarsError(#[from] TemplateRenderError),
-}
 
 // Custom handlebars helpers
 fn format_date_helper(

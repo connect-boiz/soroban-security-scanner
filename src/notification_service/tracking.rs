@@ -378,18 +378,3 @@ impl TrackingStorage {
     }
 }
 
-/// Tracking errors
-#[derive(Debug, thiserror::Error)]
-pub enum TrackingError {
-    #[error("Storage error: {0}")]
-    StorageError(String),
-    
-    #[error("Tracking record not found")]
-    NotFound,
-    
-    #[error("Invalid tracking data: {0}")]
-    InvalidData(String),
-    
-    #[error("Database connection error")]
-    DatabaseError,
-}
