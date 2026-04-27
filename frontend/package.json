@@ -6,9 +6,14 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:analyze": "ANALYZE=true next build",
     "start": "next start",
     "lint": "next lint",
-    "type-check": "tsc --noEmit"
+    "lint:fix": "next lint --fix",
+    "type-check": "tsc --noEmit",
+    "bundle-analyzer": "npx @next/bundle-analyzer",
+    "lighthouse": "npx lighthouse http://localhost:3000 --output=html --output-path=./lighthouse-report.html",
+    "performance-test": "npm run build && npm run lighthouse"
   },
   "dependencies": {
     "next": "^14.0.0",
@@ -22,6 +27,11 @@
     "@types/react-dom": "^18.2.0",
     "eslint": "^8.45.0",
     "eslint-config-next": "^14.0.0",
-    "typescript": "^5.1.0"
+    "typescript": "^5.1.0",
+    "@next/bundle-analyzer": "^14.0.0",
+    "lighthouse": "^11.0.0",
+    "webpack-bundle-analyzer": "^4.9.0",
+    "autoprefixer": "^10.4.16",
+    "postcss": "^8.4.32"
   }
 }
