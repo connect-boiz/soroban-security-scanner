@@ -31,7 +31,10 @@
     "@stellar/stellar-sdk": "^14.6.1",
     "commander": "^11.1.0",
     "chalk": "^4.1.2",
-    "js-yaml": "^4.1.0"
+    "js-yaml": "^4.1.0",
+    "handlebars": "^4.7.8",
+    "nodemailer": "^6.9.7",
+    "uuid": "^9.0.1"
   },
   "devDependencies": {
     "jest": "^29.7.0",
