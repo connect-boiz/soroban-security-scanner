@@ -2,7 +2,7 @@
 
 use clap::{Parser, Subcommand};
 use colored::*;
-use stellar_security_scanner::{scanners::{SecurityScanner, InvariantScanner}, analysis::AnalysisResult, report::{SecurityReport, ReportFormat}, config::ScannerConfig, kubernetes::{K8sScanManager, ScanPodConfig, ScanAutoScaler}, time_travel_debugger::{TimeTravelDebugger, TimeTravelConfig, ForkedState, TestResult}, differential_fuzzing::{DifferentialFuzzer, DifferentialFuzzingConfig, SdkVersion}};
+use stellar_security_scanner::{scanners::{SecurityScanner, InvariantScanner}, analysis::AnalysisResult, report::{SecurityReport, ReportFormat}, config::ScannerConfig, kubernetes::{K8sScanManager, ScanPodConfig, ScanAutoScaler}, time_travel_debugger::{TimeTravelDebugger, TimeTravelConfig, ForkedState, TestResult}, differential_fuzzing::{DifferentialFuzzer, DifferentialFuzzingConfig, SdkVersion}, error::{ScannerError, ScannerResult, ErrorHandler, InputValidator}};
 use std::path::PathBuf;
 use std::time::{Instant, Duration};
 use anyhow::Result;
@@ -465,43 +465,161 @@ enum DifferentialFuzzingAction {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+    let error_handler = ErrorHandler::new(false); // Will be updated based on verbose flags
     
-    match cli.command {
+    let result = match cli.command {
         Commands::Security { path, format, output, config, verbose } => {
-            run_security_scan(path, format, output, config, verbose)
+            let handler = ErrorHandler::new(verbose);
+            convert_anyhow_to_result(run_security_scan(path, format, output, config, verbose), &handler)
         }
         Commands::Invariants { path, format, output, config, verbose } => {
-            run_invariant_scan(path, format, output, config, verbose)
+            let handler = ErrorHandler::new(verbose);
+            convert_anyhow_to_result(run_invariant_scan(path, format, output, config, verbose), &handler)
         }
         Commands::Scan { path, format, output, config, verbose } => {
-            run_comprehensive_scan(path, format, output, config, verbose)
+            let handler = ErrorHandler::new(verbose);
+            convert_anyhow_to_result(run_comprehensive_scan(path, format, output, config, verbose), &handler)
         }
         Commands::Init { path } => {
-            generate_config(path)
+            convert_anyhow_to_result(generate_config(path), &error_handler)
         }
         Commands::ListChecks { severity } => {
-            list_vulnerability_checks(severity)
+            convert_anyhow_to_result(list_vulnerability_checks(severity), &error_handler)
         }
         Commands::ListInvariants { severity } => {
-            list_invariant_rules(severity)
+            convert_anyhow_to_result(list_invariant_rules(severity), &error_handler)
         }
         Commands::K8sScan { path, format, output, config, verbose, cpu_limit, memory_limit, timeout } => {
-            run_k8s_scan(path, format, output, config, verbose, cpu_limit, memory_limit, timeout)
+            let handler = ErrorHandler::new(verbose);
+            convert_anyhow_to_result(run_k8s_scan(path, format, output, config, verbose, cpu_limit, memory_limit, timeout), &handler)
         }
         Commands::K8sManage { action } => {
-            run_k8s_management(action)
+            convert_anyhow_to_result(run_k8s_management(action), &error_handler)
         }
         Commands::TimeTravel { action } => {
-            run_time_travel_action(action)
+            convert_anyhow_to_result(run_time_travel_action(action), &error_handler)
         }
         Commands::DifferentialFuzzing { action } => {
-            run_differential_fuzzing_action(action)
+            convert_anyhow_to_result(run_differential_fuzzing_action(action), &error_handler)
         }
+    };
+    
+    // Handle errors with enhanced error reporting
+    match result {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            error_handler.handle_error(&e);
+            
+            // Exit with appropriate error code based on severity
+            match e.severity() {
+                stellar_security_scanner::error::ErrorSeverity::Critical => std::process::exit(1),
+                stellar_security_scanner::error::ErrorSeverity::Error => std::process::exit(2),
+                stellar_security_scanner::error::ErrorSeverity::Warning => std::process::exit(0),
+            }
+        }
+    }
+}
+
+/// Convert anyhow::Result to ScannerResult with enhanced error handling
+fn convert_anyhow_to_result<T>(result: anyhow::Result<T>, handler: &ErrorHandler) -> ScannerResult<T> {
+    match result {
+        Ok(value) => Ok(value),
+        Err(error) => {
+            let scanner_error = convert_anyhow_error(error, "operation");
+            handler.handle_error(&scanner_error);
+            Err(scanner_error)
+        }
+    }
+}
+
+/// Enhanced anyhow error conversion with better error type handling
+fn convert_anyhow_error(error: anyhow::Error, operation: &str) -> ScannerError {
+    // Check for specific error types and convert appropriately
+    if let Some(io_error) = error.downcast_ref::<std::io::Error>() {
+        return ScannerError::FileError {
+            path: "unknown".to_string(),
+            source: io_error.clone(),
+        };
+    }
+    
+    if let Some(json_error) = error.downcast_ref::<serde_json::Error>() {
+        return ScannerError::ParseError {
+            message: "JSON parsing failed".to_string(),
+            source: json_error.clone(),
+        };
+    }
+    
+    if let Some(toml_error) = error.downcast_ref::<toml::de::Error>() {
+        return ScannerError::ParseError {
+            message: "TOML parsing failed".to_string(),
+            source: serde_json::Error::custom(toml_error.to_string()),
+        };
+    }
+    
+    if let Some(regex_error) = error.downcast_ref::<regex::Error>() {
+        return ScannerError::InitializationError {
+            message: format!("Regex compilation failed: {}", regex_error),
+        };
+    }
+    
+    if let Some(reqwest_error) = error.downcast_ref::<reqwest::Error>() {
+        return ScannerError::NetworkError {
+            operation: operation.to_string(),
+            source: reqwest_error.clone(),
+        };
+    }
+    
+    if let Some(kube_error) = error.downcast_ref::<kube::Error>() {
+        return ScannerError::K8sError {
+            operation: operation.to_string(),
+            source: kube_error.clone(),
+        };
+    }
+    
+    // Handle timeout errors
+    if error.to_string().contains("timeout") || error.to_string().contains("timed out") {
+        return ScannerError::TimeoutError { seconds: 300 }; // Default timeout
+    }
+    
+    // Handle validation errors
+    if error.to_string().contains("invalid") || error.to_string().contains("validation") {
+        return ScannerError::ValidationError {
+            message: error.to_string(),
+        };
+    }
+    
+    // Default to internal error for unknown types
+    ScannerError::InternalError {
+        message: error.to_string(),
     }
 }
 
 fn run_security_scan(path: PathBuf, format: String, output: Option<PathBuf>, config_path: Option<PathBuf>, verbose: bool) -> Result<()> {
     println!("{}", "🔍 Starting Stellar Security Scan".bold().cyan());
+    
+    // Validate input parameters
+    if !path.exists() {
+        return Err(anyhow::anyhow!("Path does not exist: {}", path.display()));
+    }
+    
+    if !path.is_dir() {
+        return Err(anyhow::anyhow!("Path is not a directory: {}", path.display()));
+    }
+    
+    // Validate output format
+    let valid_formats = ["console", "json", "html", "markdown"];
+    if !valid_formats.contains(&format.as_str()) {
+        return Err(anyhow::anyhow!("Invalid output format: {}. Valid formats: {}", format, valid_formats.join(", ")));
+    }
+    
+    // Validate output path if provided
+    if let Some(ref output_path) = output {
+        if let Some(parent) = output_path.parent() {
+            if !parent.exists() {
+                std::fs::create_dir_all(parent)?;
+            }
+        }
+    }
     
     let config = load_config(config_path)?;
     let scanner = SecurityScanner::new()?;
