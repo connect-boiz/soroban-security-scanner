@@ -1,0 +1,27 @@
+{
+  "name": "@soroban-scanner/frontend",
+  "version": "1.0.0",
+  "description": "Frontend application for Soroban Security Scanner",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "^14.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "@soroban-scanner/ui-components": "file:../component-library"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "eslint": "^8.45.0",
+    "eslint-config-next": "^14.0.0",
+    "typescript": "^5.1.0"
+  }
+}
