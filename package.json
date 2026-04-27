@@ -11,7 +11,10 @@
     "lint:fix": "eslint src/ --fix",
     "format": "prettier --write \"src/**/*.js\"",
     "format:check": "prettier --check \"src/**/*.js\"",
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "build:components": "cd component-library && npm run build",
+    "dev:components": "cd component-library && npm run dev",
+    "install:components": "cd component-library && npm install"
   },
   "keywords": [
     "soroban",

@@ -1,0 +1,61 @@
+{
+  "name": "@soroban-scanner/ui-components",
+  "version": "1.0.0",
+  "description": "Reusable UI components and utilities for Soroban Security Scanner",
+  "main": "dist/index.js",
+  "module": "dist/index.esm.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "rollup -c",
+    "dev": "rollup -c -w",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint src --ext .ts,.tsx",
+    "lint:fix": "eslint src --ext .ts,.tsx --fix",
+    "test": "jest",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "react",
+    "typescript",
+    "components",
+    "ui",
+    "soroban",
+    "security",
+    "scanner"
+  ],
+  "author": "connect-boiz",
+  "license": "MIT",
+  "peerDependencies": {
+    "react": ">=16.8.0",
+    "react-dom": ">=16.8.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.45.0",
+    "eslint-plugin-react": "^7.32.0",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "jest": "^29.6.0",
+    "@types/jest": "^29.5.0",
+    "rollup": "^3.26.0",
+    "@rollup/plugin-typescript": "^11.1.0",
+    "@rollup/plugin-node-resolve": "^15.1.0",
+    "@rollup/plugin-commonjs": "^25.0.0",
+    "rollup-plugin-peer-deps-external": "^2.2.4",
+    "typescript": "^5.1.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/frankosakwe/soroban-security-scanner.git",
+    "directory": "component-library"
+  },
+  "bugs": {
+    "url": "https://github.com/frankosakwe/soroban-security-scanner/issues"
+  },
+  "homepage": "https://github.com/frankosakwe/soroban-security-scanner#readme"
+}
