@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
+import { PageErrorBoundary } from '@/components/ui/ErrorBoundary';
 
 export const metadata: Metadata = {
   title: 'Soroban Security Scanner',
@@ -16,7 +17,9 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <PageErrorBoundary>{children}</PageErrorBoundary>
+      </body>
     </html>
   );
 }
