@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
+import { LoadingOverlay, SkeletonCard, ProgressBar, LoadingSpinner } from './ui';
 
 interface AnalyticsData {
   totalScans: number;
@@ -43,156 +44,155 @@ const mockAnalyticsData: AnalyticsData = {
 
 export default function AnalyticsDashboard() {
   const [selectedMetric, setSelectedMetric] = useState<'overview' | 'trends' | 'severity'>('overview');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isGeneratingData, setIsGeneratingData] = useState(false);
 
-  // Memoize calculations for performance
   const metrics = useMemo(() => ({
     vulnerabilityRate: ((mockAnalyticsData.vulnerabilitiesFound / mockAnalyticsData.totalScans) * 100).toFixed(1),
     contractsPerScan: (mockAnalyticsData.contractsAnalyzed / mockAnalyticsData.totalScans).toFixed(2),
     totalIssues: Object.values(mockAnalyticsData.severityBreakdown).reduce((a, b) => a + b, 0)
   }), []);
 
-  const handleMetricChange = useCallback((metric: 'overview' | 'trends' | 'severity') => {
+  const handleMetricChange = useCallback(async (metric: 'overview' | 'trends' | 'severity') => {
+    setIsGeneratingData(true);
     setSelectedMetric(metric);
+    
+    // Simulate data loading for different metrics
+    await new Promise(resolve => setTimeout(resolve, 600));
+    
+    setIsGeneratingData(false);
   }, []);
 
-  const renderOverview = () => (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-      <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-        <h3 className="text-sm font-medium text-blue-800 mb-1">Total Scans</h3>
-        <p className="text-2xl font-bold text-blue-900">{mockAnalyticsData.totalScans.toLocaleString()}</p>
-        <p className="text-xs text-blue-600 mt-1">Last 30 days</p>
-      </div>
-      
-      <div className="bg-red-50 p-4 rounded-lg border border-red-200">
-        <h3 className="text-sm font-medium text-red-800 mb-1">Vulnerabilities Found</h3>
-        <p className="text-2xl font-bold text-red-900">{mockAnalyticsData.vulnerabilitiesFound}</p>
-        <p className="text-xs text-red-600 mt-1">{metrics.vulnerabilityRate}% detection rate</p>
-      </div>
-      
-      <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-        <h3 className="text-sm font-medium text-green-800 mb-1">Contracts Analyzed</h3>
-        <p className="text-2xl font-bold text-green-900">{mockAnalyticsData.contractsAnalyzed.toLocaleString()}</p>
-        <p className="text-xs text-green-600 mt-1">{metrics.contractsPerScan} contracts/scan</p>
-      </div>
-      
-      <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
-        <h3 className="text-sm font-medium text-purple-800 mb-1">Avg Scan Time</h3>
-        <p className="text-2xl font-bold text-purple-900">{mockAnalyticsData.averageScanTime}s</p>
-        <p className="text-xs text-purple-600 mt-1">Per contract</p>
-      </div>
-    </div>
-  );
+  // Simulate initial data loading
+  useEffect(() => {
+    const loadAnalytics = async () => {
+      setIsLoading(true);
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      setIsLoading(false);
+    };
+    
+    loadAnalytics();
+  }, []);
 
-  const renderTrends = () => (
-    <div className="space-y-6">
-      <div className="bg-white p-4 rounded-lg border">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Weekly Scan Trends</h3>
-        <div className="space-y-3">
-          {mockAnalyticsData.weeklyData.map((week, index) => (
-            <div key={week.week} className="flex items-center justify-between">
-              <span className="text-sm text-gray-600 w-16">{week.week}</span>
-              <div className="flex-1 mx-4">
-                <div className="flex items-center space-x-2">
-                  <div className="flex-1 bg-gray-200 rounded-full h-6 relative overflow-hidden">
+  return (
+    <div className="space-y-8 animate-fade-in">
+      {/* Top Stats Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="card border-l-4 border-l-blue-600">
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Total Scans</p>
+          <div className="flex items-end justify-between mt-2">
+            <h3 className="text-3xl font-bold">{mockAnalyticsData.totalScans.toLocaleString()}</h3>
+            <span className="text-green-500 text-sm font-bold">↑ 12%</span>
+          </div>
+        </div>
+
+        <div className="card border-l-4 border-l-red-600">
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Vulnerabilities</p>
+          <div className="flex items-end justify-between mt-2">
+            <h3 className="text-3xl font-bold">{mockAnalyticsData.vulnerabilitiesFound}</h3>
+            <span className="text-red-500 text-sm font-bold">↑ 5%</span>
+          </div>
+        </div>
+
+        <div className="card border-l-4 border-l-green-600">
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Detection Rate</p>
+          <div className="flex items-end justify-between mt-2">
+            <h3 className="text-3xl font-bold">{metrics.vulnerabilityRate}%</h3>
+            <span className="text-gray-400 text-sm font-bold">Stable</span>
+          </div>
+        </div>
+
+        <div className="card border-l-4 border-l-purple-600">
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Avg Scan Time</p>
+          <div className="flex items-end justify-between mt-2">
+            <h3 className="text-3xl font-bold">{mockAnalyticsData.averageScanTime}s</h3>
+            <span className="text-green-500 text-sm font-bold">↓ 0.2s</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Main Chart Widget */}
+        <div className="card lg:col-span-2">
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="text-lg font-bold">Scan Activity Trends</h3>
+            <div className="flex bg-gray-100 p-1 rounded-lg">
+              {['7d', '30d', '90d'].map(range => (
+                <button 
+                  key={range}
+                  onClick={() => setSelectedRange(range)}
+                  className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${selectedRange === range ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500'}`}
+                >
+                  {range.toUpperCase()}
+                </button>
+              ))}
+            </div>
+          </div>
+          
+          <div className="space-y-4 h-[300px] flex flex-col justify-end">
+            <div className="flex items-end justify-between gap-2 h-full">
+              {mockAnalyticsData.weeklyData.map((week, i) => (
+                <div key={i} className="flex-1 flex flex-col items-center group">
+                  <div className="relative w-full flex items-end justify-center gap-1 h-full pb-2">
                     <div 
-                      className="bg-blue-500 h-full rounded-full transition-all duration-500 ease-out"
-                      style={{ width: `${(week.scans / 250) * 100}%` }}
+                      className="bg-blue-100 group-hover:bg-blue-200 transition-all rounded-t-sm"
+                      style={{ height: `${(week.scans / 250) * 100}%`, width: '15px' }}
+                    />
+                    <div 
+                      className="bg-blue-600 group-hover:bg-blue-700 transition-all rounded-t-sm"
+                      style={{ height: `${(week.vulnerabilities / 100) * 100}%`, width: '15px' }}
                     />
                   </div>
-                  <span className="text-xs font-medium text-gray-700 w-12 text-right">
-                    {week.scans}
-                  </span>
+                  <span className="text-[10px] font-bold text-gray-400 mt-2 uppercase">{week.week.replace('Week ', 'W')}</span>
                 </div>
-                <div className="flex items-center space-x-2 mt-1">
-                  <div className="flex-1 bg-gray-100 rounded-full h-4 relative overflow-hidden">
-                    <div 
-                      className="bg-red-400 h-full rounded-full transition-all duration-500 ease-out"
-                      style={{ width: `${(week.vulnerabilities / 80) * 100}%` }}
-                    />
-                  </div>
-                  <span className="text-xs text-gray-600 w-12 text-right">
-                    {week.vulnerabilities}
-                  </span>
-                </div>
+              ))}
+            </div>
+            <div className="flex items-center space-x-6 pt-4 border-t border-border">
+              <div className="flex items-center space-x-2">
+                <div className="w-3 h-3 bg-blue-100 rounded-sm" />
+                <span className="text-xs font-bold text-gray-500">Total Scans</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <div className="w-3 h-3 bg-blue-600 rounded-sm" />
+                <span className="text-xs font-bold text-gray-500">Vulnerabilities</span>
               </div>
             </div>
-          ))}
-        </div>
-        <div className="flex items-center space-x-4 mt-4 text-xs">
-          <div className="flex items-center space-x-1">
-            <div className="w-3 h-3 bg-blue-500 rounded-full" />
-            <span className="text-gray-600">Scans</span>
-          </div>
-          <div className="flex items-center space-x-1">
-            <div className="w-3 h-3 bg-red-400 rounded-full" />
-            <span className="text-gray-600">Vulnerabilities</span>
           </div>
         </div>
-      </div>
-    </div>
-  );
 
-  const renderSeverity = () => {
-    const total = metrics.totalIssues;
-    const data = mockAnalyticsData.severityBreakdown;
-    
-    return (
-      <div className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-red-50 p-4 rounded-lg border border-red-200">
-            <h3 className="text-sm font-medium text-red-800 mb-1">Critical</h3>
-            <p className="text-2xl font-bold text-red-900">{data.critical}</p>
-            <p className="text-xs text-red-600 mt-1">{((data.critical / total) * 100).toFixed(1)}% of total</p>
-          </div>
-          
-          <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
-            <h3 className="text-sm font-medium text-orange-800 mb-1">High</h3>
-            <p className="text-2xl font-bold text-orange-900">{data.high}</p>
-            <p className="text-xs text-orange-600 mt-1">{((data.high / total) * 100).toFixed(1)}% of total</p>
-          </div>
-          
-          <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
-            <h3 className="text-sm font-medium text-yellow-800 mb-1">Medium</h3>
-            <p className="text-2xl font-bold text-yellow-900">{data.medium}</p>
-            <p className="text-xs text-yellow-600 mt-1">{((data.medium / total) * 100).toFixed(1)}% of total</p>
-          </div>
-          
-          <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-            <h3 className="text-sm font-medium text-green-800 mb-1">Low</h3>
-            <p className="text-2xl font-bold text-green-900">{data.low}</p>
-            <p className="text-xs text-green-600 mt-1">{((data.low / total) * 100).toFixed(1)}% of total</p>
-          </div>
-        </div>
-        
-        <div className="bg-white p-4 rounded-lg border">
-          <h3 className="text-lg font-medium text-gray-900 mb-4">Severity Distribution</h3>
-          <div className="space-y-2">
-            {Object.entries(data).map(([severity, count]) => {
+        {/* Severity Breakdown Widget */}
+        <div className="card">
+          <h3 className="text-lg font-bold mb-6">Severity Distribution</h3>
+          <div className="space-y-6">
+            {Object.entries(severityData).map(([severity, count]) => {
               const percentage = (count / total) * 100;
               const colors = {
-                critical: 'bg-red-500',
+                critical: 'bg-red-600',
                 high: 'bg-orange-500',
                 medium: 'bg-yellow-500',
                 low: 'bg-green-500'
               };
               
               return (
-                <div key={severity} className="flex items-center space-x-3">
-                  <span className="text-sm font-medium text-gray-700 w-16 capitalize">
-                    {severity}
-                  </span>
-                  <div className="flex-1 bg-gray-200 rounded-full h-6 relative overflow-hidden">
+                <div key={severity} className="space-y-2">
+                  <div className="flex justify-between text-xs font-bold uppercase tracking-wider">
+                    <span className="text-gray-500">{severity}</span>
+                    <span className="text-gray-900">{count} ({percentage.toFixed(0)}%)</span>
+                  </div>
+                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                     <div 
-                      className={`${colors[severity as keyof typeof colors]} h-full rounded-full transition-all duration-500 ease-out`}
+                      className={`${colors[severity as keyof typeof colors]} h-full transition-all duration-1000 ease-out`}
                       style={{ width: `${percentage}%` }}
                     />
                   </div>
-                  <span className="text-sm font-medium text-gray-700 w-12 text-right">
-                    {count}
-                  </span>
                 </div>
               );
             })}
+          </div>
+          <div className="mt-8 p-4 bg-blue-50 rounded-xl border border-blue-100">
+            <p className="text-xs text-blue-700 leading-relaxed font-medium">
+              <strong>Tip:</strong> Critical vulnerabilities have increased by 2% this week. We recommend reviewing the recent scan history.
+            </p>
           </div>
         </div>
       </div>
@@ -200,32 +200,67 @@ export default function AnalyticsDashboard() {
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold text-gray-900">Analytics Dashboard</h2>
-        
-        <div className="flex space-x-2">
-          {(['overview', 'trends', 'severity'] as const).map((metric) => (
-            <button
-              key={metric}
-              onClick={() => handleMetricChange(metric)}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-optimized ${
-                selectedMetric === metric
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              {metric.charAt(0).toUpperCase() + metric.slice(1)}
-            </button>
-          ))}
+    <LoadingOverlay isLoading={isLoading} text="Loading analytics data...">
+      <div className="bg-white rounded-lg shadow-md p-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-semibold text-gray-900">Analytics Dashboard</h2>
+          
+          <div className="flex space-x-2">
+            {(['overview', 'trends', 'severity'] as const).map((metric) => (
+              <button
+                key={metric}
+                onClick={() => handleMetricChange(metric)}
+                disabled={isGeneratingData}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-optimized ${
+                  selectedMetric === metric
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-50'
+                }`}
+              >
+                {metric.charAt(0).toUpperCase() + metric.slice(1)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          {isGeneratingData ? (
+            <div className="space-y-6">
+              <div className="flex items-center justify-center py-12">
+                <LoadingSpinner size="lg" text="Generating analytics..." />
+              </div>
+              {selectedMetric === 'overview' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <SkeletonCard lines={3} avatar={false} button={false} height="h-24" />
+                  <SkeletonCard lines={3} avatar={false} button={false} height="h-24" />
+                  <SkeletonCard lines={3} avatar={false} button={false} height="h-24" />
+                  <SkeletonCard lines={3} avatar={false} button={false} height="h-24" />
+                </div>
+              )}
+              {selectedMetric === 'trends' && (
+                <SkeletonCard lines={8} avatar={false} button={false} />
+              )}
+              {selectedMetric === 'severity' && (
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <SkeletonCard lines={3} avatar={false} button={false} height="h-20" />
+                    <SkeletonCard lines={3} avatar={false} button={false} height="h-20" />
+                    <SkeletonCard lines={3} avatar={false} button={false} height="h-20" />
+                    <SkeletonCard lines={3} avatar={false} button={false} height="h-20" />
+                  </div>
+                  <SkeletonCard lines={6} avatar={false} button={false} />
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              {selectedMetric === 'overview' && renderOverview()}
+              {selectedMetric === 'trends' && renderTrends()}
+              {selectedMetric === 'severity' && renderSeverity()}
+            </>
+          )}
         </div>
       </div>
-
-      <div>
-        {selectedMetric === 'overview' && renderOverview()}
-        {selectedMetric === 'trends' && renderTrends()}
-        {selectedMetric === 'severity' && renderSeverity()}
-      </div>
-    </div>
+    </LoadingOverlay>
   );
 }
