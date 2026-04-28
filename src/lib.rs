@@ -27,7 +27,11 @@ pub mod secure_id_generation;
 pub mod security_analyzer;
 pub mod session;
 pub mod time_travel_debugger;
-pub mod vulnerabilities;
+pub mod differential_fuzzing;
+pub mod batch_operations;
+pub mod notification_service;
+pub mod rate_limiting;
+
 
 pub use scanners::{SecurityScanner, InvariantScanner};
 pub use vulnerabilities::VulnerabilityType;
@@ -59,13 +63,10 @@ pub use notification_service::{
     DeliveryTracker, NotificationProvider, NotificationChannel, NotificationPriority,
     DeliveryStatus, Recipient, NotificationMessage, NotificationResult
 };
-pub use auth::{
-    JwtService, JwtClaims, JwtError, PasswordService, PasswordError, PasswordStrength,
-    RateLimitService, RateLimitError, RateLimitConfig, OAuthService, OAuthProvider, 
-    OAuthError, OAuthUserInfo, SecurityHeadersMiddleware, SecurityHeadersConfig, 
-    CspBuilder, AccountLockoutService, LockoutError, LockoutConfig, SessionManager, 
-    SessionStore, SessionData, InMemorySessionStore, AuthMiddleware, AuthContext, 
-    AuthMiddlewareConfig, AuthServices
+pub use rate_limiting::{
+    RateLimiter, RateLimitConfig, RateLimitContext, RateLimitResult, RateLimitTier,
+    RateLimitPolicy, RateLimitWindow, RateLimitMiddleware, EndpointRateLimit,
+    RateLimitStorage, RateLimitViolation, RateLimitStats
 };
 
 #[derive(Debug, Clone)]
