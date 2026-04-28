@@ -24,6 +24,11 @@ const SettingsPanel = dynamic(() => import('../components/SettingsPanel'), {
   ssr: false
 });
 
+const MultiSigWizard = dynamic(() => import('../components/MultiSigWizard'), {
+  loading: () => <div className="skeleton h-96 w-full rounded-lg" />,
+  ssr: false
+});
+
 export default function HomePage() {
   const [activeTab, setActiveTab] = useState('scanner');
   const [isClient, setIsClient] = useState(false);
@@ -55,6 +60,12 @@ export default function HomePage() {
             <AnalyticsDashboard />
           </Suspense>
         );
+      case 'multisig':
+        return (
+          <Suspense fallback={<div className="skeleton h-96 w-full rounded-lg" />}>
+            <MultiSigWizard />
+          </Suspense>
+        );
       case 'settings':
         return (
           <Suspense fallback={<div className="skeleton h-96 w-full rounded-lg" />}>
@@ -75,7 +86,7 @@ export default function HomePage() {
               Soroban Security Scanner
             </h1>
             <nav className="flex space-x-4">
-              {['scanner', 'report', 'analytics', 'settings'].map((tab) => (
+              {['scanner', 'report', 'analytics', 'multisig', 'settings'].map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
@@ -85,7 +96,7 @@ export default function HomePage() {
                       : 'text-gray-500 hover:text-gray-700'
                   }`}
                 >
-                  {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                  {tab === 'multisig' ? 'Multi-Sig' : tab.charAt(0).toUpperCase() + tab.slice(1)}
                 </button>
               ))}
             </nav>
