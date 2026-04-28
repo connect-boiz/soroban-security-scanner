@@ -1,2 +1,2 @@
 // Re-export from component library
-export { useDragDrop } from '@soroban-scanner/ui-components';
+export { useDragDrop, useTouchDragDrop } from '@soroban-scanner/ui-components';
