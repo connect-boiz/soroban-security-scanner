@@ -59,6 +59,14 @@ pub use notification_service::{
     DeliveryTracker, NotificationProvider, NotificationChannel, NotificationPriority,
     DeliveryStatus, Recipient, NotificationMessage, NotificationResult
 };
+pub use auth::{
+    JwtService, JwtClaims, JwtError, PasswordService, PasswordError, PasswordStrength,
+    RateLimitService, RateLimitError, RateLimitConfig, OAuthService, OAuthProvider, 
+    OAuthError, OAuthUserInfo, SecurityHeadersMiddleware, SecurityHeadersConfig, 
+    CspBuilder, AccountLockoutService, LockoutError, LockoutConfig, SessionManager, 
+    SessionStore, SessionData, InMemorySessionStore, AuthMiddleware, AuthContext, 
+    AuthMiddlewareConfig, AuthServices
+};
 
 #[derive(Debug, Clone)]
 pub struct ScanResult {
