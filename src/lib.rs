@@ -31,6 +31,7 @@ pub mod differential_fuzzing;
 pub mod batch_operations;
 pub mod notification_service;
 pub mod rate_limiting;
+pub mod transaction_engine;
 
 
 pub use scanners::{SecurityScanner, InvariantScanner};

@@ -49,6 +49,10 @@ handlebars = "6.0"
 anyhow = "1.0"
 thiserror = "1.0"
 
+# Transaction processing dependencies
+zstd = "0.13"
+regex = "1.10"
+
 # Configuration
 config = "0.13"
 
