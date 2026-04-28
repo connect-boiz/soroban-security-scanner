@@ -1,6 +1,8 @@
 import { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
+import { NotificationProvider } from '../hooks/notifications';
+import ToastContainer from '../components/notifications/Toast';
 
 const inter = Inter({ 
   subsets: ['latin'],
@@ -29,9 +31,12 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       </head>
       <body className="antialiased">
-        <div id="root">
-          {children}
-        </div>
+        <NotificationProvider>
+          <div id="root">
+            {children}
+          </div>
+          <ToastContainer />
+        </NotificationProvider>
       </body>
     </html>
   );
