@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
+import { LoadingOverlay, SkeletonCard, ProgressBar, LoadingSpinner } from './ui';
 
 interface AnalyticsData {
   totalScans: number;
@@ -43,6 +44,8 @@ const mockAnalyticsData: AnalyticsData = {
 
 export default function AnalyticsDashboard() {
   const [selectedMetric, setSelectedMetric] = useState<'overview' | 'trends' | 'severity'>('overview');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isGeneratingData, setIsGeneratingData] = useState(false);
 
   // Memoize calculations for performance
   const metrics = useMemo(() => ({
@@ -51,8 +54,25 @@ export default function AnalyticsDashboard() {
     totalIssues: Object.values(mockAnalyticsData.severityBreakdown).reduce((a, b) => a + b, 0)
   }), []);
 
-  const handleMetricChange = useCallback((metric: 'overview' | 'trends' | 'severity') => {
+  const handleMetricChange = useCallback(async (metric: 'overview' | 'trends' | 'severity') => {
+    setIsGeneratingData(true);
     setSelectedMetric(metric);
+    
+    // Simulate data loading for different metrics
+    await new Promise(resolve => setTimeout(resolve, 600));
+    
+    setIsGeneratingData(false);
+  }, []);
+
+  // Simulate initial data loading
+  useEffect(() => {
+    const loadAnalytics = async () => {
+      setIsLoading(true);
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      setIsLoading(false);
+    };
+    
+    loadAnalytics();
   }, []);
 
   const renderOverview = () => (
@@ -200,32 +220,67 @@ export default function AnalyticsDashboard() {
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold text-gray-900">Analytics Dashboard</h2>
-        
-        <div className="flex space-x-2">
-          {(['overview', 'trends', 'severity'] as const).map((metric) => (
-            <button
-              key={metric}
-              onClick={() => handleMetricChange(metric)}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-optimized ${
-                selectedMetric === metric
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              {metric.charAt(0).toUpperCase() + metric.slice(1)}
-            </button>
-          ))}
+    <LoadingOverlay isLoading={isLoading} text="Loading analytics data...">
+      <div className="bg-white rounded-lg shadow-md p-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-semibold text-gray-900">Analytics Dashboard</h2>
+          
+          <div className="flex space-x-2">
+            {(['overview', 'trends', 'severity'] as const).map((metric) => (
+              <button
+                key={metric}
+                onClick={() => handleMetricChange(metric)}
+                disabled={isGeneratingData}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-optimized ${
+                  selectedMetric === metric
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-50'
+                }`}
+              >
+                {metric.charAt(0).toUpperCase() + metric.slice(1)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          {isGeneratingData ? (
+            <div className="space-y-6">
+              <div className="flex items-center justify-center py-12">
+                <LoadingSpinner size="lg" text="Generating analytics..." />
+              </div>
+              {selectedMetric === 'overview' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <SkeletonCard lines={3} avatar={false} button={false} height="h-24" />
+                  <SkeletonCard lines={3} avatar={false} button={false} height="h-24" />
+                  <SkeletonCard lines={3} avatar={false} button={false} height="h-24" />
+                  <SkeletonCard lines={3} avatar={false} button={false} height="h-24" />
+                </div>
+              )}
+              {selectedMetric === 'trends' && (
+                <SkeletonCard lines={8} avatar={false} button={false} />
+              )}
+              {selectedMetric === 'severity' && (
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <SkeletonCard lines={3} avatar={false} button={false} height="h-20" />
+                    <SkeletonCard lines={3} avatar={false} button={false} height="h-20" />
+                    <SkeletonCard lines={3} avatar={false} button={false} height="h-20" />
+                    <SkeletonCard lines={3} avatar={false} button={false} height="h-20" />
+                  </div>
+                  <SkeletonCard lines={6} avatar={false} button={false} />
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              {selectedMetric === 'overview' && renderOverview()}
+              {selectedMetric === 'trends' && renderTrends()}
+              {selectedMetric === 'severity' && renderSeverity()}
+            </>
+          )}
         </div>
       </div>
-
-      <div>
-        {selectedMetric === 'overview' && renderOverview()}
-        {selectedMetric === 'trends' && renderTrends()}
-        {selectedMetric === 'severity' && renderSeverity()}
-      </div>
-    </div>
+    </LoadingOverlay>
   );
 }

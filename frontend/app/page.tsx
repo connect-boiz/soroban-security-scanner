@@ -24,6 +24,11 @@ const SettingsPanel = dynamic(() => import('../components/SettingsPanel'), {
   ssr: false
 });
 
+const BalanceDisplay = dynamic(() => import('../components/BalanceDisplay'), {
+  loading: () => <div className="skeleton h-96 w-full rounded-lg" />,
+  ssr: false
+});
+
 export default function HomePage() {
   const [activeTab, setActiveTab] = useState('scanner');
   const [isClient, setIsClient] = useState(false);
@@ -55,6 +60,12 @@ export default function HomePage() {
             <AnalyticsDashboard />
           </Suspense>
         );
+      case 'balance':
+        return (
+          <Suspense fallback={<div className="skeleton h-96 w-full rounded-lg" />}>
+            <BalanceDisplay />
+          </Suspense>
+        );
       case 'settings':
         return (
           <Suspense fallback={<div className="skeleton h-96 w-full rounded-lg" />}>
@@ -75,7 +86,7 @@ export default function HomePage() {
               Soroban Security Scanner
             </h1>
             <nav className="flex space-x-4">
-              {['scanner', 'report', 'analytics', 'settings'].map((tab) => (
+              {['scanner', 'report', 'analytics', 'balance', 'settings'].map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
