@@ -180,6 +180,19 @@ stellar-scanner time-travel upgrade --contract-id CONTRACT_ID --wasm-file new.wa
 
 For detailed documentation, see [TIME_TRAVEL_DEBUGGER.md](TIME_TRAVEL_DEBUGGER.md).
 
+## ♿ Accessibility Testing
+
+Automated WCAG 2.1 AA accessibility checks run on every push and PR via the
+`Accessibility (axe-core)` GitHub Actions workflow, powered by
+[`@axe-core/playwright`](https://github.com/dequelabs/axe-core-npm).
+
+```bash
+npm run test:a11y
+```
+
+See [docs/ACCESSIBILITY_TESTING.md](docs/ACCESSIBILITY_TESTING.md) for details
+on the suite, adding routes, tuning rules, and the CI workflow.
+
 ## 🛠️ Technology Stack
 
 ### Frontend

@@ -1,8 +1,6 @@
 // Components
 export * from './components';
-
-// Hooks
 export * from './hooks';
-
-// Utils
 export * from './utils';
+export * from './i18n/config';
+import './styles/rtl.css';
