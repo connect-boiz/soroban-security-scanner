@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Soroban Security Scanner - Offline Mode</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #333;
+        }
+        
+        .offline-container {
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            max-width: 450px;
+            text-align: center;
+        }
+        
+        .offline-icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 1.5rem;
+            background: #f0f9ff;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+        }
+        
+        h1 {
+            color: #1f2937;
+            margin-bottom: 1rem;
+            font-size: 1.5rem;
+        }
+        
+        p {
+            color: #6b7280;
+            margin-bottom: 1.5rem;
+            line-height: 1.6;
+        }
+        
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: #fef2f2;
+            color: #dc2626;
+            border-radius: 20px;
+            font-size: 0.875rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: #dc2626;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .retry-btn {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: background 0.2s;
+            margin-bottom: 1rem;
+        }
+        
+        .retry-btn:hover {
+            background: #1d4ed8;
+        }
+        
+        .cache-info {
+            margin-top: 1.5rem;
+            padding: 1rem;
+            background: #f8fafc;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            text-align: left;
+        }
+        
+        .cache-info strong {
+            color: #374151;
+        }
+        
+        .offline-features {
+            margin-top: 1.5rem;
+            text-align: left;
+        }
+        
+        .feature-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+            color: #6b7280;
+        }
+        
+        .feature-icon {
+            font-size: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="offline-container">
+        <div class="offline-icon">🔍</div>
+        
+        <div class="status-indicator">
+            <span class="status-dot"></span>
+            <span>Offline Mode</span>
+        </div>
+        
+        <h1>Security Scanner Offline</h1>
+        
+        <p>
+            The Soroban Security Scanner is currently offline due to network issues. 
+            You can still access cached scan results and security rules.
+        </p>
+        
+        <button class="retry-btn" onclick="retryConnection()">
+            Try Again
+        </button>
+        
+        <div class="offline-features">
+            <div class="feature-item">
+                <span class="feature-icon">✅</span>
+                <span>View cached scan results</span>
+            </div>
+            <div class="feature-item">
+                <span class="feature-icon">✅</span>
+                <span>Access security rules</span>
+            </div>
+            <div class="feature-item">
+                <span class="feature-icon">✅</span>
+                <span>Browse scan history</span>
+            </div>
+            <div class="feature-item">
+                <span class="feature-icon">⏳</span>
+                <span>Queued scans will sync when online</span>
+            </div>
+        </div>
+        
+        <div class="cache-info">
+            <strong>Cached Data Available:</strong><br>
+            <span id="cache-status">Loading...</span>
+        </div>
+    </div>
+
+    <script>
+        // Check connection status
+        function updateConnectionStatus() {
+            const isOnline = navigator.onLine;
+            const statusDot = document.querySelector('.status-dot');
+            const statusText = document.querySelector('.status-indicator span:last-child');
+            
+            if (isOnline) {
+                statusDot.style.background = '#10b981';
+                statusText.textContent = 'Online';
+                
+                // Redirect back to app if online
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 1000);
+            } else {
+                statusDot.style.background = '#dc2626';
+                statusText.textContent = 'Offline Mode';
+            }
+        }
+        
+        // Retry connection
+        async function retryConnection() {
+            try {
+                const response = await fetch('/health');
+                if (response.ok) {
+                    window.location.href = '/';
+                } else {
+                    throw new Error('Service unavailable');
+                }
+            } catch (error) {
+                console.log('Still offline:', error);
+                updateConnectionStatus();
+            }
+        }
+        
+        // Load cache status
+        async function loadCacheStatus() {
+            if ('serviceWorker' in navigator && 'caches' in window) {
+                try {
+                    const cacheNames = await caches.keys();
+                    const cacheInfo = document.getElementById('cache-status');
+                    
+                    let totalEntries = 0;
+                    for (const name of cacheNames) {
+                        const cache = await caches.open(name);
+                        const keys = await cache.keys();
+                        totalEntries += keys.length;
+                    }
+                    
+                    // Try to get IndexedDB stats if available
+                    let indexedDBInfo = '';
+                    if (window.indexedDB) {
+                        indexedDBInfo = '<br>IndexedDB storage available';
+                    }
+                    
+                    cacheInfo.innerHTML = `${totalEntries} cached API responses${indexedDBInfo}`;
+                } catch (error) {
+                    document.getElementById('cache-status').textContent = 'Cache unavailable';
+                }
+            } else {
+                document.getElementById('cache-status').textContent = 'Offline storage not supported';
+            }
+        }
+        
+        // Listen for connection changes
+        window.addEventListener('online', updateConnectionStatus);
+        window.addEventListener('offline', updateConnectionStatus);
+        
+        // Initialize
+        updateConnectionStatus();
+        loadCacheStatus();
+        
+        // Auto-retry every 30 seconds
+        setInterval(() => {
+            if (!navigator.onLine) {
+                retryConnection();
+            }
+        }, 30000);
+    </script>
+</body>
+</html>
