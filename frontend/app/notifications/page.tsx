@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { NotificationProvider, useNotifications } from '../../hooks/notifications';
 import EmailPreferencesPanel from '../../components/notifications/EmailPreferences';
 import { NotificationDropdown } from '../../components/notifications/InAppNotification';
-import { useInAppNotifications } from '../../hooks/notifications';
+import { SectionErrorBoundary } from '../../components/ui/ErrorBoundary';
 
 function NotificationsContent() {
   const { 
@@ -57,7 +57,8 @@ function NotificationsContent() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Notifications List */}
           <div className="lg:col-span-2">
-            <div className="bg-white rounded-lg shadow">
+            <SectionErrorBoundary context={{ section: 'notifications-list' }}>
+              <div className="bg-white rounded-lg shadow">
               <div className="px-6 py-4 border-b border-gray-200">
                 <h2 className="text-lg font-medium text-gray-900">
                   Recent Notifications
@@ -181,15 +182,18 @@ function NotificationsContent() {
                 </div>
               )}
             </div>
+            </SectionErrorBoundary>
           </div>
 
           {/* Settings Panel */}
           <div className="lg:col-span-1">
-            <EmailPreferencesPanel
-              preferences={preferences}
-              onUpdate={updatePreferences}
-              isLoading={false}
-            />
+            <SectionErrorBoundary context={{ section: 'email-preferences' }}>
+              <EmailPreferencesPanel
+                preferences={preferences}
+                onUpdate={updatePreferences}
+                isLoading={false}
+              />
+            </SectionErrorBoundary>
           </div>
         </div>
       </main>

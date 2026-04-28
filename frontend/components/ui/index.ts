@@ -1,3 +1,12 @@
+// Error Boundary Components
+export {
+  ErrorBoundary,
+  PageErrorBoundary,
+  SectionErrorBoundary,
+  InlineErrorBoundary,
+} from './ErrorBoundary';
+export type { FallbackProps, ErrorBoundaryProps } from './ErrorBoundary';
+
 // UI Components for Loading States and Skeleton Screens
 export { SkeletonCard } from './SkeletonCard';
 export { SkeletonTable } from './SkeletonTable';
