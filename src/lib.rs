@@ -18,6 +18,7 @@ pub mod time_travel_debugger;
 pub mod differential_fuzzing;
 pub mod batch_operations;
 pub mod notification_service;
+pub mod auth;
 
 
 pub use scanners::{SecurityScanner, InvariantScanner};
@@ -49,6 +50,14 @@ pub use notification_service::{
     NotificationService, NotificationServiceTrait, NotificationTemplate, TemplateManager,
     DeliveryTracker, NotificationProvider, NotificationChannel, NotificationPriority,
     DeliveryStatus, Recipient, NotificationMessage, NotificationResult
+};
+pub use auth::{
+    JwtService, JwtClaims, JwtError, PasswordService, PasswordError, PasswordStrength,
+    RateLimitService, RateLimitError, RateLimitConfig, OAuthService, OAuthProvider, 
+    OAuthError, OAuthUserInfo, SecurityHeadersMiddleware, SecurityHeadersConfig, 
+    CspBuilder, AccountLockoutService, LockoutError, LockoutConfig, SessionManager, 
+    SessionStore, SessionData, InMemorySessionStore, AuthMiddleware, AuthContext, 
+    AuthMiddlewareConfig, AuthServices
 };
 
 #[derive(Debug, Clone)]
