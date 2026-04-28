@@ -24,7 +24,7 @@ const SettingsPanel = dynamic(() => import('../components/SettingsPanel'), {
   ssr: false
 });
 
-const TransactionHistory = dynamic(() => import('../components/TransactionHistory'), {
+const BalanceDisplay = dynamic(() => import('../components/BalanceDisplay'), {
   loading: () => <div className="skeleton h-96 w-full rounded-lg" />,
   ssr: false
 });
@@ -60,10 +60,10 @@ export default function HomePage() {
             <AnalyticsDashboard />
           </Suspense>
         );
-      case 'history':
+      case 'balance':
         return (
           <Suspense fallback={<div className="skeleton h-96 w-full rounded-lg" />}>
-            <TransactionHistory />
+            <BalanceDisplay />
           </Suspense>
         );
       case 'settings':
@@ -78,20 +78,15 @@ export default function HomePage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
-      <header className="bg-white shadow-sm border-b sticky top-0 z-50">
-        <div className="container mx-auto">
-          <div className="flex justify-between items-center h-20">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-blue-600 rounded-xl flex-center shadow-lg">
-                <span className="text-white font-bold text-xl">S</span>
-              </div>
-              <h1 className="text-xl font-bold text-gray-900 tracking-tight">
-                Soroban<span className="text-blue-600">Scan</span>
-              </h1>
-            </div>
-            <nav className="flex bg-gray-100 p-1 rounded-xl shadow-inner">
-              {['scanner', 'report', 'analytics', 'history', 'settings'].map((tab) => (
+    <div className="min-h-screen bg-gray-50">
+      <header className="bg-white shadow-sm border-b">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            <h1 className="text-2xl font-bold text-gray-900">
+              Soroban Security Scanner
+            </h1>
+            <nav className="flex space-x-4">
+              {['scanner', 'report', 'analytics', 'balance', 'settings'].map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}

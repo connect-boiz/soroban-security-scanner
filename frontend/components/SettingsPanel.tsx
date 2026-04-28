@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { LoadingOverlay, SkeletonCard, LoadingSpinner, ProgressBar } from './ui';
 
 interface UserPreferences {
   language: string;
@@ -35,6 +36,9 @@ interface AccountSettings {
 export default function SettingsPanel() {
   const [activeTab, setActiveTab] = useState('preferences');
   const [isClient, setIsClient] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveProgress, setSaveProgress] = useState(0);
   
   const [userPreferences, setUserPreferences] = useState<UserPreferences>({
     language: 'en',
@@ -68,29 +72,76 @@ export default function SettingsPanel() {
 
   const [savedMessage, setSavedMessage] = useState('');
 
+  // Simulate initial settings loading
   useEffect(() => {
-    setIsClient(true);
-    // Load saved settings from localStorage
-    const savedPreferences = localStorage.getItem('userPreferences');
-    const savedSecurity = localStorage.getItem('securitySettings');
-    const savedTheme = localStorage.getItem('themeSettings');
-    const savedAccount = localStorage.getItem('accountSettings');
+    const loadSettings = async () => {
+      setIsLoading(true);
+      setSaveProgress(0);
+      
+      // Simulate progressive loading
+      const stages = [
+        { progress: 20, delay: 300 },
+        { progress: 40, delay: 400 },
+        { progress: 60, delay: 300 },
+        { progress: 80, delay: 200 },
+        { progress: 100, delay: 100 }
+      ];
+      
+      for (const stage of stages) {
+        await new Promise(resolve => setTimeout(resolve, stage.delay));
+        setSaveProgress(stage.progress);
+      }
+      
+      setIsClient(true);
+      // Load saved settings from localStorage
+      const savedPreferences = localStorage.getItem('userPreferences');
+      const savedSecurity = localStorage.getItem('securitySettings');
+      const savedTheme = localStorage.getItem('themeSettings');
+      const savedAccount = localStorage.getItem('accountSettings');
 
-    if (savedPreferences) setUserPreferences(JSON.parse(savedPreferences));
-    if (savedSecurity) setSecuritySettings(JSON.parse(savedSecurity));
-    if (savedTheme) setThemeSettings(JSON.parse(savedTheme));
-    if (savedAccount) setAccountSettings(JSON.parse(savedAccount));
+      if (savedPreferences) setUserPreferences(JSON.parse(savedPreferences));
+      if (savedSecurity) setSecuritySettings(JSON.parse(savedSecurity));
+      if (savedTheme) setThemeSettings(JSON.parse(savedTheme));
+      if (savedAccount) setAccountSettings(JSON.parse(savedAccount));
+      
+      setIsLoading(false);
+      setSaveProgress(0);
+    };
+    
+    loadSettings();
   }, []);
 
-  const saveSettings = () => {
-    localStorage.setItem('userPreferences', JSON.stringify(userPreferences));
-    localStorage.setItem('securitySettings', JSON.stringify(securitySettings));
-    localStorage.setItem('themeSettings', JSON.stringify(themeSettings));
-    localStorage.setItem('accountSettings', JSON.stringify(accountSettings));
+  // Enhanced save settings with progress tracking
+  const saveSettings = useCallback(async () => {
+    setIsSaving(true);
+    setSaveProgress(0);
     
-    setSavedMessage('Settings saved successfully!');
-    setTimeout(() => setSavedMessage(''), 3000);
-  };
+    try {
+      // Simulate progressive saving
+      const stages = [
+        { progress: 25, delay: 200, message: 'Saving preferences...' },
+        { progress: 50, delay: 300, message: 'Saving security settings...' },
+        { progress: 75, delay: 250, message: 'Saving theme settings...' },
+        { progress: 100, delay: 150, message: 'Finalizing...' }
+      ];
+      
+      for (const stage of stages) {
+        await new Promise(resolve => setTimeout(resolve, stage.delay));
+        setSaveProgress(stage.progress);
+      }
+      
+      localStorage.setItem('userPreferences', JSON.stringify(userPreferences));
+      localStorage.setItem('securitySettings', JSON.stringify(securitySettings));
+      localStorage.setItem('themeSettings', JSON.stringify(themeSettings));
+      localStorage.setItem('accountSettings', JSON.stringify(accountSettings));
+      
+      setSavedMessage('Settings saved successfully!');
+      setTimeout(() => setSavedMessage(''), 3000);
+    } finally {
+      setIsSaving(false);
+      setSaveProgress(0);
+    }
+  }, [userPreferences, securitySettings, themeSettings, accountSettings]);
 
   const resetSettings = () => {
     setUserPreferences({
@@ -134,15 +185,34 @@ export default function SettingsPanel() {
   if (!isClient) return <div className="skeleton h-96 w-full rounded-lg" />;
 
   return (
-    <div className="card shadow-md animate-fade-in">
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-semibold text-gray-900">Settings</h2>
-        {savedMessage && (
-          <div className="bg-green-100 text-green-800 px-4 py-2 rounded-xl text-sm font-bold border border-green-200">
-            {savedMessage}
+    <LoadingOverlay isLoading={isLoading} text="Loading settings...">
+      <div className="bg-white rounded-lg shadow-md p-6">
+        {/* Progress bar for save operations */}
+        {(isSaving || saveProgress > 0) && (
+          <div className="mb-6 bg-blue-50 rounded-lg p-4 border border-blue-200">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-blue-700">
+                {isSaving ? 'Saving settings...' : 'Processing...'}
+              </span>
+              <span className="text-sm text-blue-600">{saveProgress}%</span>
+            </div>
+            <ProgressBar 
+              value={saveProgress} 
+              color="blue"
+              showLabel={false}
+              className="w-full"
+            />
           </div>
         )}
-      </div>
+
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl font-semibold text-gray-900">Settings</h2>
+          {savedMessage && (
+            <div className="bg-green-100 text-green-800 px-4 py-2 rounded-md text-sm">
+              {savedMessage}
+            </div>
+          )}
+        </div>
 
       <div className="flex space-x-1 mb-6 border-b">
         {tabs.map((tab) => (
@@ -165,6 +235,15 @@ export default function SettingsPanel() {
         {activeTab === 'preferences' && (
           <div className="space-y-4">
             <h3 className="text-lg font-medium text-gray-900">User Preferences</h3>
+            
+            {isSaving ? (
+              <div className="space-y-4">
+                <SkeletonCard title="Language Settings" />
+                <SkeletonCard title="Display Options" />
+                <SkeletonCard title="Notification Preferences" />
+              </div>
+            ) : (
+            <div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -218,6 +297,8 @@ export default function SettingsPanel() {
                 <span className="text-sm text-gray-700">Auto-save scan results</span>
               </label>
             </div>
+            </div>
+            )}
           </div>
         )}
 
@@ -449,11 +530,13 @@ export default function SettingsPanel() {
         </button>
         <button
           onClick={saveSettings}
-          className="btn btn-primary px-8"
+          disabled={isSaving}
+          className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-optimized"
         >
-          Save Settings
+          {isSaving ? 'Saving...' : 'Save Settings'}
         </button>
       </div>
     </div>
+    </LoadingOverlay>
   );
 }

@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useCallback, useMemo } from 'react';
-import LazyImage from './LazyImage';
+import { LazyImage } from './LazyImage';
+import { LoadingOverlay, ProgressBar, SkeletonCard } from './ui';
 
 interface ScanResult {
   vulnerabilities: string[];
@@ -13,15 +14,31 @@ export default function ScannerInterface() {
   const [contractCode, setContractCode] = useState('');
   const [isScanning, setIsScanning] = useState(false);
   const [scanResults, setScanResults] = useState<ScanResult | null>(null);
+  const [scanProgress, setScanProgress] = useState(0);
+  const [scanStage, setScanStage] = useState('');
 
   // Memoize the scan function to prevent unnecessary re-renders
   const handleScan = useCallback(async () => {
     if (!contractCode.trim()) return;
 
     setIsScanning(true);
+    setScanProgress(0);
+    setScanStage('Initializing scan...');
     
-    // Simulate API call with delay
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // Simulate multi-stage scanning process
+    const stages = [
+      { name: 'Validating contract code...', duration: 500, progress: 20 },
+      { name: 'Analyzing bytecode...', duration: 800, progress: 40 },
+      { name: 'Checking for vulnerabilities...', duration: 1200, progress: 70 },
+      { name: 'Generating report...', duration: 500, progress: 90 },
+      { name: 'Finalizing results...', duration: 300, progress: 100 }
+    ];
+
+    for (const stage of stages) {
+      setScanStage(stage.name);
+      await new Promise(resolve => setTimeout(resolve, stage.duration));
+      setScanProgress(stage.progress);
+    }
     
     // Mock scan results
     setScanResults({
@@ -35,6 +52,8 @@ export default function ScannerInterface() {
     });
     
     setIsScanning(false);
+    setScanStage('');
+    setScanProgress(0);
   }, [contractCode]);
 
   // Memoize severity color mapping
@@ -46,71 +65,100 @@ export default function ScannerInterface() {
   }), []);
 
   return (
-    <div className="card animate-fade-in space-y-6">
-      <div className="flex items-center space-x-4">
-        <LazyImage
-          src="/scanner-icon.png"
-          alt="Scanner Icon"
-          className="w-12 h-12 rounded-lg"
-          width={48}
-          height={48}
-        />
-        <h2 className="text-xl font-bold">
-          Contract Scanner
-        </h2>
-      </div>
-
-      <div className="space-y-4">
-        <div>
-          <label htmlFor="contract-code" className="block text-sm font-medium text-gray-700 mb-2">
-            Contract Code
-          </label>
-          <textarea
-            id="contract-code"
-            value={contractCode}
-            onChange={(e) => setContractCode(e.target.value)}
-            className="w-full h-32 p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-optimized"
-            placeholder="Paste your Soroban contract code here..."
+    <LoadingOverlay isLoading={isScanning && scanProgress === 0} text="Initializing scanner...">
+      <div className="bg-white rounded-lg shadow-md p-6 space-y-6">
+        <div className="flex items-center space-x-4">
+          <LazyImage
+            src="/scanner-icon.svg"
+            alt="Scanner Icon"
+            className="w-12 h-12"
+            width={48}
+            height={48}
           />
+          <h2 className="text-xl font-semibold text-gray-900">
+            Contract Scanner
+          </h2>
         </div>
 
-        <button
-          onClick={handleScan}
-          disabled={isScanning || !contractCode.trim()}
-          className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-optimized"
-        >
-          {isScanning ? 'Scanning...' : 'Scan Contract'}
-        </button>
-      </div>
+        <div className="space-y-4">
+          <div>
+            <label htmlFor="contract-code" className="block text-sm font-medium text-gray-700 mb-2">
+              Contract Code
+            </label>
+            <textarea
+              id="contract-code"
+              value={contractCode}
+              onChange={(e) => setContractCode(e.target.value)}
+              className="w-full h-32 p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-optimized"
+              placeholder="Paste your Soroban contract code here..."
+              disabled={isScanning}
+            />
+          </div>
+
+          <button
+            onClick={handleScan}
+            disabled={isScanning || !contractCode.trim()}
+            className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-optimized"
+          >
+            {isScanning ? 'Scanning...' : 'Scan Contract'}
+          </button>
+        </div>
+
+        {/* Progress Section */}
+        {isScanning && scanProgress > 0 && (
+          <div className="space-y-4 border-t pt-6">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-medium text-gray-900">Scan Progress</h3>
+              <span className="text-sm text-gray-600">{scanProgress}%</span>
+            </div>
+            
+            <ProgressBar 
+              value={scanProgress} 
+              color="blue"
+              showLabel={false}
+              className="w-full"
+            />
+            
+            <p className="text-sm text-gray-600 text-center">{scanStage}</p>
+          </div>
+        )}
 
       {scanResults && (
-        <div className="border-t pt-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-medium text-gray-900">Scan Results</h3>
-            <span className={`px-3 py-1 rounded-full text-sm font-medium ${severityColors[scanResults.severity]}`}>
-              {scanResults.severity.toUpperCase()}
-            </span>
-          </div>
+          <div className="border-t pt-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-medium text-gray-900">Scan Results</h3>
+              <span className={`px-3 py-1 rounded-full text-sm font-medium ${severityColors[scanResults.severity]}`}>
+                {scanResults.severity.toUpperCase()}
+              </span>
+            </div>
 
-          <div className="space-y-2">
-            <p className="text-sm text-gray-600">
-              Contract: <code className="bg-gray-100 px-2 py-1 rounded">{scanResults.contractAddress}</code>
-            </p>
-            
             <div className="space-y-2">
-              <h4 className="text-sm font-medium text-gray-700">Detected Issues:</h4>
-              <ul className="space-y-1">
-                {scanResults.vulnerabilities.map((vulnerability, index) => (
-                  <li key={index} className="flex items-start space-x-2 text-sm text-gray-600">
-                    <span className="text-red-500 mt-0.5">•</span>
-                    <span>{vulnerability}</span>
-                  </li>
-                ))}
-              </ul>
+              <p className="text-sm text-gray-600">
+                Contract: <code className="bg-gray-100 px-2 py-1 rounded">{scanResults.contractAddress}</code>
+              </p>
+              
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium text-gray-700">Detected Issues:</h4>
+                <ul className="space-y-1">
+                  {scanResults.vulnerabilities.map((vulnerability, index) => (
+                    <li key={index} className="flex items-start space-x-2 text-sm text-gray-600">
+                      <span className="text-red-500 mt-0.5">•</span>
+                      <span>{vulnerability}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+
+        {/* Skeleton for loading results */}
+        {isScanning && scanProgress > 70 && (
+          <div className="border-t pt-6">
+            <SkeletonCard lines={4} avatar={false} button={false} />
+          </div>
+        )}
+      </div>
+    </LoadingOverlay>
   );
 }
