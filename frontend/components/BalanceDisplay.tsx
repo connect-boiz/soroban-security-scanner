@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { LoadingOverlay, SkeletonCard, SkeletonTable, LoadingSpinner, ProgressBar } from './ui';
 
 // Types
 export interface TokenBalance {
@@ -287,6 +288,9 @@ export const BalanceDisplay: React.FC<BalanceDisplayProps> = ({
   const [selectedToken, setSelectedToken] = useState<TokenBalance | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const [isLoading, setIsLoading] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(false);
+  const [isRefreshingData, setIsRefreshingData] = useState(false);
+  const [refreshProgress, setRefreshProgress] = useState(0);
 
   // Calculate total portfolio value
   const totalValue = tokens.reduce((sum, token) => sum + token.usdValue, 0);
@@ -296,12 +300,38 @@ export const BalanceDisplay: React.FC<BalanceDisplayProps> = ({
   }, 0);
   const totalChangePercentage = totalValue > 0 ? (totalChange24h / totalValue) * 100 : 0;
 
+  // Simulate initial data loading
+  useEffect(() => {
+    const loadInitialData = async () => {
+      setIsInitialLoading(true);
+      setRefreshProgress(0);
+      
+      // Simulate progressive loading
+      const stages = [
+        { progress: 25, delay: 400 },
+        { progress: 50, delay: 300 },
+        { progress: 75, delay: 500 },
+        { progress: 100, delay: 300 }
+      ];
+      
+      for (const stage of stages) {
+        await new Promise(resolve => setTimeout(resolve, stage.delay));
+        setRefreshProgress(stage.progress);
+      }
+      
+      setIsInitialLoading(false);
+      setRefreshProgress(0);
+    };
+    
+    loadInitialData();
+  }, []);
+
   // Real-time updates simulation
   useEffect(() => {
     if (!realTimeUpdates) return;
 
     const interval = setInterval(() => {
-      setTokens(prevTokens => 
+      setTokens(prevTokens =>
         prevTokens.map(token => ({
           ...token,
           usdValue: token.usdValue * (1 + (Math.random() - 0.5) * 0.002),
@@ -314,62 +344,96 @@ export const BalanceDisplay: React.FC<BalanceDisplayProps> = ({
     return () => clearInterval(interval);
   }, [realTimeUpdates]);
 
-  // Refresh handler
+  // Enhanced refresh handler with progress tracking
   const handleRefresh = useCallback(async () => {
-    setIsLoading(true);
+    setIsRefreshingData(true);
+    setRefreshProgress(0);
+    
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Simulate progressive refresh
+      const stages = [
+        { progress: 20, delay: 200, message: 'Fetching token balances...' },
+        { progress: 40, delay: 300, message: 'Updating market data...' },
+        { progress: 60, delay: 400, message: 'Calculating conversions...' },
+        { progress: 80, delay: 200, message: 'Processing historical data...' },
+        { progress: 100, delay: 100, message: 'Finalizing...' }
+      ];
+      
+      for (const stage of stages) {
+        await new Promise(resolve => setTimeout(resolve, stage.delay));
+        setRefreshProgress(stage.progress);
+      }
+      
       setTokens(generateMockTokenBalances());
       setHistoricalData(generateMockHistoricalData());
       setConversionRates(generateMockConversionRates());
       setLastUpdated(new Date());
       onRefresh?.();
     } finally {
-      setIsLoading(false);
+      setIsRefreshingData(false);
+      setRefreshProgress(0);
     }
   }, [onRefresh]);
 
   return (
-    <div className={`space-y-6 ${className}`}>
-      {/* Header */}
-      <div className="bg-white rounded-lg shadow-md p-6 border border-gray-200">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">Portfolio Balance</h2>
-            <p className="text-sm text-gray-500">
-              Last updated: {formatDate(lastUpdated.getTime(), 'MMM dd, yyyy HH:mm:ss')}
-            </p>
+    <LoadingOverlay isLoading={isInitialLoading} text="Loading portfolio data...">
+      <div className={`space-y-6 ${className}`}>
+        {/* Progress bar for refresh operations */}
+        {(isRefreshingData || refreshProgress > 0) && (
+          <div className="bg-white rounded-lg shadow-md p-4 border border-gray-200">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-gray-700">
+                {isRefreshingData ? 'Refreshing data...' : 'Loading...'}
+              </span>
+              <span className="text-sm text-gray-600">{refreshProgress}%</span>
+            </div>
+            <ProgressBar 
+              value={refreshProgress} 
+              color="blue"
+              showLabel={false}
+              className="w-full"
+            />
           </div>
-          <button
-            onClick={handleRefresh}
-            disabled={isLoading}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {isLoading ? 'Refreshing...' : 'Refresh'}
-          </button>
+        )}
+
+        {/* Header */}
+        <div className="bg-white rounded-lg shadow-md p-6 border border-gray-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">Portfolio Balance</h2>
+              <p className="text-sm text-gray-500">
+                Last updated: {formatDate(lastUpdated.getTime(), 'MMM dd, yyyy HH:mm:ss')}
+              </p>
+            </div>
+            <button
+              onClick={handleRefresh}
+              disabled={isRefreshingData}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {isRefreshingData ? 'Refreshing...' : 'Refresh'}
+            </button>
+          </div>
+          
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <p className="text-sm text-gray-500">Total Value</p>
+              <p className="text-3xl font-bold text-gray-900">
+                ${totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">24h Change</p>
+              <p className={`text-2xl font-bold ${totalChange24h >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {totalChange24h >= 0 ? '+' : ''}{totalChange24h.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <span className="text-sm ml-2">({totalChangePercentage >= 0 ? '+' : ''}{totalChangePercentage.toFixed(2)}%)</span>
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Assets</p>
+              <p className="text-2xl font-bold text-gray-900">{tokens.length}</p>
+            </div>
+          </div>
         </div>
-        
-        <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <p className="text-sm text-gray-500">Total Value</p>
-            <p className="text-3xl font-bold text-gray-900">
-              ${totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </p>
-          </div>
-          <div>
-            <p className="text-sm text-gray-500">24h Change</p>
-            <p className={`text-2xl font-bold ${totalChange24h >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {totalChange24h >= 0 ? '+' : ''}{totalChange24h.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              <span className="text-sm ml-2">({totalChangePercentage >= 0 ? '+' : ''}{totalChangePercentage.toFixed(2)}%)</span>
-            </p>
-          </div>
-          <div>
-            <p className="text-sm text-gray-500">Assets</p>
-            <p className="text-2xl font-bold text-gray-900">{tokens.length}</p>
-          </div>
-        </div>
-      </div>
 
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -377,13 +441,22 @@ export const BalanceDisplay: React.FC<BalanceDisplayProps> = ({
         <div className="lg:col-span-2 space-y-4">
           <h3 className="text-lg font-semibold text-gray-900">Token Balances</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {tokens.map((token) => (
-              <BalanceCard
-                key={token.contractAddress}
-                token={token}
-                onClick={() => setSelectedToken(token)}
-              />
-            ))}
+            {isRefreshingData ? (
+              <>
+                <SkeletonCard lines={4} avatar={true} button={false} height="h-32" />
+                <SkeletonCard lines={4} avatar={true} button={false} height="h-32" />
+                <SkeletonCard lines={4} avatar={true} button={false} height="h-32" />
+                <SkeletonCard lines={4} avatar={true} button={false} height="h-32" />
+              </>
+            ) : (
+              tokens.map((token) => (
+                <BalanceCard
+                  key={token.contractAddress}
+                  token={token}
+                  onClick={() => setSelectedToken(token)}
+                />
+              ))
+            )}
           </div>
         </div>
 
@@ -393,24 +466,27 @@ export const BalanceDisplay: React.FC<BalanceDisplayProps> = ({
           {showChart && (
             <div className="bg-white rounded-lg shadow-md p-6 border border-gray-200">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">30-Day Performance</h3>
-              <MiniChart data={historicalData} />
+              {isRefreshingData ? (
+                <SkeletonCard lines={6} avatar={false} button={false} height="h-48" />
+              ) : (
+                <MiniChart data={historicalData} />
+              )}
             </div>
           )}
 
-          {/* Conversion Panel */}
+          {/* Conversion Calculator */}
           {showConversion && (
-            <ConversionPanel tokens={tokens} conversionRates={conversionRates} />
+            isRefreshingData ? (
+              <SkeletonCard lines={8} avatar={false} button={true} height="h-64" />
+            ) : (
+              <ConversionCalculator
+                tokens={tokens}
+                conversionRates={conversionRates}
+              />
+            )
           )}
         </div>
       </div>
-
-      {/* Selected Token Modal */}
-      {selectedToken && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-bold text-gray-900">{selectedToken.symbol} Details</h3>
-              <button
                 onClick={() => setSelectedToken(null)}
                 className="text-gray-400 hover:text-gray-600"
               >
