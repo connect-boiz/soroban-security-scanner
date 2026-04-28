@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useMemo } from 'react';
-import { LazyImage } from './LazyImage';
+import LazyImage from './LazyImage';
 
 interface ScanResult {
   vulnerabilities: string[];
@@ -46,16 +46,16 @@ export default function ScannerInterface() {
   }), []);
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-6 space-y-6">
+    <div className="card animate-fade-in space-y-6">
       <div className="flex items-center space-x-4">
         <LazyImage
-          src="/scanner-icon.svg"
+          src="/scanner-icon.png"
           alt="Scanner Icon"
-          className="w-12 h-12"
+          className="w-12 h-12 rounded-lg"
           width={48}
           height={48}
         />
-        <h2 className="text-xl font-semibold text-gray-900">
+        <h2 className="text-xl font-bold">
           Contract Scanner
         </h2>
       </div>

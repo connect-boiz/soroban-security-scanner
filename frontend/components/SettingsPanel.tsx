@@ -134,11 +134,11 @@ export default function SettingsPanel() {
   if (!isClient) return <div className="skeleton h-96 w-full rounded-lg" />;
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-6">
+    <div className="card shadow-md animate-fade-in">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-semibold text-gray-900">Settings</h2>
         {savedMessage && (
-          <div className="bg-green-100 text-green-800 px-4 py-2 rounded-md text-sm">
+          <div className="bg-green-100 text-green-800 px-4 py-2 rounded-xl text-sm font-bold border border-green-200">
             {savedMessage}
           </div>
         )}
@@ -149,9 +149,9 @@ export default function SettingsPanel() {
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-optimized ${
+            className={`px-6 py-2 text-sm font-bold rounded-t-xl transition-all ${
               activeTab === tab.id
-                ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-500'
+                ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600'
                 : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
             }`}
           >
@@ -174,7 +174,7 @@ export default function SettingsPanel() {
                 <select
                   value={userPreferences.language}
                   onChange={(e) => setUserPreferences({...userPreferences, language: e.target.value})}
-                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="input"
                 >
                   <option value="en">English</option>
                   <option value="es">Spanish</option>
@@ -189,7 +189,7 @@ export default function SettingsPanel() {
                 <select
                   value={userPreferences.displayMode}
                   onChange={(e) => setUserPreferences({...userPreferences, displayMode: e.target.value as 'compact' | 'detailed'})}
-                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="input"
                 >
                   <option value="compact">Compact</option>
                   <option value="detailed">Detailed</option>
@@ -233,7 +233,7 @@ export default function SettingsPanel() {
                 <select
                   value={securitySettings.scanSensitivity}
                   onChange={(e) => setSecuritySettings({...securitySettings, scanSensitivity: e.target.value as 'low' | 'medium' | 'high'})}
-                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="input"
                 >
                   <option value="low">Low</option>
                   <option value="medium">Medium</option>
@@ -251,7 +251,7 @@ export default function SettingsPanel() {
                   max="168"
                   value={securitySettings.scanInterval}
                   onChange={(e) => setSecuritySettings({...securitySettings, scanInterval: parseInt(e.target.value)})}
-                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="input"
                 />
               </div>
             </div>
@@ -265,7 +265,7 @@ export default function SettingsPanel() {
                 value={securitySettings.apiKey}
                 onChange={(e) => setSecuritySettings({...securitySettings, apiKey: e.target.value})}
                 placeholder="Enter your API key"
-                className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="input"
               />
             </div>
 
@@ -305,7 +305,7 @@ export default function SettingsPanel() {
                 <select
                   value={themeSettings.mode}
                   onChange={(e) => setThemeSettings({...themeSettings, mode: e.target.value as 'light' | 'dark' | 'system'})}
-                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="input"
                 >
                   <option value="light">Light</option>
                   <option value="dark">Dark</option>
@@ -320,7 +320,7 @@ export default function SettingsPanel() {
                 <select
                   value={themeSettings.fontSize}
                   onChange={(e) => setThemeSettings({...themeSettings, fontSize: e.target.value as 'small' | 'medium' | 'large'})}
-                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="input"
                 >
                   <option value="small">Small</option>
                   <option value="medium">Medium</option>
@@ -344,7 +344,7 @@ export default function SettingsPanel() {
                   type="text"
                   value={themeSettings.primaryColor}
                   onChange={(e) => setThemeSettings({...themeSettings, primaryColor: e.target.value})}
-                  className="flex-1 p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="input flex-1"
                 />
               </div>
             </div>
@@ -376,7 +376,7 @@ export default function SettingsPanel() {
                   type="text"
                   value={accountSettings.username}
                   onChange={(e) => setAccountSettings({...accountSettings, username: e.target.value})}
-                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="input"
                 />
               </div>
 
@@ -388,7 +388,7 @@ export default function SettingsPanel() {
                   type="email"
                   value={accountSettings.email}
                   onChange={(e) => setAccountSettings({...accountSettings, email: e.target.value})}
-                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="input"
                 />
               </div>
             </div>
@@ -403,7 +403,7 @@ export default function SettingsPanel() {
                 max="480"
                 value={accountSettings.sessionTimeout}
                 onChange={(e) => setAccountSettings({...accountSettings, sessionTimeout: parseInt(e.target.value)})}
-                className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="input"
               />
             </div>
 
@@ -426,13 +426,13 @@ export default function SettingsPanel() {
             </div>
 
             <div className="flex space-x-3 pt-4">
-              <button className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition-optimized">
+              <button className="btn btn-secondary">
                 Change Password
               </button>
-              <button className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-optimized">
+              <button className="btn btn-primary">
                 Export Data
               </button>
-              <button className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-optimized">
+              <button className="btn btn-primary bg-red-600 hover:bg-red-700 border-none">
                 Delete Account
               </button>
             </div>
@@ -443,13 +443,13 @@ export default function SettingsPanel() {
       <div className="flex justify-between items-center pt-6 mt-6 border-t">
         <button
           onClick={resetSettings}
-          className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition-optimized"
+          className="btn btn-secondary"
         >
           Reset to Defaults
         </button>
         <button
           onClick={saveSettings}
-          className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-optimized"
+          className="btn btn-primary px-8"
         >
           Save Settings
         </button>
