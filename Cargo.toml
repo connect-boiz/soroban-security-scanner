@@ -23,7 +23,7 @@ lettre = "0.11"
 reqwest = { version = "0.11", features = ["json"] }
 
 # Template engine
-handlebars = "4.7"
+handlebars = "6.0"
 
 # Error handling
 anyhow = "1.0"
@@ -34,13 +34,16 @@ config = "0.13"
 
 # Logging
 tracing = "0.1"
-tracing-subscriber = "0.3"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Database (for production use)
 sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid"], optional = true }
 
 # Redis (for caching and rate limiting)
 redis = { version = "0.23", features = ["tokio-comp"], optional = true }
+
+# Rate limiting dependencies
+ipnetwork = "0.20"
 
 [dev-dependencies]
 tokio-test = "0.4"

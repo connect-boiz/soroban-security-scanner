@@ -18,6 +18,7 @@ pub mod time_travel_debugger;
 pub mod differential_fuzzing;
 pub mod batch_operations;
 pub mod notification_service;
+pub mod rate_limiting;
 
 
 pub use scanners::{SecurityScanner, InvariantScanner};
@@ -49,6 +50,11 @@ pub use notification_service::{
     NotificationService, NotificationServiceTrait, NotificationTemplate, TemplateManager,
     DeliveryTracker, NotificationProvider, NotificationChannel, NotificationPriority,
     DeliveryStatus, Recipient, NotificationMessage, NotificationResult
+};
+pub use rate_limiting::{
+    RateLimiter, RateLimitConfig, RateLimitContext, RateLimitResult, RateLimitTier,
+    RateLimitPolicy, RateLimitWindow, RateLimitMiddleware, EndpointRateLimit,
+    RateLimitStorage, RateLimitViolation, RateLimitStats
 };
 
 #[derive(Debug, Clone)]
