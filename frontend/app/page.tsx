@@ -2,12 +2,13 @@
 
 import { useState } from 'react';
 import BountyBoard from '@/components/BountyBoard';
-import ReportSubmission from '@/components/ReportSubmission';
-import Leaderboard from '@/components/Leaderboard';
+import { ReportSubmission } from '@/components/ReportSubmission';
+import { Leaderboard } from '@/components/Leaderboard';
 import { WalletConnect, BountyDeposit } from '@/components/WalletConnect';
-import NotificationCenter from '@/components/Notifications';
+import { NotificationCenter } from '@/components/Notifications';
 import { DisputeForm, DisputeStatus } from '@/components/Dispute';
 import { AnalyticsDashboard } from '@/components/AnalyticsDashboard';
+import PerformanceMonitor from '@/components/PerformanceMonitor';
 import { Bounty } from '@/types/bounty';
 import { BountySubmission as BountySubmissionType } from '@/types/bounty';
 import { DisputeData } from '@/components/Dispute';
@@ -92,7 +93,7 @@ export default function App() {
 
     switch (currentView) {
       case 'bounties':
-        return <BountyBoard onBountySelect={handleBountySelect} />;
+        return <BountyBoard />;
       case 'leaderboard':
         return <Leaderboard />;
       case 'analytics':
@@ -118,7 +119,7 @@ export default function App() {
           </div>
         );
       default:
-        return <BountyBoard onBountySelect={handleBountySelect} />;
+        return <BountyBoard />;
     }
   };
 
@@ -221,6 +222,9 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      {/* Performance Monitor (Development Only) */}
+      <PerformanceMonitor />
     </div>
   );
 }

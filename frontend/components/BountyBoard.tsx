@@ -1,23 +1,19 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useBountyStore } from '@/store/bountyStore';
+import { useState, useEffect, useMemo } from 'react';
+import { useFilteredBounties, useBountyFilters, useBountyActions, useBountyStats } from '@/store/bountySelectors';
 import { Bounty, FilterOptions } from '@/types/bounty';
 import { CountdownTimer } from './CountdownTimer';
 import { Search, Filter, DollarSign, Clock, User, AlertCircle } from 'lucide-react';
 
 const BountyBoard: React.FC = () => {
-  const {
-    filteredBounties,
-    filters,
-    setFilters,
-    setBounties,
-    loading,
-    error
-  } = useBountyStore();
+  // Use optimized selectors
+  const filteredBounties = useFilteredBounties();
+  const { filters, searchTerm, setFilters, setSearchTerm } = useBountyFilters();
+  const { setBounties, loading, error } = useBountyActions();
+  const bountyStats = useBountyStats();
 
   const [showFilters, setShowFilters] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
 
   // Mock data for development
   useEffect(() => {
@@ -98,11 +94,10 @@ const BountyBoard: React.FC = () => {
     }
   };
 
-  const filteredBountiesWithSearch = filteredBounties.filter(bounty =>
-    bounty.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    bounty.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    bounty.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  // Memoized filtered bounties (search is now handled in the store)
+  const displayBounties = useMemo(() => {
+    return filteredBounties;
+  }, [filteredBounties]);
 
   if (loading) {
     return (
@@ -255,14 +250,22 @@ const BountyBoard: React.FC = () => {
         )}
       </div>
 
-      {/* Results Count */}
-      <div className="mb-4 text-sm text-gray-600">
-        Showing {filteredBountiesWithSearch.length} of {filteredBounties.length} bounties
+      {/* Results Count and Stats */}
+      <div className="mb-4 flex justify-between items-center text-sm text-gray-600">
+        <div>
+          Showing {displayBounties.length} of {filteredBounties.length} bounties
+        </div>
+        <div className="flex space-x-4">
+          <span>Total: {bountyStats.total}</span>
+          <span>Active: {bountyStats.active}</span>
+          <span>Completed: {bountyStats.completed}</span>
+          <span>Total Rewards: {bountyStats.totalReward} XLM</span>
+        </div>
       </div>
 
       {/* Bounty List */}
       <div className="space-y-4">
-        {filteredBountiesWithSearch.map(bounty => (
+        {displayBounties.map(bounty => (
           <div key={bounty.id} className="card hover:shadow-xl transition-shadow">
             <div className="flex justify-between items-start mb-4">
               <div className="flex-1">
@@ -325,7 +328,7 @@ const BountyBoard: React.FC = () => {
       </div>
 
       {/* Empty State */}
-      {filteredBountiesWithSearch.length === 0 && (
+      {displayBounties.length === 0 && (
         <div className="text-center py-12">
           <AlertCircle className="h-16 w-16 text-gray-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">No bounties found</h3>

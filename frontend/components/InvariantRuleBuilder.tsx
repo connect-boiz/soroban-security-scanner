@@ -17,6 +17,14 @@ import {
   FileText,
   Layers
 } from 'lucide-react';
+import { 
+  useCurrentProject,
+  useBuilderState,
+  useProjectActions,
+  useRuleActions,
+  useBuilderActions,
+  useValidationState
+} from '@/store/invariantSelectors';
 import { useInvariantStore } from '@/store/invariantStore';
 import { RuleCondition, ComparisonOperator, SorobanVariable } from '@/types/invariant';
 import { SOROBAN_VARIABLES, DEFI_TEMPLATES } from '@/data/invariants';
@@ -31,27 +39,32 @@ import ConfigPanel from './ConfigPanel';
 import ValidationPanel from './ValidationPanel';
 
 const InvariantRuleBuilder: React.FC = () => {
+  // Use optimized selectors
+  const currentProject = useCurrentProject();
+  const builderState = useBuilderState();
+  const { setCurrentProject, createProject } = useProjectActions();
+  const { addRule } = useRuleActions();
   const {
-    builderState,
-    currentProject,
-    selectedTemplate,
-    isConfigPanelOpen,
-    validationResult,
-    isValidating,
     addCondition,
     updateCondition,
     removeCondition,
     moveCondition,
     setLogicOperator,
-    clearBuilder,
+    clearBuilder
+  } = useBuilderActions();
+  const { validationResult, isValidating, validateRule } = useValidationState();
+  
+  // For remaining state that doesn't have dedicated selectors yet
+  const {
+    selectedTemplate,
+    isConfigPanelOpen,
     loadTemplate,
     setSelectedTemplate,
-    validateRule,
     generateConfig,
     setIsConfigPanelOpen,
     setDraggedItem,
     setDraggedOverIndex,
-    addRule
+    draggedOverIndex
   } = useInvariantStore();
 
   const [ruleName, setRuleName] = useState('');
@@ -150,7 +163,7 @@ const InvariantRuleBuilder: React.FC = () => {
       isActive: true
     };
 
-    addRule(rule);
+    addRule(currentProject.id, rule);
     
     // Reset form
     setRuleName('');

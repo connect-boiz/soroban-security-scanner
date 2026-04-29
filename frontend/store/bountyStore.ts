@@ -1,36 +1,40 @@
 import { create } from 'zustand';
+import { shallow } from 'zustand/shallow';
 import { Bounty, FilterOptions, Researcher, BountySubmission } from '@/types/bounty';
+import { useMemo } from 'react';
 
 interface BountyStore {
+  // State
   bounties: Bounty[];
-  filteredBounties: Bounty[];
   filters: FilterOptions;
   selectedBounty: Bounty | null;
   researchers: Researcher[];
   submissions: BountySubmission[];
   loading: boolean;
   error: string | null;
+  searchTerm: string;
   
   // Actions
   setBounties: (bounties: Bounty[]) => void;
-  setFilteredBounties: (bounties: Bounty[]) => void;
   setFilters: (filters: Partial<FilterOptions>) => void;
+  setSearchTerm: (term: string) => void;
   setSelectedBounty: (bounty: Bounty | null) => void;
   setResearchers: (researchers: Researcher[]) => void;
   setSubmissions: (submissions: BountySubmission[]) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   
-  // Computed
-  applyFilters: () => void;
+  // Computed selectors (memoized)
+  getFilteredBounties: () => Bounty[];
   getBountyById: (id: string) => Bounty | undefined;
   getBountiesByCreator: (creator: string) => Bounty[];
   getBountiesByResearcher: (researcher: string) => Bounty[];
+  getBountyStats: () => { total: number; active: number; completed: number; totalReward: number };
 }
 
 export const useBountyStore = create<BountyStore>((set, get) => ({
+  // Initial state
   bounties: [],
-  filteredBounties: [],
   filters: {
     minReward: 0,
     maxReward: 10000,
@@ -43,17 +47,18 @@ export const useBountyStore = create<BountyStore>((set, get) => ({
   submissions: [],
   loading: false,
   error: null,
+  searchTerm: '',
 
+  // Actions
   setBounties: (bounties) => set({ bounties }),
-  
-  setFilteredBounties: (filteredBounties) => set({ filteredBounties }),
   
   setFilters: (newFilters) => {
     set((state) => ({
       filters: { ...state.filters, ...newFilters }
     }));
-    get().applyFilters();
   },
+  
+  setSearchTerm: (term) => set({ searchTerm: term }),
   
   setSelectedBounty: (selectedBounty) => set({ selectedBounty }),
   
@@ -65,10 +70,22 @@ export const useBountyStore = create<BountyStore>((set, get) => ({
   
   setError: (error) => set({ error }),
 
-  applyFilters: () => {
-    const { bounties, filters } = get();
+  // Memoized selectors
+  getFilteredBounties: () => {
+    const { bounties, filters, searchTerm } = get();
     
-    const filtered = bounties.filter(bounty => {
+    return bounties.filter(bounty => {
+      // Search term filter
+      if (searchTerm) {
+        const searchLower = searchTerm.toLowerCase();
+        const matchesSearch = 
+          bounty.title.toLowerCase().includes(searchLower) ||
+          bounty.description.toLowerCase().includes(searchLower) ||
+          bounty.tags.some(tag => tag.toLowerCase().includes(searchLower));
+        
+        if (!matchesSearch) return false;
+      }
+      
       // Reward filter
       if (bounty.rewardAmount < filters.minReward || bounty.rewardAmount > filters.maxReward) {
         return false;
@@ -96,19 +113,30 @@ export const useBountyStore = create<BountyStore>((set, get) => ({
       
       return true;
     });
-    
-    set({ filteredBounties: filtered });
   },
 
   getBountyById: (id) => {
-    return get().bounties.find(bounty => bounty.id === id);
+    const { bounties } = get();
+    return bounties.find(bounty => bounty.id === id);
   },
 
   getBountiesByCreator: (creator) => {
-    return get().bounties.filter(bounty => bounty.creator === creator);
+    const { bounties } = get();
+    return bounties.filter(bounty => bounty.creator === creator);
   },
 
   getBountiesByResearcher: (researcher) => {
-    return get().bounties.filter(bounty => bounty.assignedResearcher === researcher);
+    const { bounties } = get();
+    return bounties.filter(bounty => bounty.assignedResearcher === researcher);
+  },
+  
+  getBountyStats: () => {
+    const { bounties } = get();
+    return {
+      total: bounties.length,
+      active: bounties.filter(b => b.status === 'Active').length,
+      completed: bounties.filter(b => b.status === 'Completed').length,
+      totalReward: bounties.reduce((sum, b) => sum + b.rewardAmount, 0)
+    };
   }
 }));

@@ -1,12 +1,14 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { shallow } from 'zustand/shallow';
 import { InvariantRule, RuleCondition, ProjectProfile, BlockBuilderState, ValidationResult } from '@/types/invariant';
 import { DEFI_TEMPLATES } from '@/data/invariants';
+import { useMemo } from 'react';
 
 interface InvariantStore {
-  // Current project profile
-  currentProject: ProjectProfile | null;
-  projects: ProjectProfile[];
+  // Normalized state
+  projects: Record<string, ProjectProfile>;
+  currentProjectId: string | null;
   
   // Rule builder state
   builderState: BlockBuilderState;
@@ -18,16 +20,16 @@ interface InvariantStore {
   isValidating: boolean;
   
   // Actions
-  setCurrentProject: (project: ProjectProfile | null) => void;
-  createProject: (name: string, description: string) => ProjectProfile;
-  updateProject: (project: ProjectProfile) => void;
+  setCurrentProject: (projectId: string | null) => void;
+  createProject: (name: string, description: string) => string;
+  updateProject: (projectId: string, updates: Partial<ProjectProfile>) => void;
   deleteProject: (projectId: string) => void;
   
   // Rule management
-  addRule: (rule: Omit<InvariantRule, 'id' | 'createdAt' | 'updatedAt'>) => void;
-  updateRule: (ruleId: string, updates: Partial<InvariantRule>) => void;
-  deleteRule: (ruleId: string) => void;
-  toggleRule: (ruleId: string) => void;
+  addRule: (projectId: string, rule: Omit<InvariantRule, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  updateRule: (projectId: string, ruleId: string, updates: Partial<InvariantRule>) => void;
+  deleteRule: (projectId: string, ruleId: string) => void;
+  toggleRule: (projectId: string, ruleId: string) => void;
   
   // Block builder actions
   addCondition: (condition: RuleCondition) => void;
@@ -53,6 +55,13 @@ interface InvariantStore {
   // Drag and drop actions
   setDraggedItem: (item: any) => void;
   setDraggedOverIndex: (index: number | null) => void;
+  
+  // Selectors
+  getCurrentProject: () => ProjectProfile | null;
+  getProjectById: (id: string) => ProjectProfile | undefined;
+  getAllProjects: () => ProjectProfile[];
+  getProjectRules: (projectId: string) => InvariantRule[];
+  getActiveRules: (projectId: string) => InvariantRule[];
 }
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
@@ -76,9 +85,9 @@ const createNewRule = (ruleData: Omit<InvariantRule, 'id' | 'createdAt' | 'updat
 export const useInvariantStore = create<InvariantStore>()(
   persist(
     (set, get) => ({
-      // Initial state
-      currentProject: null,
-      projects: [],
+      // Initial normalized state
+      projects: {},
+      currentProjectId: null,
       
       builderState: {
         conditions: [],
@@ -93,109 +102,117 @@ export const useInvariantStore = create<InvariantStore>()(
       isValidating: false,
       
       // Project management
-      setCurrentProject: (project) => set({ currentProject: project }),
+      setCurrentProject: (projectId) => set({ currentProjectId: projectId }),
       
       createProject: (name, description) => {
         const newProject = createNewProject(name, description);
         set((state) => ({
-          projects: [...state.projects, newProject],
-          currentProject: newProject,
+          projects: { ...state.projects, [newProject.id]: newProject },
+          currentProjectId: newProject.id,
         }));
-        return newProject;
+        return newProject.id;
       },
       
-      updateProject: (project) => set((state) => ({
-        projects: state.projects.map(p => p.id === project.id ? { ...project, updatedAt: new Date() } : p),
-        currentProject: state.currentProject?.id === project.id ? { ...project, updatedAt: new Date() } : state.currentProject,
-      })),
+      updateProject: (projectId, updates) => set((state) => {
+        const project = state.projects[projectId];
+        if (!project) return state;
+        
+        const updatedProject = { ...project, ...updates, updatedAt: new Date() };
+        return {
+          projects: { ...state.projects, [projectId]: updatedProject },
+        };
+      }),
       
-      deleteProject: (projectId) => set((state) => ({
-        projects: state.projects.filter(p => p.id !== projectId),
-        currentProject: state.currentProject?.id === projectId ? null : state.currentProject,
-      })),
+      deleteProject: (projectId) => set((state) => {
+        const newProjects = { ...state.projects };
+        delete newProjects[projectId];
+        
+        return {
+          projects: newProjects,
+          currentProjectId: state.currentProjectId === projectId ? null : state.currentProjectId,
+        };
+      }),
       
       // Rule management
-      addRule: (ruleData) => {
+      addRule: (projectId, ruleData) => {
         const newRule = createNewRule(ruleData);
-        const { currentProject } = get();
+        const { projects } = get();
+        const project = projects[projectId];
         
-        if (currentProject) {
+        if (project) {
           const updatedProject = {
-            ...currentProject,
-            rules: [...currentProject.rules, newRule],
+            ...project,
+            rules: [...project.rules, newRule],
             updatedAt: new Date(),
           };
-          get().updateProject(updatedProject);
+          get().updateProject(projectId, updatedProject);
         }
       },
       
-      updateRule: (ruleId, updates) => {
-        const { currentProject } = get();
+      updateRule: (projectId, ruleId, updates) => {
+        const { projects } = get();
+        const project = projects[projectId];
         
-        if (currentProject) {
-          const updatedRules = currentProject.rules.map(rule =>
+        if (project) {
+          const updatedRules = project.rules.map(rule =>
             rule.id === ruleId ? { ...rule, ...updates, updatedAt: new Date() } : rule
           );
-          const updatedProject = {
-            ...currentProject,
-            rules: updatedRules,
-            updatedAt: new Date(),
-          };
-          get().updateProject(updatedProject);
+          get().updateProject(projectId, { rules: updatedRules });
         }
       },
       
-      deleteRule: (ruleId) => {
-        const { currentProject } = get();
+      deleteRule: (projectId, ruleId) => {
+        const { projects } = get();
+        const project = projects[projectId];
         
-        if (currentProject) {
-          const updatedRules = currentProject.rules.filter(rule => rule.id !== ruleId);
-          const updatedProject = {
-            ...currentProject,
-            rules: updatedRules,
-            updatedAt: new Date(),
-          };
-          get().updateProject(updatedProject);
+        if (project) {
+          const updatedRules = project.rules.filter(rule => rule.id !== ruleId);
+          get().updateProject(projectId, { rules: updatedRules });
         }
       },
       
-      toggleRule: (ruleId) => {
-        const { currentProject } = get();
+      toggleRule: (projectId, ruleId) => {
+        const { projects } = get();
+        const project = projects[projectId];
         
-        if (currentProject) {
-          const updatedRules = currentProject.rules.map(rule =>
+        if (project) {
+          const updatedRules = project.rules.map(rule =>
             rule.id === ruleId ? { ...rule, isActive: !rule.isActive, updatedAt: new Date() } : rule
           );
-          const updatedProject = {
-            ...currentProject,
-            rules: updatedRules,
-            updatedAt: new Date(),
-          };
-          get().updateProject(updatedProject);
+          get().updateProject(projectId, { rules: updatedRules });
         }
       },
       
-      // Block builder actions
-      addCondition: (condition) => set((state) => ({
-        builderState: {
-          ...state.builderState,
-          conditions: [...state.builderState.conditions, condition],
-        },
-      })),
+      // Block builder actions (optimized)
+      addCondition: (condition) => set((state) => {
+        const newConditions = [...state.builderState.conditions, condition];
+        return {
+          builderState: {
+            ...state.builderState,
+            conditions: newConditions,
+          },
+        };
+      }),
       
-      updateCondition: (index, condition) => set((state) => ({
-        builderState: {
-          ...state.builderState,
-          conditions: state.builderState.conditions.map((c, i) => i === index ? condition : c),
-        },
-      })),
+      updateCondition: (index, condition) => set((state) => {
+        const newConditions = state.builderState.conditions.map((c, i) => i === index ? condition : c);
+        return {
+          builderState: {
+            ...state.builderState,
+            conditions: newConditions,
+          },
+        };
+      }),
       
-      removeCondition: (index) => set((state) => ({
-        builderState: {
-          ...state.builderState,
-          conditions: state.builderState.conditions.filter((_, i) => i !== index),
-        },
-      })),
+      removeCondition: (index) => set((state) => {
+        const newConditions = state.builderState.conditions.filter((_, i) => i !== index);
+        return {
+          builderState: {
+            ...state.builderState,
+            conditions: newConditions,
+          },
+        };
+      }),
       
       moveCondition: (fromIndex, toIndex) => set((state) => {
         const { conditions } = state.builderState;
@@ -298,12 +315,12 @@ export const useInvariantStore = create<InvariantStore>()(
             'name: Generated Invariant Rule',
             `logicOperator: ${builderState.logicOperator}`,
             'conditions:',
-            ...builderState.conditions.map(condition => [
+            Array.from(builderState.conditions.map(condition => [
               `  - variable: ${condition.variable.name}`,
               `    operator: ${condition.operator}`,
               `    value: ${condition.value}`,
               `    valueType: ${condition.valueType}`,
-            ]).join('\n'),
+            ])).join('\n'),
           ].join('\n');
           
           return yaml;
@@ -326,12 +343,40 @@ export const useInvariantStore = create<InvariantStore>()(
           draggedOverIndex: index,
         },
       })),
+      
+      // Selectors
+      getCurrentProject: () => {
+        const { projects, currentProjectId } = get();
+        return currentProjectId ? projects[currentProjectId] : null;
+      },
+      
+      getProjectById: (id) => {
+        const { projects } = get();
+        return projects[id];
+      },
+      
+      getAllProjects: () => {
+        const { projects } = get();
+        return Object.values(projects);
+      },
+      
+      getProjectRules: (projectId) => {
+        const { projects } = get();
+        const project = projects[projectId];
+        return project ? project.rules : [];
+      },
+      
+      getActiveRules: (projectId) => {
+        const { projects } = get();
+        const project = projects[projectId];
+        return project ? project.rules.filter(rule => rule.isActive) : [];
+      },
     }),
     {
       name: 'invariant-store',
       partialize: (state) => ({
         projects: state.projects,
-        currentProject: state.currentProject,
+        currentProjectId: state.currentProjectId,
       }),
     }
   )
