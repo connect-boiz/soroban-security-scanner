@@ -103,9 +103,9 @@ export const Toast: React.FC<ToastProps> = ({ toast, onClose }) => {
         {toast.duration && toast.duration > 0 && (
           <div className="absolute bottom-0 left-0 h-1 bg-current/20 rounded-b-lg overflow-hidden">
             <div
-              className="h-full bg-current/40 rounded-b-lg"
+              className="h-full bg-current/40 rounded-b-lg toast-progress"
               style={{
-                animation: `shrink ${toast.duration}ms linear forwards`,
+                animationDuration: `${toast.duration}ms`,
               }}
             />
           </div>
@@ -144,19 +144,5 @@ export const ToastContainer: React.FC<ToastContainerProps> = ({ toasts, onClose 
     </div>
   );
 };
-
-// Add the shrink animation to the global styles
-export const ToastStyles = () => (
-  <style jsx>{`
-    @keyframes shrink {
-      from {
-        width: 100%;
-      }
-      to {
-        width: 0%;
-      }
-    }
-  `}</style>
-);
 
 export default ToastContainer;

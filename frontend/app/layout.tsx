@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next';
+import { headers } from 'next/headers';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -14,8 +15,16 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  // Get the CSP nonce from middleware
+  const headersList = headers();
+  const nonce = headersList.get('x-nonce') || '';
+
   return (
     <html lang="en">
+      <head>
+        {/* CSP nonce is automatically applied to Next.js scripts */}
+        {/* Any custom inline scripts would need nonce={nonce} attribute */}
+      </head>
       <body>{children}</body>
     </html>
   );

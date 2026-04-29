@@ -214,3 +214,18 @@ p {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
+
+
+/* ── Toast Progress Animation ──────────────────────────────────────────────── */
+@keyframes shrink {
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0%;
+  }
+}
+
+.toast-progress {
+  animation: shrink linear forwards;
+}
