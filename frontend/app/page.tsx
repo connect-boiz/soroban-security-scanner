@@ -1,49 +1,103 @@
 'use client';
 
-import { lazy, Suspense, useState, useEffect } from 'react';
-import dynamic from 'next/dynamic';
+import { useState } from 'react';
+import BountyBoard from '@/components/BountyBoard';
+import ReportSubmission from '@/components/ReportSubmission';
+import Leaderboard from '@/components/Leaderboard';
+import { WalletConnect, BountyDeposit } from '@/components/WalletConnect';
+import NotificationCenter from '@/components/Notifications';
+import { DisputeForm, DisputeStatus } from '@/components/Dispute';
+import { AnalyticsDashboard } from '@/components/AnalyticsDashboard';
+import { Bounty } from '@/types/bounty';
+import { BountySubmission as BountySubmissionType } from '@/types/bounty';
+import { DisputeData } from '@/components/Dispute';
+import { 
+  Shield, 
+  Search, 
+  Trophy, 
+  Wallet, 
+  Bell,
+  Menu,
+  X,
+  Home,
+  FileText,
+  Settings,
+  BarChart3
+} from 'lucide-react';
 
-// Lazy load components for code splitting
-const ScannerInterface = dynamic(() => import('../components/ScannerInterface'), {
-  loading: () => <div className="skeleton h-96 w-full rounded-lg" />,
-  ssr: false
-});
+type View = 'bounties' | 'leaderboard' | 'wallet' | 'analytics' | 'settings';
 
-const VulnerabilityReport = dynamic(() => import('../components/VulnerabilityReport'), {
-  loading: () => <div className="skeleton h-64 w-full rounded-lg" />,
-  ssr: false
-});
+export default function App() {
+  const [currentView, setCurrentView] = useState<View>('bounties');
+  const [selectedBounty, setSelectedBounty] = useState<Bounty | null>(null);
+  const [showReportForm, setShowReportForm] = useState(false);
+  const [showDisputeForm, setShowDisputeForm] = useState(false);
+  const [selectedSubmission, setSelectedSubmission] = useState<BountySubmissionType | null>(null);
+  const [disputes, setDisputes] = useState<DisputeData[]>([]);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-const AnalyticsDashboard = dynamic(() => import('../components/AnalyticsDashboard'), {
-  loading: () => <div className="skeleton h-80 w-full rounded-lg" />,
-  ssr: false
-});
+  const handleBountySelect = (bounty: Bounty) => {
+    setSelectedBounty(bounty);
+    setShowReportForm(true);
+  };
 
-const SettingsPanel = dynamic(() => import('../components/SettingsPanel'), {
-  loading: () => <div className="skeleton h-96 w-full rounded-lg" />,
-  ssr: false
-});
+  const handleReportSubmit = (submission: BountySubmissionType) => {
+    console.log('Report submitted:', submission);
+    setShowReportForm(false);
+    setSelectedBounty(null);
+    // In a real app, this would submit to the backend
+  };
 
-const MultiSigWizard = dynamic(() => import('../components/MultiSigWizard'), {
-const BalanceDisplay = dynamic(() => import('../components/BalanceDisplay'), {
-  loading: () => <div className="skeleton h-96 w-full rounded-lg" />,
-  ssr: false
-});
+  const handleDisputeSubmit = (disputeData: DisputeData) => {
+    setDisputes([...disputes, disputeData]);
+    setShowDisputeForm(false);
+    setSelectedSubmission(null);
+    // In a real app, this would submit to the backend
+  };
 
-export default function HomePage() {
-  const [activeTab, setActiveTab] = useState('scanner');
-  const [isClient, setIsClient] = useState(false);
+  const navigation = [
+    { name: 'Bounty Board', view: 'bounties' as View, icon: Search },
+    { name: 'Leaderboard', view: 'leaderboard' as View, icon: Trophy },
+    { name: 'Analytics', view: 'analytics' as View, icon: BarChart3 },
+    { name: 'Wallet', view: 'wallet' as View, icon: Wallet },
+    { name: 'Settings', view: 'settings' as View, icon: Settings },
+  ];
 
-  // Ensure client-side rendering for dynamic components
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
+  const renderMainContent = () => {
+    if (showReportForm && selectedBounty) {
+      return (
+        <ReportSubmission
+          bounty={selectedBounty}
+          onSubmit={handleReportSubmit}
+          onCancel={() => {
+            setShowReportForm(false);
+            setSelectedBounty(null);
+          }}
+        />
+      );
+    }
 
-  const renderActiveComponent = () => {
-    if (!isClient) return <div className="skeleton h-96 w-full rounded-lg" />;
+    if (showDisputeForm && selectedSubmission) {
+      return (
+        <DisputeForm
+          submission={selectedSubmission}
+          onSubmitDispute={handleDisputeSubmit}
+          onCancel={() => {
+            setShowDisputeForm(false);
+            setSelectedSubmission(null);
+          }}
+        />
+      );
+    }
 
-    switch (activeTab) {
-      case 'scanner':
+    switch (currentView) {
+      case 'bounties':
+        return <BountyBoard onBountySelect={handleBountySelect} />;
+      case 'leaderboard':
+        return <Leaderboard />;
+      case 'analytics':
+        return <AnalyticsDashboard />;
+      case 'wallet':
         return (
           <Suspense fallback={<div className="skeleton h-96 w-full rounded-lg" />}>
             <ScannerInterface />
