@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { headers } from 'next/headers';
 import './globals.css';
+import { PageErrorBoundary } from '@/components/ui/ErrorBoundary';
 
 export const metadata: Metadata = {
   title: 'Soroban Security Scanner',
@@ -21,11 +22,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
   return (
     <html lang="en">
-      <head>
-        {/* CSP nonce is automatically applied to Next.js scripts */}
-        {/* Any custom inline scripts would need nonce={nonce} attribute */}
-      </head>
-      <body>{children}</body>
+      <body>
+        <PageErrorBoundary>{children}</PageErrorBoundary>
+      </body>
     </html>
   );
 }
