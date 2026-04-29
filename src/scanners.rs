@@ -8,7 +8,7 @@ use syn::{Item, ItemFn, ItemStruct, ItemEnum, Expr, ExprCall, ExprMethodCall, Ex
 use std::path::Path;
 use std::fs;
 use regex::Regex;
-use anyhow::Result;
+use crate::error::{ScannerResult, ScannerError};
 
 pub struct SecurityScanner {
     vulnerability_patterns: Vec<(VulnerabilityType, Regex)>,
@@ -20,7 +20,7 @@ pub struct InvariantScanner {
 }
 
 impl SecurityScanner {
-    pub fn new() -> Result<Self> {
+    pub fn new() -> ScannerResult<Self> {
         let mut scanner = Self {
             vulnerability_patterns: Vec::new(),
             ignore_patterns: Vec::new(),
@@ -30,78 +30,80 @@ impl SecurityScanner {
         Ok(scanner)
     }
 
-    fn initialize_patterns(&mut self) -> Result<()> {
+    fn initialize_patterns(&mut self) -> ScannerResult<()> {
         // Access Control Vulnerabilities
         self.add_pattern(VulnerabilityType::MissingAccessControl, 
-            r"(pub\s+fn\s+\w+.*\{[^}]*?(?!require_auth|has_auth)[^}]*?})")?;
+            r"pub fn [^{]*}")?;
         
         self.add_pattern(VulnerabilityType::WeakAccessControl,
-            r"require_auth\(\s*\.\s*\)|has_auth\(\s*\.\s*\)")?;
+            r"require_auth\(\.\)|has_auth\(\.\)")?;
         
         self.add_pattern(VulnerabilityType::UnauthorizedMint,
-            r"fn\s+mint.*\{[^}]*?(?!require_auth)[^}]*?balance.*\+=")?;
+            r"fn mint.*balance.*\+=")?;
         
         self.add_pattern(VulnerabilityType::UnauthorizedBurn,
-            r"fn\s+burn.*\{[^}]*?(?!require_auth)[^}]*?balance.*-=")?;
+            r"fn burn.*balance.*-=")?;
 
         // Token Economics Vulnerabilities
         self.add_pattern(VulnerabilityType::InfiniteMint,
-            r"mint.*\{[^}]*?balance.*\+=[^}]*?(?!limit|cap|max_supply)")?;
+            r"mint.*balance.*\+=")?;
         
         self.add_pattern(VulnerabilityType::Reentrancy,
-            r"env\.invoke_contract.*\{[^}]*?balance.*=.*[^}]*?env\.invoke_contract")?;
+            r"env\.invoke_contract.*env\.invoke_contract")?;
         
         self.add_pattern(VulnerabilityType::IntegerOverflow,
-            r"\+\s*=|-\s*=|\*\s*=|/\s*=.*(?!checked_|wrapping_|saturating_)")?;
+            r"\+=|-=|\*=|/=")?;
 
         // Logic Vulnerabilities
         self.add_pattern(VulnerabilityType::FrozenFunds,
-            r"transfer.*\{[^}]*?(?!require|panic)[^}]*?return")?;
+            r"transfer.*return")?;
         
         self.add_pattern(VulnerabilityType::RaceCondition,
-            r"let\s+mut\s+\w+.*=.*env\.current_contract_address\(\).*\{[^}]*?env\.current_contract_address\(\)")?;
+            r"env\.current_contract_address.*env\.current_contract_address")?;
 
         // Stellar Specific Vulnerabilities
         self.add_pattern(VulnerabilityType::InsufficientFeeBump,
-            r"env\.invoke_contract.*\{[^}]*?(?!fee_bump)[^}]*?}")?;
+            r"env\.invoke_contract")?;
         
         self.add_pattern(VulnerabilityType::InvalidTimeBounds,
-            r"env\.ledger\(\).*\{[^}]*?(?!time_bounds|min_time|max_time)[^}]*?}")?;
+            r"env\.ledger")?;
         
         self.add_pattern(VulnerabilityType::WeakSignatureVerification,
-            r"verify.*\{[^}]*?(?!ed25519|sha256)[^}]*?}")?;
+            r"verify")?;
 
         // Best Practices
         self.add_pattern(VulnerabilityType::UninitializedStorage,
-            r"let\s+mut\s+\w+:\s+\w+<[^>]*>.*;[^;]*?\w+\.\w+\(")?;
+            r"let mut.*:")?;
         
         self.add_pattern(VulnerabilityType::MissingEventEmission,
-            r"balance.*=.*\{[^}]*?(?!event|emit)[^}]*?}")?;
+            r"balance.*=")?;
         
         self.add_pattern(VulnerabilityType::HardcodedValues,
-            r"(const\s+|let\s+).*=\s*\"[^\"]*\".*\b(address|secret|key|password)\b")?;
+            r"const.*=.*address|let.*=.*secret")?;
 
         // Security Issues
         self.add_pattern(VulnerabilityType::LackOfInputValidation,
-            r"fn\s+\w+\([^)]*\)\s*->\s*\w+\s*\{[^}]*?(?!require|assert|panic)[^}]*?}")?;
+            r"fn [^{]*}")?;
         
         self.add_pattern(VulnerabilityType::DenialOfService,
-            r"loop\s*\{[^}]*?break[^}]*?\}")?;
+            r"loop")?;
         
         self.add_pattern(VulnerabilityType::InformationLeakage,
-            r"event!\([^)]*\b(secret|private|password|key)\b")?;
+            r"event.*secret")?;
 
         Ok(())
     }
 
-    fn add_pattern(&mut self, vuln_type: VulnerabilityType, pattern: &str) -> Result<()> {
-        let regex = Regex::new(pattern)?;
+    fn add_pattern(&mut self, vuln_type: VulnerabilityType, pattern: &str) -> ScannerResult<()> {
+        let regex = Regex::new(pattern)
+            .map_err(|e| ScannerError::parsing_with_source("regex", pattern, "Invalid vulnerability pattern ", Box::new(e)))?;
         self.vulnerability_patterns.push((vuln_type, regex));
         Ok(())
     }
 
-    pub fn scan_file(&self, file_path: &Path) -> Result<ScanResult> {
-        let content = fs::read_to_string(file_path)?;
+    pub fn scan_file(&self, file_path: &Path) -> ScannerResult<ScanResult> {
+        let content = fs::read_to_string(file_path)
+            .map_err(|e| ScannerError::file_operation("read", &file_path.to_string_lossy(), e))?;
         let mut result = ScanResult::new(file_path.to_string_lossy().to_string());
 
         // Skip if file matches ignore patterns
@@ -110,7 +112,8 @@ impl SecurityScanner {
         }
 
         // Parse the file to get AST
-        let syntax = syn::parse_file(&content)?;
+        let syntax = syn::parse_file(&content)
+            .map_err(|e| ScannerError::parsing_with_source("Rust", &file_path.to_string_lossy(), "Failed to parse AST ", Box::new(e)))?;
         
         // Check for vulnerabilities
         for (vuln_type, pattern) in &self.vulnerability_patterns {
@@ -196,16 +199,21 @@ impl SecurityScanner {
         }
     }
 
-    pub fn scan_directory(&self, dir_path: &Path) -> Result<Vec<ScanResult>> {
+    pub fn scan_directory(&self, dir_path: &Path) -> ScannerResult<Vec<ScanResult>> {
         let mut results = Vec::new();
         
         for entry in walkdir::WalkDir::new(dir_path) {
-            let entry = entry?;
+            let entry = entry
+                .map_err(|e| ScannerError::file_operation("walk", &dir_path.to_string_lossy(), e))?;
             let path = entry.path();
             
             if path.extension().map_or(false, |ext| ext == "rs") {
-                if let Ok(result) = self.scan_file(path) {
-                    results.push(result);
+                match self.scan_file(path) {
+                    Ok(result) => results.push(result),
+                    Err(e) => {
+                        // Log the error but continue scanning other files
+                        eprintln!("Warning: Failed to scan file '{}': {}", path.display(), e.user_message());
+                    }
                 }
             }
         }
@@ -215,7 +223,7 @@ impl SecurityScanner {
 }
 
 impl InvariantScanner {
-    pub fn new() -> Result<Self> {
+    pub fn new() -> ScannerResult<Self> {
         let mut scanner = Self {
             invariant_rules: Vec::new(),
         };
@@ -224,7 +232,7 @@ impl InvariantScanner {
         Ok(scanner)
     }
 
-    fn initialize_rules(&mut self) -> Result<()> {
+    fn initialize_rules(&mut self) -> ScannerResult<()> {
         // Token Invariants
         self.add_rule(InvariantRule::TotalSupplyConsistency,
             r"total_supply.*balance.*\+|balance.*total_supply.*\+")?;
@@ -252,14 +260,16 @@ impl InvariantScanner {
         Ok(())
     }
 
-    fn add_rule(&mut self, rule: InvariantRule, pattern: &str) -> Result<()> {
-        let regex = Regex::new(pattern)?;
+    fn add_rule(&mut self, rule: InvariantRule, pattern: &str) -> ScannerResult<()> {
+        let regex = Regex::new(pattern)
+            .map_err(|e| ScannerError::parsing_with_source("regex", pattern, "Invalid invariant rule pattern", Box::new(e)))?;
         self.invariant_rules.push((rule, regex));
         Ok(())
     }
 
-    pub fn scan_file(&self, file_path: &Path) -> Result<ScanResult> {
-        let content = fs::read_to_string(file_path)?;
+    pub fn scan_file(&self, file_path: &Path) -> ScannerResult<ScanResult> {
+        let content = fs::read_to_string(file_path)
+            .map_err(|e| ScannerError::file_operation("read", &file_path.to_string_lossy(), e))?;
         let mut result = ScanResult::new(file_path.to_string_lossy().to_string());
 
         for (rule, pattern) in &self.invariant_rules {
@@ -271,16 +281,21 @@ impl InvariantScanner {
         Ok(result)
     }
 
-    pub fn scan_directory(&self, dir_path: &Path) -> Result<Vec<ScanResult>> {
+    pub fn scan_directory(&self, dir_path: &Path) -> ScannerResult<Vec<ScanResult>> {
         let mut results = Vec::new();
         
         for entry in walkdir::WalkDir::new(dir_path) {
-            let entry = entry?;
+            let entry = entry
+                .map_err(|e| ScannerError::file_operation("walk", &dir_path.to_string_lossy(), e))?;
             let path = entry.path();
             
             if path.extension().map_or(false, |ext| ext == "rs") {
-                if let Ok(result) = self.scan_file(path) {
-                    results.push(result);
+                match self.scan_file(path) {
+                    Ok(result) => results.push(result),
+                    Err(e) => {
+                        // Log the error but continue scanning other files
+                        eprintln!("Warning: Failed to scan file '{}': {}", path.display(), e.user_message());
+                    }
                 }
             }
         }

@@ -5,7 +5,8 @@ use colored::*;
 use stellar_security_scanner::{scanners::{SecurityScanner, InvariantScanner}, analysis::AnalysisResult, report::{SecurityReport, ReportFormat}, config::ScannerConfig, kubernetes::{K8sScanManager, ScanPodConfig, ScanAutoScaler}, time_travel_debugger::{TimeTravelDebugger, TimeTravelConfig, ForkedState, TestResult}, differential_fuzzing::{DifferentialFuzzer, DifferentialFuzzingConfig, SdkVersion}};
 use std::path::PathBuf;
 use std::time::{Instant, Duration};
-use anyhow::Result;
+use stellar_security_scanner::error::{ScannerResult, ScannerError};
+use stellar_security_scanner::error_handler::{ErrorHandler, setup_global_error_handling};
 use uuid;
 
 #[derive(Parser)]
@@ -463,10 +464,23 @@ enum DifferentialFuzzingAction {
     },
 }
 
-fn main() -> Result<()> {
+fn main() {
     let cli = Cli::parse();
     
-    match cli.command {
+    // Determine verbosity from command
+    let verbose = match &cli.command {
+        Commands::Security { verbose, .. } => *verbose,
+        Commands::Invariants { verbose, .. } => *verbose,
+        Commands::Scan { verbose, .. } => *verbose,
+        Commands::K8sScan { verbose, .. } => *verbose,
+        _ => false,
+    };
+    
+    // Set up global error handling
+    let error_handler = setup_global_error_handling(verbose);
+    
+    // Execute the command with error handling
+    let result = match cli.command {
         Commands::Security { path, format, output, config, verbose } => {
             run_security_scan(path, format, output, config, verbose)
         }
@@ -497,10 +511,13 @@ fn main() -> Result<()> {
         Commands::DifferentialFuzzing { action } => {
             run_differential_fuzzing_action(action)
         }
-    }
+    };
+    
+    // Handle the result
+    error_handler.handle_result(result);
 }
 
-fn run_security_scan(path: PathBuf, format: String, output: Option<PathBuf>, config_path: Option<PathBuf>, verbose: bool) -> Result<()> {
+fn run_security_scan(path: PathBuf, format: String, output: Option<PathBuf>, config_path: Option<PathBuf>, verbose: bool) -> ScannerResult<()> {
     println!("{}", "🔍 Starting Stellar Security Scan".bold().cyan());
     
     let config = load_config(config_path)?;
@@ -538,7 +555,7 @@ fn run_security_scan(path: PathBuf, format: String, output: Option<PathBuf>, con
     Ok(())
 }
 
-fn run_invariant_scan(path: PathBuf, format: String, output: Option<PathBuf>, config_path: Option<PathBuf>, verbose: bool) -> Result<()> {
+fn run_invariant_scan(path: PathBuf, format: String, output: Option<PathBuf>, config_path: Option<PathBuf>, verbose: bool) -> ScannerResult<()> {
     println!("{}", "🔒 Starting Stellar Invariant Scan".bold().cyan());
     
     let config = load_config(config_path)?;
@@ -571,7 +588,7 @@ fn run_invariant_scan(path: PathBuf, format: String, output: Option<PathBuf>, co
     Ok(())
 }
 
-fn run_comprehensive_scan(path: PathBuf, format: String, output: Option<PathBuf>, config_path: Option<PathBuf>, verbose: bool) -> Result<()> {
+fn run_comprehensive_scan(path: PathBuf, format: String, output: Option<PathBuf>, config_path: Option<PathBuf>, verbose: bool) -> ScannerResult<()> {
     println!("{}", "🚀 Starting Comprehensive Stellar Security & Invariant Scan".bold().cyan());
     
     let config = load_config(config_path)?;
@@ -626,7 +643,7 @@ fn run_comprehensive_scan(path: PathBuf, format: String, output: Option<PathBuf>
     Ok(())
 }
 
-fn generate_config(path: PathBuf) -> Result<()> {
+fn generate_config(path: PathBuf) -> ScannerResult<()> {
     println!("📝 Generating default configuration file: {}", path.display());
     
     let config = ScannerConfig::default();
@@ -638,7 +655,7 @@ fn generate_config(path: PathBuf) -> Result<()> {
     Ok(())
 }
 
-fn list_vulnerability_checks(severity_filter: Option<String>) -> Result<()> {
+fn list_vulnerability_checks(severity_filter: Option<String>) -> ScannerResult<()> {
     println!("{}", "🚨 Available Vulnerability Checks".bold().red());
     println!("{}", "═".repeat(50).red());
     
@@ -697,7 +714,7 @@ fn list_vulnerability_checks(severity_filter: Option<String>) -> Result<()> {
     Ok(())
 }
 
-fn list_invariant_rules(severity_filter: Option<String>) -> Result<()> {
+fn list_invariant_rules(severity_filter: Option<String>) -> ScannerResult<()> {
     println!("{}", "🔒 Available Invariant Rules".bold().yellow());
     println!("{}", "═".repeat(50).yellow());
     
@@ -752,7 +769,7 @@ fn list_invariant_rules(severity_filter: Option<String>) -> Result<()> {
     Ok(())
 }
 
-fn load_config(config_path: Option<PathBuf>) -> Result<ScannerConfig> {
+fn load_config(config_path: Option<PathBuf>) -> ScannerResult<ScannerConfig> {
     match config_path {
         Some(path) => {
             if path.exists() {
@@ -782,13 +799,16 @@ fn load_config(config_path: Option<PathBuf>) -> Result<ScannerConfig> {
     }
 }
 
-fn parse_report_format(format: &str) -> Result<ReportFormat> {
+fn parse_report_format(format: &str) -> ScannerResult<ReportFormat> {
     match format.to_lowercase().as_str() {
         "console" => Ok(ReportFormat::Console),
         "json" => Ok(ReportFormat::Json),
         "html" => Ok(ReportFormat::Html),
         "markdown" | "md" => Ok(ReportFormat::Markdown),
-        _ => anyhow::bail!("Invalid output format: {}. Use: console, json, html, markdown", format),
+        _ => Err(ScannerError::validation(
+            "format", 
+            format!("Invalid output format: {}. Use: console, json, html, markdown", format)
+        )),
     }
 }
 

@@ -16,6 +16,8 @@ pub mod audit_proof_of_scan;
 pub mod session;
 pub mod time_travel_debugger;
 pub mod differential_fuzzing;
+pub mod error;
+pub mod error_handler;
 
 
 pub use scanners::{SecurityScanner, InvariantScanner};
@@ -39,6 +41,8 @@ pub use differential_fuzzing::{
     DifferentialFuzzer, DifferentialFuzzingConfig, DifferentialFuzzingReport,
     SdkVersion, TestInput, ExecutionResult, DiscrepancyDetector, NonDeterministicBehavior
 };
+pub use error::{ScannerError, ScannerResult, ErrorSeverity, ErrorContext};
+pub use error_handler::{ErrorHandler, setup_global_error_handling};
 
 #[derive(Debug, Clone)]
 pub struct ScanResult {
