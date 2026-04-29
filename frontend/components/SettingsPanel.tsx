@@ -238,9 +238,9 @@ export default function SettingsPanel() {
             
             {isSaving ? (
               <div className="space-y-4">
-                <SkeletonCard title="Language Settings" />
-                <SkeletonCard title="Display Options" />
-                <SkeletonCard title="Notification Preferences" />
+                <SkeletonCard />
+                <SkeletonCard />
+                <SkeletonCard />
               </div>
             ) : (
             <div>

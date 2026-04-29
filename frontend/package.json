@@ -13,25 +13,38 @@
     "type-check": "tsc --noEmit",
     "bundle-analyzer": "npx @next/bundle-analyzer",
     "lighthouse": "npx lighthouse http://localhost:3000 --output=html --output-path=./lighthouse-report.html",
-    "performance-test": "npm run build && npm run lighthouse"
+    "performance-test": "npm run build && npm run lighthouse",
+    "test": "jest",
+    "test:watch": "jest --watch"
   },
   "dependencies": {
+    "@soroban-scanner/ui-components": "file:../component-library",
+    "lucide-react": "^1.13.0",
     "next": "^14.0.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "@soroban-scanner/ui-components": "file:../component-library"
+    "react-joyride": "^3.1.0",
+    "zustand": "^5.0.12"
   },
   "devDependencies": {
+    "@next/bundle-analyzer": "^14.0.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/jest": "^30.0.0",
     "@types/node": "^20.0.0",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
+    "@types/react-joyride": "^2.0.2",
+    "autoprefixer": "^10.4.16",
     "eslint": "^8.45.0",
     "eslint-config-next": "^14.0.0",
-    "typescript": "^5.1.0",
-    "@next/bundle-analyzer": "^14.0.0",
+    "jest": "^30.3.0",
+    "jest-environment-jsdom": "^30.3.0",
     "lighthouse": "^11.0.0",
-    "webpack-bundle-analyzer": "^4.9.0",
-    "autoprefixer": "^10.4.16",
-    "postcss": "^8.4.32"
+    "postcss": "^8.4.32",
+    "ts-jest": "^29.4.9",
+    "typescript": "^5.1.0",
+    "webpack-bundle-analyzer": "^4.9.0"
   }
 }

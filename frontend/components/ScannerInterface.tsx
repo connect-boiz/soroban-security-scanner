@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useCallback, useMemo } from 'react';
-import { LazyImage } from './LazyImage';
+import LazyImage from './LazyImage';
 import { LoadingOverlay, ProgressBar, SkeletonCard } from './ui';
+import HelpIcon from './help/HelpIcon';
+import { HELP_CONTENT } from '../lib/help-content';
 
 interface ScanResult {
   vulnerabilities: string[];
@@ -82,8 +84,9 @@ export default function ScannerInterface() {
 
         <div className="space-y-4">
           <div>
-            <label htmlFor="contract-code" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="contract-code" className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-2">
               Contract Code
+              <HelpIcon content={HELP_CONTENT.scan.contractId} label="Contract ID" />
             </label>
             <textarea
               id="contract-code"
@@ -95,7 +98,44 @@ export default function ScannerInterface() {
             />
           </div>
 
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="vulnerability-types" className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-2">
+                Vulnerability Types
+                <HelpIcon content={HELP_CONTENT.scan.vulnerabilityTypes} label="Vulnerability Types" />
+              </label>
+              <select
+                id="vulnerability-types"
+                className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                disabled={isScanning}
+              >
+                <option>All Categories</option>
+                <option>Arithmetic Overflows</option>
+                <option>Reentrancy</option>
+                <option>Access Control</option>
+                <option>Logic Flaws</option>
+              </select>
+            </div>
+
+            <div>
+              <label htmlFor="scan-depth" className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-2">
+                Scan Depth
+                <HelpIcon content={HELP_CONTENT.scan.scanDepth} label="Scan Depth" />
+              </label>
+              <select
+                id="scan-depth"
+                className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                disabled={isScanning}
+              >
+                <option>Basic (Fast)</option>
+                <option>Deep (Symbolic)</option>
+                <option>Exhaustive (Formal)</option>
+              </select>
+            </div>
+          </div>
+
           <button
+            id="submit-scan-btn"
             onClick={handleScan}
             disabled={isScanning || !contractCode.trim()}
             className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-optimized"

@@ -29,7 +29,7 @@ export default function SignUpForm({ onSignUp, onSignIn, isLoading = false }: Si
   });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [errors, setErrors] = useState<Partial<SignUpFormData>>({});
+  const [errors, setErrors] = useState<Partial<Record<keyof SignUpFormData, string>>>({});
   const [touched, setTouched] = useState<Partial<Record<keyof SignUpFormData, boolean>>>({});
   const [passwordStrength, setPasswordStrength] = useState<'weak' | 'medium' | 'strong' | null>(null);
 
@@ -54,7 +54,7 @@ export default function SignUpForm({ onSignUp, onSignIn, isLoading = false }: Si
   };
 
   const validateForm = (): boolean => {
-    const newErrors: Partial<SignUpFormData> = {};
+    const newErrors: Partial<Record<keyof SignUpFormData, string>> = {};
 
     if (!formData.firstName.trim()) {
       newErrors.firstName = 'First name is required';
