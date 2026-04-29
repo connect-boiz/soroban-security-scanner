@@ -4,46 +4,79 @@ import { Suspense, useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { SectionErrorBoundary } from '@/components/ui/ErrorBoundary';
 
-// Lazy load components for code splitting
-const ScannerInterface = dynamic(() => import('../components/ScannerInterface'), {
-  loading: () => <div className="skeleton h-96 w-full rounded-lg" />,
-  ssr: false
-});
+type View = 'bounties' | 'leaderboard' | 'wallet' | 'analytics' | 'settings';
 
-const VulnerabilityReport = dynamic(() => import('../components/VulnerabilityReport'), {
-  loading: () => <div className="skeleton h-64 w-full rounded-lg" />,
-  ssr: false
-});
+export default function App() {
+  const [currentView, setCurrentView] = useState<View>('bounties');
+  const [selectedBounty, setSelectedBounty] = useState<Bounty | null>(null);
+  const [showReportForm, setShowReportForm] = useState(false);
+  const [showDisputeForm, setShowDisputeForm] = useState(false);
+  const [selectedSubmission, setSelectedSubmission] = useState<BountySubmissionType | null>(null);
+  const [disputes, setDisputes] = useState<DisputeData[]>([]);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-const AnalyticsDashboard = dynamic(() => import('../components/AnalyticsDashboard'), {
-  loading: () => <div className="skeleton h-80 w-full rounded-lg" />,
-  ssr: false
-});
+  const handleBountySelect = (bounty: Bounty) => {
+    setSelectedBounty(bounty);
+    setShowReportForm(true);
+  };
 
-const SettingsPanel = dynamic(() => import('../components/SettingsPanel'), {
-  loading: () => <div className="skeleton h-96 w-full rounded-lg" />,
-  ssr: false
-});
+  const handleReportSubmit = (submission: BountySubmissionType) => {
+    console.log('Report submitted:', submission);
+    setShowReportForm(false);
+    setSelectedBounty(null);
+    // In a real app, this would submit to the backend
+  };
 
-const BalanceDisplay = dynamic(() => import('../components/BalanceDisplay'), {
-  loading: () => <div className="skeleton h-96 w-full rounded-lg" />,
-  ssr: false
-});
+  const handleDisputeSubmit = (disputeData: DisputeData) => {
+    setDisputes([...disputes, disputeData]);
+    setShowDisputeForm(false);
+    setSelectedSubmission(null);
+    // In a real app, this would submit to the backend
+  };
 
-export default function HomePage() {
-  const [activeTab, setActiveTab] = useState('scanner');
-  const [isClient, setIsClient] = useState(false);
+  const navigation = [
+    { name: 'Bounty Board', view: 'bounties' as View, icon: Search },
+    { name: 'Leaderboard', view: 'leaderboard' as View, icon: Trophy },
+    { name: 'Analytics', view: 'analytics' as View, icon: BarChart3 },
+    { name: 'Wallet', view: 'wallet' as View, icon: Wallet },
+    { name: 'Settings', view: 'settings' as View, icon: Settings },
+  ];
 
-  // Ensure client-side rendering for dynamic components
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
+  const renderMainContent = () => {
+    if (showReportForm && selectedBounty) {
+      return (
+        <ReportSubmission
+          bounty={selectedBounty}
+          onSubmit={handleReportSubmit}
+          onCancel={() => {
+            setShowReportForm(false);
+            setSelectedBounty(null);
+          }}
+        />
+      );
+    }
 
-  const renderActiveComponent = () => {
-    if (!isClient) return <div className="skeleton h-96 w-full rounded-lg" />;
+    if (showDisputeForm && selectedSubmission) {
+      return (
+        <DisputeForm
+          submission={selectedSubmission}
+          onSubmitDispute={handleDisputeSubmit}
+          onCancel={() => {
+            setShowDisputeForm(false);
+            setSelectedSubmission(null);
+          }}
+        />
+      );
+    }
 
-    switch (activeTab) {
-      case 'scanner':
+    switch (currentView) {
+      case 'bounties':
+        return <BountyBoard onBountySelect={handleBountySelect} />;
+      case 'leaderboard':
+        return <Leaderboard />;
+      case 'analytics':
+        return <AnalyticsDashboard />;
+      case 'wallet':
         return (
           <SectionErrorBoundary context={{ tab: 'scanner' }}>
             <Suspense fallback={<div className="skeleton h-96 w-full rounded-lg" />}>
@@ -67,6 +100,10 @@ export default function HomePage() {
             </Suspense>
           </SectionErrorBoundary>
         );
+      case 'multisig':
+        return (
+          <Suspense fallback={<div className="skeleton h-96 w-full rounded-lg" />}>
+            <MultiSigWizard />
       case 'balance':
         return (
           <SectionErrorBoundary context={{ tab: 'balance' }}>
@@ -97,6 +134,7 @@ export default function HomePage() {
               Soroban Security Scanner
             </h1>
             <nav className="flex space-x-4">
+              {['scanner', 'report', 'analytics', 'multisig', 'settings'].map((tab) => (
               {['scanner', 'report', 'analytics', 'balance', 'settings'].map((tab) => (
                 <button
                   key={tab}
@@ -107,7 +145,7 @@ export default function HomePage() {
                       : 'text-gray-500 hover:text-gray-700 bg-transparent'
                   }`}
                 >
-                  {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                  {tab === 'multisig' ? 'Multi-Sig' : tab.charAt(0).toUpperCase() + tab.slice(1)}
                 </button>
               ))}
             </nav>
