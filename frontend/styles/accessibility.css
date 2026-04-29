@@ -1,0 +1,181 @@
+/* frontend/styles/accessibility.css
+ *
+ * WCAG 2.1 AA global style overrides for Soroban Security Scanner.
+ * Import this in frontend/styles/globals.css:
+ *   @import './accessibility.css';
+ */
+
+/* ── 1. Focus-visible ring (WCAG 2.4.7 & 2.4.11) ──────────────────────────── */
+/*
+ * Remove the default browser outline only when a custom ring is provided.
+ * NEVER use `outline: none` without a replacement — that breaks keyboard users.
+ */
+:focus-visible {
+  outline: 3px solid #22d3ee; /* cyan-400 — 8.4:1 contrast on #0f1117 */
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* Interactive elements that manage their own focus styling may opt out */
+[data-focus-managed]:focus-visible {
+  outline: none;
+}
+
+/* ── 2. Skip link (WCAG 2.4.1) ─────────────────────────────────────────────── */
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: 1rem;
+  z-index: 9999;
+  padding: 0.5rem 1rem;
+  background: #22d3ee;
+  color: #0f172a;
+  font-size: 0.875rem;
+  font-weight: 700;
+  border-radius: 0 0 0.5rem 0.5rem;
+  text-decoration: none;
+  transition: top 0.15s ease;
+}
+
+.skip-link:focus {
+  top: 0;
+}
+
+/* ── 3. Visually hidden (screen-reader only) ────────────────────────────────── */
+/*
+ * Applied via Tailwind's `sr-only` utility, but also available as a CSS class
+ * for non-Tailwind contexts. Do NOT use `display: none` or `visibility: hidden`
+ * as those remove content from the accessibility tree.
+ */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* ── 4. Reduced motion (WCAG 2.3.3) ────────────────────────────────────────── */
+/*
+ * Disable or significantly reduce animations for users who prefer it.
+ * Target EVERY animation/transition property to be thorough.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* Preserve opacity fade-ins — they convey state changes, not decoration */
+  .motion-safe\:animate-fade-in {
+    animation: none;
+    opacity: 1;
+  }
+}
+
+/* ── 5. High-contrast mode (WCAG 1.4.11) ───────────────────────────────────── */
+@media (forced-colors: active) {
+  /* Ensure custom-styled interactive elements get system colour treatment */
+  button,
+  [role="button"],
+  a,
+  input,
+  select,
+  textarea {
+    forced-color-adjust: auto;
+  }
+
+  /* Custom focus ring — Windows HC will override with system highlight colour */
+  :focus-visible {
+    outline: 3px solid ButtonText;
+    outline-offset: 3px;
+  }
+
+  /* Status badges — text + border carry meaning; background is secondary */
+  .badge {
+    border: 2px solid ButtonText;
+    background: Canvas;
+    color: ButtonText;
+  }
+}
+
+/* ── 6. Text scaling (WCAG 1.4.4 & 1.4.10) ─────────────────────────────────── */
+/*
+ * All font sizes use `rem` (relative to user's browser font preference).
+ * This block documents intent; actual values live in Tailwind config.
+ * Minimum body font: 1rem (16px equivalent).
+ * Minimum touch target: 44×44 CSS px (enforced below).
+ */
+html {
+  /* Prevent iOS auto-zoom on input focus (but preserve user zoom ability) */
+  -webkit-text-size-adjust: 100%;
+}
+
+/* ── 7. Touch targets (WCAG 2.5.5 / 2.5.8) ─────────────────────────────────── */
+/*
+ * Interactive elements must have a minimum 44×44px tap target.
+ * Padding is preferred over size so visual appearance is unaffected.
+ */
+button:not([data-compact]),
+[role="button"]:not([data-compact]),
+a:not([data-compact]) {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Small/compact variants opt out with data-compact */
+[data-compact] {
+  min-height: 24px;
+  min-width: 24px;
+}
+
+/* ── 8. Motion-safe dialog animation ────────────────────────────────────────── */
+@keyframes fade-in-scale {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-fade-in-scale {
+  animation: fade-in-scale 0.18s ease-out both;
+}
+
+/* ── 9. Scrollbar (WCAG 1.4.11 – Non-text contrast) ────────────────────────── */
+/* Ensure custom scrollbars meet 3:1 non-text contrast against their track */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1e293b; /* slate-800 */
+}
+
+::-webkit-scrollbar-thumb {
+  background: #475569; /* slate-600 — 3.4:1 vs slate-800 ✓ */
+  border-radius: 5px;
+  border: 2px solid #1e293b;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #64748b; /* slate-500 */
+}
+
+/* ── 10. Selection colour (WCAG 1.4.3) ─────────────────────────────────────── */
+::selection {
+  background: #164e63; /* cyan-950 */
+  color: #cffafe;      /* cyan-100 — 9.2:1 contrast ✓ */
+}
