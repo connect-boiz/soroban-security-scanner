@@ -161,23 +161,30 @@ impl Default for EmergencyStopConfig {
 }
 
 impl ScannerConfig {
-    pub fn load_from_file(path: &PathBuf) -> anyhow::Result<Self> {
-        let content = std::fs::read_to_string(path)?;
+    pub fn load_from_file(path: &PathBuf) -> ScannerResult<Self> {
+        let content = std::fs::read_to_string(path)
+            .map_err(|e| ScannerError::file_operation("read", &path.to_string_lossy(), e))?;
+        
         let config: ScannerConfig = if path.extension().and_then(|s| s.to_str()) == Some("toml") {
-            toml::from_str(&content)?
+            toml::from_str(&content)
+                .map_err(|e| ScannerError::parsing_with_source("TOML", &path.to_string_lossy(), "Invalid configuration format", Box::new(e)))?
         } else {
-            serde_json::from_str(&content)?
+            serde_json::from_str(&content)
+                .map_err(|e| ScannerError::parsing_with_source("JSON", &path.to_string_lossy(), "Invalid configuration format", Box::new(e)))?
         };
         Ok(config)
     }
 
-    pub fn save_to_file(&self, path: &PathBuf) -> anyhow::Result<()> {
+    pub fn save_to_file(&self, path: &PathBuf) -> ScannerResult<()> {
         let content = if path.extension().and_then(|s| s.to_str()) == Some("toml") {
-            toml::to_string_pretty(self)?
+            toml::to_string_pretty(self)
+                .map_err(|e| ScannerError::config_with_source("Failed to serialize TOML configuration", Box::new(e)))?
         } else {
-            serde_json::to_string_pretty(self)?
+            serde_json::to_string_pretty(self)
+                .map_err(|e| ScannerError::config_with_source("Failed to serialize JSON configuration", Box::new(e)))?
         };
-        std::fs::write(path, content)?;
+        std::fs::write(path, content)
+            .map_err(|e| ScannerError::file_operation("write", &path.to_string_lossy(), e))?;
         Ok(())
     }
 
