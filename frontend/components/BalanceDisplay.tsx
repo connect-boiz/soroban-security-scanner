@@ -479,7 +479,7 @@ export const BalanceDisplay: React.FC<BalanceDisplayProps> = ({
             isRefreshingData ? (
               <SkeletonCard lines={8} avatar={false} button={true} height="h-64" />
             ) : (
-              <ConversionCalculator
+              <ConversionPanel
                 tokens={tokens}
                 conversionRates={conversionRates}
               />
@@ -487,6 +487,14 @@ export const BalanceDisplay: React.FC<BalanceDisplayProps> = ({
           )}
         </div>
       </div>
+
+      {/* Token Detail Modal */}
+      {selectedToken && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Token Details</h3>
+              <button
                 onClick={() => setSelectedToken(null)}
                 className="text-gray-400 hover:text-gray-600"
               >
@@ -512,7 +520,8 @@ export const BalanceDisplay: React.FC<BalanceDisplayProps> = ({
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </LoadingOverlay>
   );
 };
 
