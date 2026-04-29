@@ -1,12 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import { BountyBoard } from '@/components/BountyBoard';
-import { ReportSubmission } from '@/components/ReportSubmission';
-import { Leaderboard } from '@/components/Leaderboard';
+import BountyBoard from '@/components/BountyBoard';
+import ReportSubmission from '@/components/ReportSubmission';
+import Leaderboard from '@/components/Leaderboard';
 import { WalletConnect, BountyDeposit } from '@/components/WalletConnect';
-import { NotificationCenter } from '@/components/Notifications';
+import NotificationCenter from '@/components/Notifications';
 import { DisputeForm, DisputeStatus } from '@/components/Dispute';
+import { AnalyticsDashboard } from '@/components/AnalyticsDashboard';
 import { Bounty } from '@/types/bounty';
 import { BountySubmission as BountySubmissionType } from '@/types/bounty';
 import { DisputeData } from '@/components/Dispute';
@@ -20,10 +21,11 @@ import {
   X,
   Home,
   FileText,
-  Settings
+  Settings,
+  BarChart3
 } from 'lucide-react';
 
-type View = 'bounties' | 'leaderboard' | 'wallet' | 'settings';
+type View = 'bounties' | 'leaderboard' | 'wallet' | 'analytics' | 'settings';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<View>('bounties');
@@ -56,6 +58,7 @@ export default function App() {
   const navigation = [
     { name: 'Bounty Board', view: 'bounties' as View, icon: Search },
     { name: 'Leaderboard', view: 'leaderboard' as View, icon: Trophy },
+    { name: 'Analytics', view: 'analytics' as View, icon: BarChart3 },
     { name: 'Wallet', view: 'wallet' as View, icon: Wallet },
     { name: 'Settings', view: 'settings' as View, icon: Settings },
   ];
@@ -92,6 +95,8 @@ export default function App() {
         return <BountyBoard onBountySelect={handleBountySelect} />;
       case 'leaderboard':
         return <Leaderboard />;
+      case 'analytics':
+        return <AnalyticsDashboard />;
       case 'wallet':
         return (
           <div className="max-w-4xl mx-auto p-6 space-y-6">
