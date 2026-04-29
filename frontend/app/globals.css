@@ -1,146 +1,216 @@
-/*
- * Mobile-first global styles for Soroban Security Scanner
+/* 
+ * Soroban Security Scanner - Modern Design System
  * ─────────────────────────────────────────────────────────
- * Breakpoints (min-width):
- *   sm  640px  — small phones and up
- *   md  768px  — tablets and up
- *   lg  1024px — small desktops and up
- *   xl  1280px — large desktops and up
  */
 
-/* ── Reset & Box Model ─────────────────────────────────────────────────────── */
-*,
-*::before,
-*::after {
+:root {
+  /* Colors - Light Mode */
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --secondary: #64748b;
+  --background: #f8fafc;
+  --surface: #ffffff;
+  --text-main: #0f172a;
+  --text-muted: #64748b;
+  --border: #e2e8f0;
+  --accent: #6366f1;
+  
+  /* Status Colors */
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --info: #3b82f6;
+
+  /* Elevations */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  
+  /* Layout */
+  --container-max: 1200px;
+  --radius: 0.75rem;
+  --spacing-base: 1rem;
+}
+
+[data-theme='dark'] {
+  --primary: #3b82f6;
+  --primary-hover: #60a5fa;
+  --secondary: #94a3b8;
+  --background: #0f172a;
+  --surface: #1e293b;
+  --text-main: #f1f5f9;
+  --text-muted: #94a3b8;
+  --border: #334155;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.5);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.6);
+}
+
+/* ── Reset ─────────────────────────────────────────────────────────────────── */
+*, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
-/* ── Root / Body ───────────────────────────────────────────────────────────── */
 html {
-  /* Fluid base font: 14px on mobile → 16px on desktop */
-  font-size: clamp(14px, 1.5vw, 16px);
-  -webkit-text-size-adjust: 100%;
-  text-size-adjust: 100%;
+  font-size: 16px;
   scroll-behavior: smooth;
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
-    Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-  line-height: 1.6;
-  color: #1a1a2e;
-  background-color: #f8fafc;
-  /* Respect iOS safe areas (notch, home indicator) */
-  padding-left: env(safe-area-inset-left);
-  padding-right: env(safe-area-inset-right);
-  padding-bottom: env(safe-area-inset-bottom);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background-color: var(--background);
+  color: var(--text-main);
+  line-height: 1.5;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-/* ── Typography Scale ──────────────────────────────────────────────────────── */
-h1 { font-size: clamp(1.5rem, 5vw, 2.5rem); line-height: 1.2; }
-h2 { font-size: clamp(1.25rem, 4vw, 2rem);  line-height: 1.3; }
-h3 { font-size: clamp(1.1rem, 3vw, 1.5rem); line-height: 1.4; }
-h4 { font-size: clamp(1rem, 2.5vw, 1.25rem); }
-p  { font-size: 1rem; }
-
-/* ── Touch Targets ─────────────────────────────────────────────────────────── */
-/* Ensure all interactive elements meet the 44×44px minimum */
-button,
-a,
-[role='button'],
-input,
-select,
-textarea {
-  min-height: 44px;
-  min-width: 44px;
+/* ── Typography ────────────────────────────────────────────────────────────── */
+h1, h2, h3, h4 {
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  color: var(--text-main);
 }
 
-button,
-[role='button'] {
-  cursor: pointer;
-  touch-action: manipulation; /* remove 300ms tap delay */
+p {
+  color: var(--text-muted);
 }
 
-/* ── Images ────────────────────────────────────────────────────────────────── */
-img,
-picture,
-video,
-canvas,
-svg {
-  display: block;
-  max-width: 100%;
+/* ── Layout Utilities ──────────────────────────────────────────────────────── */
+.container {
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding: 0 var(--spacing-base);
 }
 
-/* ── Forms ─────────────────────────────────────────────────────────────────── */
-input,
-textarea,
-select {
-  font: inherit;
-  width: 100%;
-  /* Prevent iOS zoom on focus (font-size must be ≥ 16px) */
-  font-size: max(16px, 1rem);
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  padding: 1.5rem;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
-/* ── Scrolling ─────────────────────────────────────────────────────────────── */
-/* Smooth momentum scrolling on iOS */
-.scroll-container {
-  -webkit-overflow-scrolling: touch;
-  overflow-y: auto;
+.card:hover {
+  box-shadow: var(--shadow-lg);
 }
 
-/* ── Utility Classes ───────────────────────────────────────────────────────── */
-
-/* Visually hidden but accessible to screen readers */
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
+.grid {
+  display: grid;
+  gap: 1.5rem;
 }
 
-/* Responsive flex row → column on mobile */
-.flex-responsive {
+.flex {
   display: flex;
-  flex-wrap: wrap;
   gap: 1rem;
 }
 
-@media (max-width: 639px) {
-  .flex-responsive {
-    flex-direction: column;
-  }
+.flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-/* Hide on mobile, show on tablet+ */
-.hide-mobile {
-  display: none;
-}
-@media (min-width: 768px) {
-  .hide-mobile {
-    display: revert;
-  }
+.space-y-4 > * + * { margin-top: 1rem; }
+.space-y-8 > * + * { margin-top: 2rem; }
+
+/* ── Component Styles ──────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+  font-size: 0.875rem;
 }
 
-/* Show only on mobile */
-.show-mobile {
-  display: revert;
-}
-@media (min-width: 768px) {
-  .show-mobile {
-    display: none;
-  }
+.btn-primary {
+  background-color: var(--primary);
+  color: white;
 }
 
-/* ── Focus Styles ──────────────────────────────────────────────────────────── */
-:focus-visible {
-  outline: 2px solid #6366f1;
-  outline-offset: 2px;
-  border-radius: 4px;
+.btn-primary:hover {
+  background-color: var(--primary-hover);
+  transform: translateY(-1px);
+}
+
+.btn-secondary {
+  background-color: var(--surface);
+  color: var(--text-main);
+  border: 1px solid var(--border);
+}
+
+.btn-secondary:hover {
+  background-color: var(--background);
+}
+
+.input, .textarea {
+  width: 100%;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-main);
+  transition: border-color 0.2s ease;
+}
+
+.input:focus, .textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  ring: 2px solid var(--primary);
+}
+
+/* ── Animations ─────────────────────────────────────────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s ease-out forwards;
+}
+
+/* ── Tailwind Compatibility Shim ───────────────────────────────────────────── */
+/* Defining common Tailwind classes used in the project to prevent breakage */
+.bg-white { background-color: var(--surface); }
+.bg-gray-50 { background-color: var(--background); }
+.bg-blue-600 { background-color: var(--primary); }
+.text-gray-900 { color: var(--text-main); }
+.text-gray-600 { color: var(--text-muted); }
+.text-white { color: white; }
+.shadow-sm { box-shadow: var(--shadow-sm); }
+.shadow-md { box-shadow: var(--shadow-md); }
+.rounded-lg { border-radius: var(--radius); }
+.p-6 { padding: 1.5rem; }
+.max-w-7xl { max-width: var(--container-max); }
+.mx-auto { margin-left: auto; margin-right: auto; }
+.px-4 { padding-left: 1rem; padding-right: 1rem; }
+.py-8 { padding-top: 2rem; padding-bottom: 2rem; }
+.flex { display: flex; }
+.justify-between { justify-content: space-between; }
+.items-center { align-items: center; }
+.space-x-4 > * + * { margin-left: 1rem; }
+.font-bold { font-weight: 700; }
+.text-2xl { font-size: 1.5rem; }
+.text-xl { font-size: 1.25rem; }
+.text-sm { font-size: 0.875rem; }
+.font-medium { font-weight: 500; }
+.border-b { border-bottom: 1px solid var(--border); }
+.bg-blue-100 { background-color: #dbeafe; }
+.text-blue-700 { color: #1d4ed8; }
+.text-gray-500 { color: #64748b; }
+.skeleton {
+  background: linear-gradient(90deg, var(--border) 25%, var(--background) 50%, var(--border) 75%);
+  background-size: 200% 100%;
+  animation: loading 1.5s infinite;
+}
+@keyframes loading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }

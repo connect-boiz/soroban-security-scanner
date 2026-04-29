@@ -7,7 +7,7 @@ const STATIC_ASSETS = [
   '/app/page',
   '/app/layout',
   '/app/globals.css',
-  '/scanner-icon.svg',
+  '/scanner-icon.png',
 ];
 
 // Install event - cache static assets
@@ -108,8 +108,8 @@ self.addEventListener('sync', (event) => {
 self.addEventListener('push', (event) => {
   const options = {
     body: event.data ? event.data.text() : 'New scan completed',
-    icon: '/scanner-icon.svg',
-    badge: '/scanner-icon.svg',
+    icon: '/scanner-icon.png',
+    badge: '/scanner-icon.png',
     vibrate: [100, 50, 100],
     data: {
       dateOfArrival: Date.now(),

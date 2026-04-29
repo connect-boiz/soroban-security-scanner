@@ -1,286 +1,311 @@
 'use client';
 
-import { useState, useMemo, useCallback, useEffect } from 'react';
-import { LoadingOverlay, SkeletonCard, ProgressBar, LoadingSpinner } from './ui';
+import React, { useState } from 'react';
+import { PortfolioChart, TransactionChart, PerformanceChart } from '@/components/charts';
+import { PortfolioData, TransactionData, PerformanceMetrics, ChartFilter } from '@/types/charts';
+import { 
+  BarChart3, 
+  TrendingUp, 
+  PieChart, 
+  Activity,
+  Filter,
+  Calendar,
+  Download,
+  RefreshCw
+} from 'lucide-react';
 
-interface AnalyticsData {
-  totalScans: number;
-  vulnerabilitiesFound: number;
-  contractsAnalyzed: number;
-  averageScanTime: number;
-  severityBreakdown: {
-    critical: number;
-    high: number;
-    medium: number;
-    low: number;
-  };
-  weeklyData: {
-    week: string;
-    scans: number;
-    vulnerabilities: number;
-  }[];
+interface AnalyticsDashboardProps {
+  className?: string;
 }
 
-const mockAnalyticsData: AnalyticsData = {
-  totalScans: 1250,
-  vulnerabilitiesFound: 342,
-  contractsAnalyzed: 890,
-  averageScanTime: 2.4,
-  severityBreakdown: {
-    critical: 45,
-    high: 128,
-    medium: 134,
-    low: 35
+const mockPortfolioData: PortfolioData[] = [
+  { asset: 'XLM', value: 15000, percentage: 35.7, change: 250, changePercent: 1.7 },
+  { asset: 'USDC', value: 12000, percentage: 28.6, change: 0, changePercent: 0 },
+  { asset: 'ETH', value: 8000, percentage: 19.0, change: -300, changePercent: -3.6 },
+  { asset: 'BTC', value: 5000, percentage: 11.9, change: 150, changePercent: 3.1 },
+  { asset: 'Other', value: 2000, percentage: 4.8, change: 50, changePercent: 2.6 }
+];
+
+const mockTransactionData: TransactionData[] = [
+  {
+    id: '1',
+    timestamp: new Date('2024-01-15T10:30:00'),
+    amount: 1500,
+    type: 'reward',
+    status: 'completed',
+    from: 'bounty-contract',
+    to: 'user-wallet'
   },
-  weeklyData: [
-    { week: 'Week 1', scans: 180, vulnerabilities: 48 },
-    { week: 'Week 2', scans: 220, vulnerabilities: 62 },
-    { week: 'Week 3', scans: 195, vulnerabilities: 51 },
-    { week: 'Week 4', scans: 240, vulnerabilities: 71 },
-    { week: 'Week 5', scans: 210, vulnerabilities: 60 },
-    { week: 'Week 6', scans: 205, vulnerabilities: 50 }
-  ]
-};
+  {
+    id: '2',
+    timestamp: new Date('2024-01-14T15:45:00'),
+    amount: 800,
+    type: 'deposit',
+    status: 'completed',
+    from: 'user-wallet',
+    to: 'platform'
+  },
+  {
+    id: '3',
+    timestamp: new Date('2024-01-13T09:20:00'),
+    amount: 500,
+    type: 'withdrawal',
+    status: 'completed',
+    from: 'platform',
+    to: 'user-wallet'
+  },
+  {
+    id: '4',
+    timestamp: new Date('2024-01-12T14:10:00'),
+    amount: 2000,
+    type: 'reward',
+    status: 'completed',
+    from: 'bounty-contract',
+    to: 'user-wallet'
+  },
+  {
+    id: '5',
+    timestamp: new Date('2024-01-11T11:00:00'),
+    amount: 300,
+    type: 'penalty',
+    status: 'completed',
+    from: 'user-wallet',
+    to: 'platform'
+  }
+];
 
-export default function AnalyticsDashboard() {
-  const [selectedMetric, setSelectedMetric] = useState<'overview' | 'trends' | 'severity'>('overview');
-  const [isLoading, setIsLoading] = useState(false);
-  const [isGeneratingData, setIsGeneratingData] = useState(false);
+const mockPerformanceData: PerformanceMetrics[] = [
+  {
+    date: new Date('2024-01-01'),
+    reputation: 1200,
+    completedBounties: 15,
+    totalEarned: 8500,
+    successRate: 85.5,
+    avgCompletionTime: 24.5
+  },
+  {
+    date: new Date('2024-01-08'),
+    reputation: 1350,
+    completedBounties: 18,
+    totalEarned: 10200,
+    successRate: 87.2,
+    avgCompletionTime: 22.1
+  },
+  {
+    date: new Date('2024-01-15'),
+    reputation: 1580,
+    completedBounties: 22,
+    totalEarned: 13100,
+    successRate: 89.1,
+    avgCompletionTime: 20.3
+  },
+  {
+    date: new Date('2024-01-22'),
+    reputation: 1720,
+    completedBounties: 26,
+    totalEarned: 15800,
+    successRate: 90.5,
+    avgCompletionTime: 18.7
+  },
+  {
+    date: new Date('2024-01-29'),
+    reputation: 1950,
+    completedBounties: 31,
+    totalEarned: 19200,
+    successRate: 92.3,
+    avgCompletionTime: 16.2
+  }
+];
 
-  // Memoize calculations for performance
-  const metrics = useMemo(() => ({
-    vulnerabilityRate: ((mockAnalyticsData.vulnerabilitiesFound / mockAnalyticsData.totalScans) * 100).toFixed(1),
-    contractsPerScan: (mockAnalyticsData.contractsAnalyzed / mockAnalyticsData.totalScans).toFixed(2),
-    totalIssues: Object.values(mockAnalyticsData.severityBreakdown).reduce((a, b) => a + b, 0)
-  }), []);
+export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ className = '' }) => {
+  const [timeFilter, setTimeFilter] = useState<ChartFilter['timeRange']>('30d');
+  const [refreshing, setRefreshing] = useState(false);
 
-  const handleMetricChange = useCallback(async (metric: 'overview' | 'trends' | 'severity') => {
-    setIsGeneratingData(true);
-    setSelectedMetric(metric);
-    
-    // Simulate data loading for different metrics
-    await new Promise(resolve => setTimeout(resolve, 600));
-    
-    setIsGeneratingData(false);
-  }, []);
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    // Simulate API call
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    setRefreshing(false);
+  };
 
-  // Simulate initial data loading
-  useEffect(() => {
-    const loadAnalytics = async () => {
-      setIsLoading(true);
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      setIsLoading(false);
-    };
-    
-    loadAnalytics();
-  }, []);
-
-  const renderOverview = () => (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-      <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-        <h3 className="text-sm font-medium text-blue-800 mb-1">Total Scans</h3>
-        <p className="text-2xl font-bold text-blue-900">{mockAnalyticsData.totalScans.toLocaleString()}</p>
-        <p className="text-xs text-blue-600 mt-1">Last 30 days</p>
-      </div>
-      
-      <div className="bg-red-50 p-4 rounded-lg border border-red-200">
-        <h3 className="text-sm font-medium text-red-800 mb-1">Vulnerabilities Found</h3>
-        <p className="text-2xl font-bold text-red-900">{mockAnalyticsData.vulnerabilitiesFound}</p>
-        <p className="text-xs text-red-600 mt-1">{metrics.vulnerabilityRate}% detection rate</p>
-      </div>
-      
-      <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-        <h3 className="text-sm font-medium text-green-800 mb-1">Contracts Analyzed</h3>
-        <p className="text-2xl font-bold text-green-900">{mockAnalyticsData.contractsAnalyzed.toLocaleString()}</p>
-        <p className="text-xs text-green-600 mt-1">{metrics.contractsPerScan} contracts/scan</p>
-      </div>
-      
-      <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
-        <h3 className="text-sm font-medium text-purple-800 mb-1">Avg Scan Time</h3>
-        <p className="text-2xl font-bold text-purple-900">{mockAnalyticsData.averageScanTime}s</p>
-        <p className="text-xs text-purple-600 mt-1">Per contract</p>
-      </div>
-    </div>
-  );
-
-  const renderTrends = () => (
-    <div className="space-y-6">
-      <div className="bg-white p-4 rounded-lg border">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Weekly Scan Trends</h3>
-        <div className="space-y-3">
-          {mockAnalyticsData.weeklyData.map((week, index) => (
-            <div key={week.week} className="flex items-center justify-between">
-              <span className="text-sm text-gray-600 w-16">{week.week}</span>
-              <div className="flex-1 mx-4">
-                <div className="flex items-center space-x-2">
-                  <div className="flex-1 bg-gray-200 rounded-full h-6 relative overflow-hidden">
-                    <div 
-                      className="bg-blue-500 h-full rounded-full transition-all duration-500 ease-out"
-                      style={{ width: `${(week.scans / 250) * 100}%` }}
-                    />
-                  </div>
-                  <span className="text-xs font-medium text-gray-700 w-12 text-right">
-                    {week.scans}
-                  </span>
-                </div>
-                <div className="flex items-center space-x-2 mt-1">
-                  <div className="flex-1 bg-gray-100 rounded-full h-4 relative overflow-hidden">
-                    <div 
-                      className="bg-red-400 h-full rounded-full transition-all duration-500 ease-out"
-                      style={{ width: `${(week.vulnerabilities / 80) * 100}%` }}
-                    />
-                  </div>
-                  <span className="text-xs text-gray-600 w-12 text-right">
-                    {week.vulnerabilities}
-                  </span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-        <div className="flex items-center space-x-4 mt-4 text-xs">
-          <div className="flex items-center space-x-1">
-            <div className="w-3 h-3 bg-blue-500 rounded-full" />
-            <span className="text-gray-600">Scans</span>
-          </div>
-          <div className="flex items-center space-x-1">
-            <div className="w-3 h-3 bg-red-400 rounded-full" />
-            <span className="text-gray-600">Vulnerabilities</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderSeverity = () => {
-    const total = metrics.totalIssues;
-    const data = mockAnalyticsData.severityBreakdown;
-    
-    return (
-      <div className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-red-50 p-4 rounded-lg border border-red-200">
-            <h3 className="text-sm font-medium text-red-800 mb-1">Critical</h3>
-            <p className="text-2xl font-bold text-red-900">{data.critical}</p>
-            <p className="text-xs text-red-600 mt-1">{((data.critical / total) * 100).toFixed(1)}% of total</p>
-          </div>
-          
-          <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
-            <h3 className="text-sm font-medium text-orange-800 mb-1">High</h3>
-            <p className="text-2xl font-bold text-orange-900">{data.high}</p>
-            <p className="text-xs text-orange-600 mt-1">{((data.high / total) * 100).toFixed(1)}% of total</p>
-          </div>
-          
-          <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
-            <h3 className="text-sm font-medium text-yellow-800 mb-1">Medium</h3>
-            <p className="text-2xl font-bold text-yellow-900">{data.medium}</p>
-            <p className="text-xs text-yellow-600 mt-1">{((data.medium / total) * 100).toFixed(1)}% of total</p>
-          </div>
-          
-          <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-            <h3 className="text-sm font-medium text-green-800 mb-1">Low</h3>
-            <p className="text-2xl font-bold text-green-900">{data.low}</p>
-            <p className="text-xs text-green-600 mt-1">{((data.low / total) * 100).toFixed(1)}% of total</p>
-          </div>
-        </div>
-        
-        <div className="bg-white p-4 rounded-lg border">
-          <h3 className="text-lg font-medium text-gray-900 mb-4">Severity Distribution</h3>
-          <div className="space-y-2">
-            {Object.entries(data).map(([severity, count]) => {
-              const percentage = (count / total) * 100;
-              const colors = {
-                critical: 'bg-red-500',
-                high: 'bg-orange-500',
-                medium: 'bg-yellow-500',
-                low: 'bg-green-500'
-              };
-              
-              return (
-                <div key={severity} className="flex items-center space-x-3">
-                  <span className="text-sm font-medium text-gray-700 w-16 capitalize">
-                    {severity}
-                  </span>
-                  <div className="flex-1 bg-gray-200 rounded-full h-6 relative overflow-hidden">
-                    <div 
-                      className={`${colors[severity as keyof typeof colors]} h-full rounded-full transition-all duration-500 ease-out`}
-                      style={{ width: `${percentage}%` }}
-                    />
-                  </div>
-                  <span className="text-sm font-medium text-gray-700 w-12 text-right">
-                    {count}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    );
+  const handleExport = () => {
+    // Export functionality
+    console.log('Exporting analytics data...');
   };
 
   return (
-    <LoadingOverlay isLoading={isLoading} text="Loading analytics data...">
-      <div className="bg-white rounded-lg shadow-md p-6 space-y-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-gray-900">Analytics Dashboard</h2>
-          
-          <div className="flex space-x-2">
-            {(['overview', 'trends', 'severity'] as const).map((metric) => (
-              <button
-                key={metric}
-                onClick={() => handleMetricChange(metric)}
-                disabled={isGeneratingData}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-optimized ${
-                  selectedMetric === metric
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-50'
-                }`}
-              >
-                {metric.charAt(0).toUpperCase() + metric.slice(1)}
-              </button>
-            ))}
-          </div>
-        </div>
-
+    <div className={`space-y-6 ${className}`}>
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-4 sm:space-y-0">
         <div>
-          {isGeneratingData ? (
-            <div className="space-y-6">
-              <div className="flex items-center justify-center py-12">
-                <LoadingSpinner size="lg" text="Generating analytics..." />
-              </div>
-              {selectedMetric === 'overview' && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <SkeletonCard lines={3} avatar={false} button={false} height="h-24" />
-                  <SkeletonCard lines={3} avatar={false} button={false} height="h-24" />
-                  <SkeletonCard lines={3} avatar={false} button={false} height="h-24" />
-                  <SkeletonCard lines={3} avatar={false} button={false} height="h-24" />
-                </div>
-              )}
-              {selectedMetric === 'trends' && (
-                <SkeletonCard lines={8} avatar={false} button={false} />
-              )}
-              {selectedMetric === 'severity' && (
-                <div className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <SkeletonCard lines={3} avatar={false} button={false} height="h-20" />
-                    <SkeletonCard lines={3} avatar={false} button={false} height="h-20" />
-                    <SkeletonCard lines={3} avatar={false} button={false} height="h-20" />
-                    <SkeletonCard lines={3} avatar={false} button={false} height="h-20" />
-                  </div>
-                  <SkeletonCard lines={6} avatar={false} button={false} />
-                </div>
-              )}
-            </div>
-          ) : (
-            <>
-              {selectedMetric === 'overview' && renderOverview()}
-              {selectedMetric === 'trends' && renderTrends()}
-              {selectedMetric === 'severity' && renderSeverity()}
-            </>
-          )}
+          <h2 className="text-2xl font-bold text-gray-900">Analytics Dashboard</h2>
+          <p className="text-gray-600 mt-1">Monitor your portfolio, transactions, and performance</p>
+        </div>
+        
+        <div className="flex items-center space-x-3">
+          {/* Time Filter */}
+          <div className="flex items-center space-x-2 bg-white border border-gray-200 rounded-lg px-3 py-2">
+            <Calendar className="w-4 h-4 text-gray-500" />
+            <select
+              value={timeFilter}
+              onChange={(e) => setTimeFilter(e.target.value as ChartFilter['timeRange'])}
+              className="text-sm text-gray-700 bg-transparent border-none focus:outline-none focus:ring-0"
+            >
+              <option value="24h">Last 24 hours</option>
+              <option value="7d">Last 7 days</option>
+              <option value="30d">Last 30 days</option>
+              <option value="90d">Last 90 days</option>
+              <option value="all">All time</option>
+            </select>
+          </div>
+          
+          {/* Action Buttons */}
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="flex items-center space-x-2 bg-white border border-gray-200 rounded-lg px-3 py-2 hover:bg-gray-50 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 text-gray-500 ${refreshing ? 'animate-spin' : ''}`} />
+            <span className="text-sm text-gray-700">Refresh</span>
+          </button>
+          
+          <button
+            onClick={handleExport}
+            className="flex items-center space-x-2 bg-blue-600 text-white rounded-lg px-3 py-2 hover:bg-blue-700 transition-colors"
+          >
+            <Download className="w-4 h-4" />
+            <span className="text-sm">Export</span>
+          </button>
         </div>
       </div>
-    </LoadingOverlay>
+
+      {/* Charts Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Portfolio Chart */}
+        <PortfolioChart
+          data={mockPortfolioData}
+          config={{
+            type: 'pie',
+            title: 'Portfolio Distribution',
+            showLegend: true,
+            height: 350
+          }}
+        />
+
+        {/* Transaction Chart */}
+        <TransactionChart
+          data={mockTransactionData}
+          config={{
+            type: 'area',
+            title: 'Transaction Volume',
+            showLegend: true,
+            height: 350
+          }}
+          timeRange={timeFilter}
+        />
+
+        {/* Performance Chart - Line */}
+        <PerformanceChart
+          data={mockPerformanceData}
+          config={{
+            type: 'line',
+            title: 'Performance Trends',
+            showLegend: true,
+            height: 350
+          }}
+          metrics={['reputation', 'completedBounties', 'totalEarned']}
+        />
+
+        {/* Performance Chart - Radar */}
+        <PerformanceChart
+          data={mockPerformanceData}
+          config={{
+            type: 'radar',
+            title: 'Overall Performance',
+            showLegend: false,
+            height: 350
+          }}
+          metrics={['reputation', 'completedBounties', 'totalEarned', 'successRate', 'avgCompletionTime']}
+        />
+      </div>
+
+      {/* Additional Charts Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Portfolio Bar Chart */}
+        <PortfolioChart
+          data={mockPortfolioData}
+          config={{
+            type: 'bar',
+            title: 'Asset Values',
+            showLegend: false,
+            height: 300
+          }}
+        />
+
+        {/* Transaction Pie Chart */}
+        <TransactionChart
+          data={mockTransactionData}
+          config={{
+            type: 'pie',
+            title: 'Transaction Types',
+            showLegend: true,
+            height: 300
+          }}
+          timeRange={timeFilter}
+        />
+
+        {/* Performance Bar Chart */}
+        <PerformanceChart
+          data={mockPerformanceData}
+          config={{
+            type: 'bar',
+            title: 'Monthly Bounties',
+            showLegend: true,
+            height: 300
+          }}
+          metrics={['completedBounties']}
+        />
+      </div>
+
+      {/* Summary Stats */}
+      <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Stats</h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="text-center">
+            <div className="flex items-center justify-center w-12 h-12 bg-blue-100 rounded-lg mx-auto mb-2">
+              <TrendingUp className="w-6 h-6 text-blue-600" />
+            </div>
+            <p className="text-2xl font-bold text-gray-900">$42,000</p>
+            <p className="text-sm text-gray-600">Total Portfolio</p>
+          </div>
+          
+          <div className="text-center">
+            <div className="flex items-center justify-center w-12 h-12 bg-green-100 rounded-lg mx-auto mb-2">
+              <Activity className="w-6 h-6 text-green-600" />
+            </div>
+            <p className="text-2xl font-bold text-gray-900">1,950</p>
+            <p className="text-sm text-gray-600">Reputation</p>
+          </div>
+          
+          <div className="text-center">
+            <div className="flex items-center justify-center w-12 h-12 bg-purple-100 rounded-lg mx-auto mb-2">
+              <BarChart3 className="w-6 h-6 text-purple-600" />
+            </div>
+            <p className="text-2xl font-bold text-gray-900">31</p>
+            <p className="text-sm text-gray-600">Completed</p>
+          </div>
+          
+          <div className="text-center">
+            <div className="flex items-center justify-center w-12 h-12 bg-amber-100 rounded-lg mx-auto mb-2">
+              <PieChart className="w-6 h-6 text-amber-600" />
+            </div>
+            <p className="text-2xl font-bold text-gray-900">92.3%</p>
+            <p className="text-sm text-gray-600">Success Rate</p>
+          </div>
+        </div>
+      </div>
+    </div>
   );
-}
+};
+
+export default AnalyticsDashboard;
