@@ -49,3 +49,35 @@
     "axe-core": "^4.9.1"
   }
 }
+{
+  "name": "soroban-security-scanner-storybook",
+  "version": "1.0.0",
+  "description": "Component documentation for Soroban Security Scanner",
+  "scripts": {
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build",
+    "test-storybook": "test-storybook"
+  },
+  "devDependencies": {
+    "@chromatic-com/storybook": "^1.0.0",
+    "@storybook/addon-a11y": "^8.0.0",
+    "@storybook/addon-docs": "^8.0.0",
+    "@storybook/addon-essentials": "^8.0.0",
+    "@storybook/addon-interactions": "^8.0.0",
+    "@storybook/addon-links": "^8.0.0",
+    "@storybook/addon-onboarding": "^8.0.0",
+    "@storybook/blocks": "^8.0.0",
+    "@storybook/nextjs": "^8.0.0",
+    "@storybook/react": "^8.0.0",
+    "@storybook/test": "^8.0.0",
+    "@storybook/test-runner": "^0.17.0",
+    "storybook": "^8.0.0",
+    "typescript": "^5.0.0"
+  }
+}
+{
+  "scripts": {
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build"
+  }
+}
