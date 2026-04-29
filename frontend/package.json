@@ -13,7 +13,11 @@
     "type-check": "tsc --noEmit",
     "bundle-analyzer": "npx @next/bundle-analyzer",
     "lighthouse": "npx lighthouse http://localhost:3000 --output=html --output-path=./lighthouse-report.html",
-    "performance-test": "npm run build && npm run lighthouse"
+    "performance-test": "npm run build && npm run lighthouse",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:security": "jest --testPathPattern=security-headers"
   },
   "dependencies": {
     "@stellar/freighter-api": "^1.6.0",

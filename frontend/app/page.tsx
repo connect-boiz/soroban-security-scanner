@@ -1,29 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import BountyBoard from '@/components/BountyBoard';
-import ReportSubmission from '@/components/ReportSubmission';
-import Leaderboard from '@/components/Leaderboard';
-import { WalletConnect, BountyDeposit } from '@/components/WalletConnect';
-import NotificationCenter from '@/components/Notifications';
-import { DisputeForm, DisputeStatus } from '@/components/Dispute';
-import { AnalyticsDashboard } from '@/components/AnalyticsDashboard';
-import { Bounty } from '@/types/bounty';
-import { BountySubmission as BountySubmissionType } from '@/types/bounty';
-import { DisputeData } from '@/components/Dispute';
-import { 
-  Shield, 
-  Search, 
-  Trophy, 
-  Wallet, 
-  Bell,
-  Menu,
-  X,
-  Home,
-  FileText,
-  Settings,
-  BarChart3
-} from 'lucide-react';
+import { Suspense, useState, useEffect } from 'react';
+import dynamic from 'next/dynamic';
+import { SectionErrorBoundary } from '@/components/ui/ErrorBoundary';
 
 type View = 'bounties' | 'leaderboard' | 'wallet' | 'analytics' | 'settings';
 
@@ -99,21 +78,27 @@ export default function App() {
         return <AnalyticsDashboard />;
       case 'wallet':
         return (
-          <Suspense fallback={<div className="skeleton h-96 w-full rounded-lg" />}>
-            <ScannerInterface />
-          </Suspense>
+          <SectionErrorBoundary context={{ tab: 'scanner' }}>
+            <Suspense fallback={<div className="skeleton h-96 w-full rounded-lg" />}>
+              <ScannerInterface />
+            </Suspense>
+          </SectionErrorBoundary>
         );
       case 'report':
         return (
-          <Suspense fallback={<div className="skeleton h-64 w-full rounded-lg" />}>
-            <VulnerabilityReport />
-          </Suspense>
+          <SectionErrorBoundary context={{ tab: 'report' }}>
+            <Suspense fallback={<div className="skeleton h-64 w-full rounded-lg" />}>
+              <VulnerabilityReport />
+            </Suspense>
+          </SectionErrorBoundary>
         );
       case 'analytics':
         return (
-          <Suspense fallback={<div className="skeleton h-80 w-full rounded-lg" />}>
-            <AnalyticsDashboard />
-          </Suspense>
+          <SectionErrorBoundary context={{ tab: 'analytics' }}>
+            <Suspense fallback={<div className="skeleton h-80 w-full rounded-lg" />}>
+              <AnalyticsDashboard />
+            </Suspense>
+          </SectionErrorBoundary>
         );
       case 'multisig':
         return (
@@ -121,15 +106,19 @@ export default function App() {
             <MultiSigWizard />
       case 'balance':
         return (
-          <Suspense fallback={<div className="skeleton h-96 w-full rounded-lg" />}>
-            <BalanceDisplay />
-          </Suspense>
+          <SectionErrorBoundary context={{ tab: 'balance' }}>
+            <Suspense fallback={<div className="skeleton h-96 w-full rounded-lg" />}>
+              <BalanceDisplay />
+            </Suspense>
+          </SectionErrorBoundary>
         );
       case 'settings':
         return (
-          <Suspense fallback={<div className="skeleton h-96 w-full rounded-lg" />}>
-            <SettingsPanel />
-          </Suspense>
+          <SectionErrorBoundary context={{ tab: 'settings' }}>
+            <Suspense fallback={<div className="skeleton h-96 w-full rounded-lg" />}>
+              <SettingsPanel />
+            </Suspense>
+          </SectionErrorBoundary>
         );
       default:
         return null;
