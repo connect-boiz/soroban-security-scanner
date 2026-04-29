@@ -99,128 +99,88 @@ export default function App() {
         return <AnalyticsDashboard />;
       case 'wallet':
         return (
-          <div className="max-w-4xl mx-auto p-6 space-y-6">
-            <WalletConnect />
-            <BountyDeposit 
-              contractAddress="GC123..." 
-              bountyId="bounty_123"
-              onSuccess={(txHash) => console.log('Deposit successful:', txHash)}
-            />
-          </div>
+          <Suspense fallback={<div className="skeleton h-96 w-full rounded-lg" />}>
+            <ScannerInterface />
+          </Suspense>
+        );
+      case 'report':
+        return (
+          <Suspense fallback={<div className="skeleton h-64 w-full rounded-lg" />}>
+            <VulnerabilityReport />
+          </Suspense>
+        );
+      case 'analytics':
+        return (
+          <Suspense fallback={<div className="skeleton h-80 w-full rounded-lg" />}>
+            <AnalyticsDashboard />
+          </Suspense>
+        );
+      case 'multisig':
+        return (
+          <Suspense fallback={<div className="skeleton h-96 w-full rounded-lg" />}>
+            <MultiSigWizard />
+      case 'balance':
+        return (
+          <Suspense fallback={<div className="skeleton h-96 w-full rounded-lg" />}>
+            <BalanceDisplay />
+          </Suspense>
         );
       case 'settings':
         return (
-          <div className="max-w-2xl mx-auto p-6">
-            <div className="card">
-              <h2 className="text-2xl font-bold text-gray-900 mb-6">Settings</h2>
-              <p className="text-gray-600">Settings functionality coming soon...</p>
-            </div>
-          </div>
+          <Suspense fallback={<div className="skeleton h-96 w-full rounded-lg" />}>
+            <SettingsPanel />
+          </Suspense>
         );
       default:
-        return <BountyBoard onBountySelect={handleBountySelect} />;
+        return null;
     }
   };
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200">
+      <header className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            {/* Logo */}
-            <div className="flex items-center">
-              <Shield className="h-8 w-8 text-primary-600 mr-3" />
-              <h1 className="text-xl font-bold text-gray-900">
-                Soroban Security Scanner
-              </h1>
-            </div>
-
-            {/* Desktop Navigation */}
-            <nav className="hidden md:flex space-x-8">
-              {navigation.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <button
-                    key={item.view}
-                    onClick={() => setCurrentView(item.view)}
-                    className={`flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                      currentView === item.view
-                        ? 'text-primary-600 bg-primary-50'
-                        : 'text-gray-700 hover:text-gray-900 hover:bg-gray-50'
-                    }`}
-                  >
-                    <Icon className="h-4 w-4 mr-2" />
-                    {item.name}
-                  </button>
-                );
-              })}
+            <h1 className="text-2xl font-bold text-gray-900">
+              Soroban Security Scanner
+            </h1>
+            <nav className="flex space-x-4">
+              {['scanner', 'report', 'analytics', 'multisig', 'settings'].map((tab) => (
+              {['scanner', 'report', 'analytics', 'balance', 'settings'].map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`btn px-6 py-2 rounded-lg text-sm font-bold transition-all duration-200 border-none ${
+                    activeTab === tab
+                      ? 'bg-white text-blue-600 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700 bg-transparent'
+                  }`}
+                >
+                  {tab === 'multisig' ? 'Multi-Sig' : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                </button>
+              ))}
             </nav>
-
-            {/* Right side items */}
-            <div className="flex items-center space-x-4">
-              <NotificationCenter />
-              
-              {/* Mobile menu button */}
-              <button
-                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                className="md:hidden p-2 text-gray-700 hover:text-gray-900"
-              >
-                {isMobileMenuOpen ? (
-                  <X className="h-6 w-6" />
-                ) : (
-                  <Menu className="h-6 w-6" />
-                )}
-              </button>
-            </div>
           </div>
         </div>
-
-        {/* Mobile Navigation */}
-        {isMobileMenuOpen && (
-          <div className="md:hidden border-t border-gray-200">
-            <div className="px-2 pt-2 pb-3 space-y-1">
-              {navigation.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <button
-                    key={item.view}
-                    onClick={() => {
-                      setCurrentView(item.view);
-                      setIsMobileMenuOpen(false);
-                    }}
-                    className={`flex items-center w-full px-3 py-2 text-base font-medium rounded-md transition-colors ${
-                      currentView === item.view
-                        ? 'text-primary-600 bg-primary-50'
-                        : 'text-gray-700 hover:text-gray-900 hover:bg-gray-50'
-                    }`}
-                  >
-                    <Icon className="h-5 w-5 mr-3" />
-                    {item.name}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
       </header>
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {renderMainContent()}
-      </main>
-
-      {/* Footer */}
-      <footer className="bg-white border-t border-gray-200 mt-auto">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="text-center text-gray-500">
-            <p>&copy; 2024 Soroban Security Scanner. All rights reserved.</p>
-            <p className="text-sm mt-2">
-              Building a more secure Stellar ecosystem, one bounty at a time.
-            </p>
+      <main className="container mx-auto py-10">
+        <div className="max-w-5xl mx-auto space-y-10">
+          <div className="flex justify-between items-end">
+            <div>
+              <h2 className="text-4xl font-bold capitalize">{activeTab}</h2>
+              <p className="text-gray-500 mt-2 text-lg">Manage and monitor your smart contract security with precision.</p>
+            </div>
+            <div className="flex space-x-3">
+              <button className="btn btn-secondary">Documentation</button>
+              <button className="btn btn-primary">New Scan</button>
+            </div>
+          </div>
+          <div className="animate-fade-in">
+            {renderActiveComponent()}
           </div>
         </div>
-      </footer>
+      </main>
     </div>
   );
 }

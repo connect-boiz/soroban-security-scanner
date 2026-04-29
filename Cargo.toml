@@ -1,46 +1,88 @@
 [package]
-name = "stellar-security-scanner"
-version = "0.1.0"
+name = "soroban-security-scanner"
+version = "1.0.0"
 edition = "2021"
-authors = ["Security Scanner Team"]
-description = "Security and invariant scanners for Stellar smart contracts"
+authors = ["connect-boiz"]
+description = "Security scanner for Soroban smart contracts"
 license = "MIT"
-keywords = ["stellar", "soroban", "security", "auditing", "invariants"]
+repository = "https://github.com/gbengaeben/soroban-security-scanner"
 
 [dependencies]
-soroban-sdk = "25.3.0"
-syn = { version = "2.0", features = ["full", "extra-traits"] }
-proc-macro2 = "1.0"
-quote = "1.0"
+# Core dependencies
+tokio = { version = "1.0", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-clap = { version = "4.0", features = ["derive"] }
-regex = "1.0"
-colored = "2.0"
+uuid = { version = "1.0", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+async-trait = "0.1"
+
+# Authentication & Security
+jsonwebtoken = "9.1"
+argon2 = "0.5"
+ring = "0.17"
+base64 = "0.21"
+sha2 = "0.10"
+hex = "0.4"
+rand = "0.8"
+
+# HTTP & Web
+axum = "0.7"
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "trace", "compression-br", "timeout", "limit"] }
+hyper = "1.0"
+mime = "0.3"
+
+# OAuth
+oauth2 = "4.4"
+url = "2.5"
+
+# Email provider dependencies
+lettre = "0.11"
+
+# SMS provider dependencies (Twilio)
+reqwest = { version = "0.11", features = ["json"] }
+
+# Template engine
+handlebars = "6.0"
+
+# Error handling
 anyhow = "1.0"
 thiserror = "1.0"
-walkdir = "2.0"
-tokio = { version = "1.0", features = ["full"] }
-futures = "0.3"
-chrono = { version = "0.4", features = ["serde"] }
-toml = "0.8"
-num_cpus = "1.0"
 
-# Kubernetes dependencies
-kube = { version = "0.88.0", features = ["runtime", "client"] }
-k8s-openapi = { version = "0.21.0", features = ["v1_28"] }
-tokio-util = "0.7"
-base64 = "0.21"
-uuid = { version = "1.0", features = ["v4"] }
+# Transaction processing dependencies
+zstd = "0.13"
+regex = "1.10"
+
+# Configuration
+config = "0.13"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Database (for production use)
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid"], optional = true }
+
+# Redis (for caching and rate limiting)
+redis = { version = "0.23", features = ["tokio-comp"], optional = true }
+
+# Rate limiting dependencies
+ipnetwork = "0.20"
 
 [dev-dependencies]
-tempfile = "3.0"
-pretty_assertions = "1.0"
+tokio-test = "0.4"
+mockall = "0.11"
+
+[features]
+default = []
+database = ["sqlx"]
+redis-cache = ["redis"]
+full = ["database", "redis-cache"]
 
 [[bin]]
-name = "stellar-scanner"
+name = "soroban-scanner"
 path = "src/main.rs"
 
 [lib]
-name = "stellar_security_scanner"
+name = "soroban_security_scanner"
 path = "src/lib.rs"

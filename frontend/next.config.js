@@ -1,13 +1,14 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    appDir: true,
-  },
-  env: {
-    STELLAR_NETWORK: process.env.STELLAR_NETWORK || 'testnet',
-    CONTRACT_ADDRESS: process.env.CONTRACT_ADDRESS || '',
-    API_URL: process.env.API_URL || 'http://localhost:3001',
-  },
-}
+  // Enable React strict mode for better development warnings
+  reactStrictMode: true,
 
-module.exports = nextConfig
+  images: {
+    // Responsive image breakpoints used by next/image
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920],
+    imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
+    formats: ['image/webp', 'image/avif'],
+  },
+};
+
+module.exports = nextConfig;

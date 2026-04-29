@@ -1,12 +1,19 @@
 {
-  "name": "soroban-bounty-marketplace",
-  "version": "0.1.0",
+  "name": "@soroban-scanner/frontend",
+  "version": "1.0.0",
+  "description": "Frontend application for Soroban Security Scanner",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:analyze": "ANALYZE=true next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "lint:fix": "next lint --fix",
+    "type-check": "tsc --noEmit",
+    "bundle-analyzer": "npx @next/bundle-analyzer",
+    "lighthouse": "npx lighthouse http://localhost:3000 --output=html --output-path=./lighthouse-report.html",
+    "performance-test": "npm run build && npm run lighthouse"
   },
   "dependencies": {
     "@stellar/freighter-api": "^1.6.0",

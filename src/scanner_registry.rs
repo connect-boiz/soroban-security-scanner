@@ -15,6 +15,9 @@ const VERSION_COUNTER: Symbol = Symbol::short("VER_CTR");
 const VERSIONS: Symbol = Symbol::short("VERSIONS");
 const LATEST_VERSION: Symbol = Symbol::short("LATEST");
 const VULNERABILITY_DB_HASHES: Symbol = Symbol::short("VULN_DB");
+const CLEANUP_TIMESTAMP: Symbol = Symbol::short("CLEANUP_TS");
+const MAX_DEPRECATED_VERSIONS: u64 = 50; // Keep only 50 deprecated versions
+const VERSION_RETENTION_DAYS: u64 = 365; // Keep deprecated versions for 1 year
 
 // Version status
 #[derive(Clone, Debug, PartialEq, Eq, contracttype)]
@@ -80,6 +83,7 @@ impl ScannerRegistry {
         
         // Initialize empty versions map
         env.storage().instance().set(&VERSIONS, &Map::<String, ScannerVersion>::new(&env));
+        env.storage().instance().set(&CLEANUP_TIMESTAMP, &env.ledger().timestamp());
     }
 
     /// Register a new scanner version (admin only)
@@ -396,6 +400,96 @@ impl ScannerRegistry {
             .unwrap_or_else(|| Map::new(env))
     }
 
+    /// Clean up old and deprecated versions to optimize storage
+    pub fn cleanup_old_versions(env: Env) -> u64 {
+        let now = env.ledger().timestamp();
+        let retention_seconds = VERSION_RETENTION_DAYS * 24 * 60 * 60;
+        let cutoff_time = now.saturating_sub(retention_seconds);
+        
+        let mut cleaned_count = 0u64;
+        
+        // Get all versions
+        let mut versions = Self::get_versions(&env);
+        
+        // Find old deprecated versions
+        let old_versions: Vec<String> = versions.iter()
+            .filter(|(_, version)| {
+                (version.status == VersionStatus::Deprecated || version.status == VersionStatus::Insecure) &&
+                version.registered_at < cutoff_time
+            })
+            .map(|(version_str, _)| version_str.clone())
+            .collect();
+        
+        // Remove old versions (but keep some history)
+        let deprecated_count = old_versions.len() as u64;
+        if deprecated_count > MAX_DEPRECATED_VERSIONS {
+            // Sort by registration date (oldest first)
+            let mut sorted_versions: Vec<(String, u64)> = versions.iter()
+                .filter(|(_, version)| {
+                    version.status == VersionStatus::Deprecated || version.status == VersionStatus::Insecure
+                })
+                .map(|(version_str, version)| (version_str.clone(), version.registered_at))
+                .collect();
+            
+            sorted_versions.sort_by_key(|&(_, timestamp)| timestamp);
+            
+            // Remove oldest versions beyond the limit
+            let excess_count = deprecated_count - MAX_DEPRECATED_VERSIONS;
+            for i in 0..excess_count {
+                let version_to_remove = &sorted_versions[i as usize].0;
+                versions.remove(version_to_remove);
+                cleaned_count += 1;
+            }
+        }
+        
+        // Remove very old insecure versions immediately
+        let insecure_versions: Vec<String> = versions.iter()
+            .filter(|(_, version)| {
+                version.status == VersionStatus::Insecure && version.registered_at < cutoff_time
+            })
+            .map(|(version_str, _)| version_str.clone())
+            .collect();
+        
+        for version_str in insecure_versions {
+            versions.remove(&version_str);
+            cleaned_count += 1;
+        }
+        
+        // Update storage
+        env.storage().instance().set(&VERSIONS, &versions);
+        env.storage().instance().set(&CLEANUP_TIMESTAMP, &now);
+        
+        cleaned_count
+    }
+
+    /// Get version storage statistics
+    pub fn get_storage_stats(env: Env) -> VersionStorageStats {
+        let versions = Self::get_versions(&env);
+        
+        let mut active_count = 0u64;
+        let mut deprecated_count = 0u64;
+        let mut insecure_count = 0u64;
+        let mut beta_count = 0u64;
+        
+        for version in versions.iter() {
+            match version.1.status {
+                VersionStatus::Active => active_count += 1,
+                VersionStatus::Deprecated => deprecated_count += 1,
+                VersionStatus::Insecure => insecure_count += 1,
+                VersionStatus::Beta => beta_count += 1,
+            }
+        }
+        
+        VersionStorageStats {
+            total_versions: versions.len(),
+            active_versions: active_count,
+            deprecated_versions: deprecated_count,
+            insecure_versions: insecure_count,
+            beta_versions: beta_count,
+            last_cleanup: env.storage().instance().get(&CLEANUP_TIMESTAMP).unwrap_or(0),
+        }
+    }
+
     fn validate_version_format(version: &String) {
         // Basic semantic versioning validation
         let parts: Vec<&str> = version.split('.').collect();
@@ -409,4 +503,15 @@ impl ScannerRegistry {
             }
         }
     }
+}
+
+// Version storage statistics
+#[derive(Clone, Debug, contracttype)]
+pub struct VersionStorageStats {
+    pub total_versions: u64,
+    pub active_versions: u64,
+    pub deprecated_versions: u64,
+    pub insecure_versions: u64,
+    pub beta_versions: u64,
+    pub last_cleanup: u64,
 }

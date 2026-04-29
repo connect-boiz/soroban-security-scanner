@@ -2,6 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use crate::gas_limits::GasLimitConfig as GasLimitConfigType;
+use crate::event_logging::EventLoggingConfig as EventLoggingConfigType;
+use crate::secure_id_generation::SecureIdConfig as SecureIdConfigType;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScannerConfig {
@@ -11,6 +14,10 @@ pub struct ScannerConfig {
     pub invariant_checks: InvariantConfig,
     pub output: OutputConfig,
     pub performance: PerformanceConfig,
+    pub emergency_stop: EmergencyStopConfig,
+    pub gas_limits: GasLimitConfigType,
+    pub event_logging: EventLoggingConfigType,
+    pub secure_id_generation: SecureIdConfigType,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,6 +61,15 @@ pub struct PerformanceConfig {
     pub cache_results: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmergencyStopConfig {
+    pub enabled: bool,
+    pub stop_on_critical: bool,
+    pub save_partial_results: bool,
+    pub timeout_seconds: u64,
+    pub max_memory_mb: usize,
+}
+
 impl Default for ScannerConfig {
     fn default() -> Self {
         Self {
@@ -67,6 +83,10 @@ impl Default for ScannerConfig {
             invariant_checks: InvariantConfig::default(),
             output: OutputConfig::default(),
             performance: PerformanceConfig::default(),
+            emergency_stop: EmergencyStopConfig::default(),
+            gas_limits: GasLimitConfigType::default(),
+            event_logging: EventLoggingConfigType::default(),
+            secure_id_generation: SecureIdConfigType::default(),
         }
     }
 }
@@ -124,6 +144,18 @@ impl Default for PerformanceConfig {
             timeout_seconds: 300,
             max_file_size_mb: 10,
             cache_results: true,
+        }
+    }
+}
+
+impl Default for EmergencyStopConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            stop_on_critical: true,
+            save_partial_results: true,
+            timeout_seconds: 300,
+            max_memory_mb: 1024,
         }
     }
 }
