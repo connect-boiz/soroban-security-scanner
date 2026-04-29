@@ -2,7 +2,10 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import { LazyImage } from './LazyImage';
-import { LoadingOverlay, ProgressBar, SkeletonCard, EnhancedProgressBar, MultiStepProgress, SkeletonForm } from './ui';
+import { LoadingOverlay, ProgressBar, SkeletonCard } from './ui';
+import FileUploadZone from './FileUploadZone';
+
+type InputMode = 'paste' | 'upload';
 
 interface ScanResult {
   vulnerabilities: string[];
@@ -11,18 +14,23 @@ interface ScanResult {
 }
 
 export default function ScannerInterface() {
+  const [inputMode, setInputMode] = useState<InputMode>('paste');
   const [contractCode, setContractCode] = useState('');
+  const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [isScanning, setIsScanning] = useState(false);
   const [scanResults, setScanResults] = useState<ScanResult | null>(null);
   const [scanProgress, setScanProgress] = useState(0);
   const [scanStage, setScanStage] = useState('');
 
-  // Memoize the scan function to prevent unnecessary re-renders
+  const canScan =
+    inputMode === 'paste' ? contractCode.trim().length > 0 : uploadedFiles.length > 0;
+
   const handleScan = useCallback(async () => {
-    if (!contractCode.trim()) return;
+    if (!canScan) return;
 
     setIsScanning(true);
     setScanProgress(0);
+    setScanResults(null);
     setScanStage('Initializing scan...');
     
     // Enhanced multi-stage scanning process with detailed steps
@@ -62,14 +70,13 @@ export default function ScannerInterface() {
     setIsScanning(false);
     setScanStage('');
     setScanProgress(0);
-  }, [contractCode]);
+  }, [canScan]);
 
-  // Memoize severity color mapping
   const severityColors = useMemo(() => ({
     low: 'bg-green-100 text-green-800',
     medium: 'bg-yellow-100 text-yellow-800',
     high: 'bg-red-100 text-red-800',
-    critical: 'bg-purple-100 text-purple-800'
+    critical: 'bg-purple-100 text-purple-800',
   }), []);
 
   return (
@@ -88,27 +95,58 @@ export default function ScannerInterface() {
           </h2>
         </div>
 
-        <div className="space-y-4">
-          <div>
-            <label htmlFor="contract-code" className="block text-sm font-medium text-gray-700 mb-2">
-              Contract Code
-            </label>
-            <textarea
-              id="contract-code"
-              value={contractCode}
-              onChange={(e) => setContractCode(e.target.value)}
-              className="w-full h-32 p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-optimized"
-              placeholder="Paste your Soroban contract code here..."
+        {/* Input mode toggle */}
+        <div className="flex rounded-lg border border-gray-200 overflow-hidden w-fit">
+          {(['paste', 'upload'] as InputMode[]).map((mode) => (
+            <button
+              key={mode}
+              onClick={() => setInputMode(mode)}
               disabled={isScanning}
+              className={`px-5 py-2 text-sm font-medium transition-colors ${
+                inputMode === mode
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              {mode === 'paste' ? '📋 Paste Code' : '📁 Upload Files'}
+            </button>
+          ))}
+        </div>
+
+        <div className="space-y-4">
+          {inputMode === 'paste' ? (
+            <div>
+              <label htmlFor="contract-code" className="block text-sm font-medium text-gray-700 mb-2">
+                Contract Code
+              </label>
+              <textarea
+                id="contract-code"
+                value={contractCode}
+                onChange={(e) => setContractCode(e.target.value)}
+                className="w-full h-32 p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-optimized"
+                placeholder="Paste your Soroban contract code here..."
+                disabled={isScanning}
+              />
+            </div>
+          ) : (
+            <FileUploadZone
+              allowedTypes={['.rs', '.wasm', '.toml']}
+              maxSizeMB={10}
+              maxFiles={5}
+              onFilesReady={(files) => setUploadedFiles(files)}
             />
-          </div>
+          )}
 
           <button
             onClick={handleScan}
-            disabled={isScanning || !contractCode.trim()}
+            disabled={isScanning || !canScan}
             className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-optimized"
           >
-            {isScanning ? 'Scanning...' : 'Scan Contract'}
+            {isScanning
+              ? 'Scanning…'
+              : inputMode === 'upload' && uploadedFiles.length > 0
+              ? `Scan ${uploadedFiles.length} File${uploadedFiles.length !== 1 ? 's' : ''}`
+              : 'Scan Contract'}
           </button>
         </div>
 
