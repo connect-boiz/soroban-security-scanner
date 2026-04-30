@@ -22,7 +22,7 @@ describe('GuidedTour', () => {
     });
   });
 
-  it('renders Joyride when tour is active', () => {
+  it('renders Joyride when tour is active', async () => {
     (useHelpStore as unknown as jest.Mock).mockReturnValue({
       activeTour: 'scan',
       completedTours: [],
@@ -31,7 +31,7 @@ describe('GuidedTour', () => {
     });
 
     render(<GuidedTour tourId="scan" />);
-    expect(screen.getByTestId('mock-joyride')).toBeInTheDocument();
+    expect(await screen.findByTestId('mock-joyride')).toBeInTheDocument();
   });
 
   it('auto-starts tour if not completed', () => {

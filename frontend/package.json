@@ -49,6 +49,8 @@
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "@types/react-joyride": "^2.0.2",
+    "@typescript-eslint/eslint-plugin": "^8.59.1",
+    "@typescript-eslint/parser": "^8.59.1",
     "autoprefixer": "^10.4.16",
     "eslint": "^8.45.0",
     "eslint-config-next": "^14.0.0",

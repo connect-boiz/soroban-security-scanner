@@ -202,7 +202,7 @@ export default function MultiSigWizard() {
         return validateThreshold();
       case 'advanced':
         return validateAdvanced();
-      case 'preview':
+      case 'preview': {
         // Validate all steps
         const basic = validateBasicInfo();
         const signers = validateSigners();
@@ -214,6 +214,7 @@ export default function MultiSigWizard() {
           errors: [...basic.errors, ...signers.errors, ...threshold.errors, ...advanced.errors],
           warnings: [...basic.warnings, ...signers.warnings, ...threshold.warnings, ...advanced.warnings]
         };
+      }
       default:
         return { isValid: true, errors: [], warnings: [] };
     }
