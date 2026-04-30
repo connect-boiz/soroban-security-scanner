@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from 'next';
+import { headers } from 'next/headers';
 import './globals.css';
+import { PageErrorBoundary } from '@/components/ui/ErrorBoundary';
 
 export const metadata: Metadata = {
   title: 'Soroban Security Scanner',
@@ -14,9 +16,15 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  // Get the CSP nonce from middleware
+  const headersList = headers();
+  const nonce = headersList.get('x-nonce') || '';
+
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <PageErrorBoundary>{children}</PageErrorBoundary>
+      </body>
     </html>
   );
 }

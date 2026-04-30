@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { format } from 'date-fns';
+import Modal from './Modal';
 
 // Types
 export interface TokenBalance {
@@ -384,37 +385,31 @@ export const BalanceDisplay: React.FC<BalanceDisplayProps> = ({
       </div>
 
       {/* Selected Token Modal */}
-      {selectedToken && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-bold text-gray-900">{selectedToken.symbol} Details</h3>
-              <button
-                onClick={() => setSelectedToken(null)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                ✕
-              </button>
+      <Modal
+        isOpen={!!selectedToken}
+        onClose={() => setSelectedToken(null)}
+        title={`${selectedToken?.symbol} Details`}
+        size="md"
+      >
+        {selectedToken && (
+          <div className="space-y-4">
+            <div>
+              <p className="text-sm text-gray-500">Contract Address</p>
+              <p className="font-mono text-sm bg-gray-100 p-2 rounded">{selectedToken.contractAddress}</p>
             </div>
-            <div className="space-y-4">
-              <div>
-                <p className="text-sm text-gray-500">Contract Address</p>
-                <p className="font-mono text-sm bg-gray-100 p-2 rounded">{selectedToken.contractAddress}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">Decimals</p>
-                <p className="font-semibold">{selectedToken.decimals}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">24h Change</p>
-                <p className={`font-semibold ${selectedToken.change24h >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {selectedToken.change24h >= 0 ? '+' : ''}{selectedToken.change24h}%
-                </p>
-              </div>
+            <div>
+              <p className="text-sm text-gray-500">Decimals</p>
+              <p className="font-semibold">{selectedToken.decimals}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">24h Change</p>
+              <p className={`font-semibold ${selectedToken.change24h >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {selectedToken.change24h >= 0 ? '+' : ''}{selectedToken.change24h}%
+              </p>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
     </div>
   );
 };

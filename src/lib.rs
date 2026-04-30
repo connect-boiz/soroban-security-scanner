@@ -17,8 +17,10 @@ pub mod event_logging;
 pub mod gas_limits;
 pub mod invariants;
 pub mod kubernetes;
+pub mod multisig;
 pub mod notification_service;
 pub mod performance;
+pub mod rate_limiting;
 pub mod report;
 pub mod reporters;
 pub mod scanner_registry;
@@ -27,10 +29,7 @@ pub mod secure_id_generation;
 pub mod security_analyzer;
 pub mod session;
 pub mod time_travel_debugger;
-pub mod differential_fuzzing;
-pub mod batch_operations;
-pub mod notification_service;
-pub mod rate_limiting;
+pub mod wallet;
 
 
 pub use scanners::{SecurityScanner, InvariantScanner};
@@ -67,6 +66,18 @@ pub use rate_limiting::{
     RateLimiter, RateLimitConfig, RateLimitContext, RateLimitResult, RateLimitTier,
     RateLimitPolicy, RateLimitWindow, RateLimitMiddleware, EndpointRateLimit,
     RateLimitStorage, RateLimitViolation, RateLimitStats
+};
+pub use wallet::{
+    WalletService, WalletStore, InMemoryWalletStore,
+    Wallet, WalletType, WalletStatus, WalletError,
+    CreateWalletRequest, ImportWalletRequest, RestoreWalletRequest,
+    WalletExport, WalletBalance, WalletSyncRecord,
+};
+pub use multisig::{
+    MultiSigService, MultiSigStore, InMemoryMultiSigStore,
+    MultiSigProposal, MultiSigSigner, ProposalStatus, SignerDecision,
+    MultiSigError, CreateProposalRequest, SubmitSignatureRequest,
+    AggregatedSignatures, SignatureEntry, SignerSpec,
 };
 
 #[derive(Debug, Clone)]
