@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { PortfolioChart, TransactionChart, PerformanceChart } from '@/components/charts';
+import TransactionHistory from './TransactionHistory';
 import { PortfolioData, TransactionData, PerformanceMetrics, ChartFilter } from '@/types/charts';
 import { 
   BarChart3, 
@@ -303,6 +304,14 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ classNam
             <p className="text-sm text-gray-600">Success Rate</p>
           </div>
         </div>
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="text-lg font-semibold text-gray-900">Advanced Search and Filtering</h3>
+        <p className="text-sm text-gray-600">
+          Explore scan history with autocomplete, faceted filters, and saved search presets.
+        </p>
+        <TransactionHistory />
       </div>
     </div>
   );
