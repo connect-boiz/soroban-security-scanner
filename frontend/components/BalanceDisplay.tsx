@@ -267,7 +267,6 @@ const ConversionPanel: React.FC<{
   );
 };
 
-// Main BalanceDisplay Component
 export const BalanceDisplay: React.FC<BalanceDisplayProps> = ({
   tokens: initialTokens,
   historicalData: initialHistoricalData,
@@ -287,7 +286,6 @@ export const BalanceDisplay: React.FC<BalanceDisplayProps> = ({
   );
   const [selectedToken, setSelectedToken] = useState<TokenBalance | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
-  const [isLoading, setIsLoading] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(false);
   const [isRefreshingData, setIsRefreshingData] = useState(false);
   const [refreshProgress, setRefreshProgress] = useState(0);
@@ -306,7 +304,6 @@ export const BalanceDisplay: React.FC<BalanceDisplayProps> = ({
       setIsInitialLoading(true);
       setRefreshProgress(0);
       
-      // Simulate progressive loading
       const stages = [
         { progress: 25, delay: 400 },
         { progress: 50, delay: 300 },
@@ -349,30 +346,23 @@ export const BalanceDisplay: React.FC<BalanceDisplayProps> = ({
     setIsRefreshingData(true);
     setRefreshProgress(0);
     
-    try {
-      // Simulate progressive refresh
-      const stages = [
-        { progress: 20, delay: 200, message: 'Fetching token balances...' },
-        { progress: 40, delay: 300, message: 'Updating market data...' },
-        { progress: 60, delay: 400, message: 'Calculating conversions...' },
-        { progress: 80, delay: 200, message: 'Processing historical data...' },
-        { progress: 100, delay: 100, message: 'Finalizing...' }
-      ];
-      
-      for (const stage of stages) {
-        await new Promise(resolve => setTimeout(resolve, stage.delay));
-        setRefreshProgress(stage.progress);
-      }
-      
-      setTokens(generateMockTokenBalances());
-      setHistoricalData(generateMockHistoricalData());
-      setConversionRates(generateMockConversionRates());
-      setLastUpdated(new Date());
-      onRefresh?.();
-    } finally {
-      setIsRefreshingData(false);
-      setRefreshProgress(0);
+    const stages = [
+      { progress: 30, delay: 300 },
+      { progress: 60, delay: 400 },
+      { progress: 90, delay: 200 },
+      { progress: 100, delay: 100 }
+    ];
+    
+    for (const stage of stages) {
+      await new Promise(resolve => setTimeout(resolve, stage.delay));
+      setRefreshProgress(stage.progress);
     }
+    
+    setTokens(generateMockTokenBalances());
+    setLastUpdated(new Date());
+    setIsRefreshingData(false);
+    setRefreshProgress(0);
+    onRefresh?.();
   }, [onRefresh]);
 
   return (
@@ -408,7 +398,7 @@ export const BalanceDisplay: React.FC<BalanceDisplayProps> = ({
             <button
               onClick={handleRefresh}
               disabled={isRefreshingData}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-bold"
             >
               {isRefreshingData ? 'Refreshing...' : 'Refresh'}
             </button>
@@ -435,91 +425,91 @@ export const BalanceDisplay: React.FC<BalanceDisplayProps> = ({
           </div>
         </div>
 
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Token Balances */}
-        <div className="lg:col-span-2 space-y-4">
-          <h3 className="text-lg font-semibold text-gray-900">Token Balances</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {isRefreshingData ? (
-              <>
-                <SkeletonCard lines={4} avatar={true} button={false} height="h-32" />
-                <SkeletonCard lines={4} avatar={true} button={false} height="h-32" />
-                <SkeletonCard lines={4} avatar={true} button={false} height="h-32" />
-                <SkeletonCard lines={4} avatar={true} button={false} height="h-32" />
-              </>
-            ) : (
-              tokens.map((token) => (
-                <BalanceCard
-                  key={token.contractAddress}
-                  token={token}
-                  onClick={() => setSelectedToken(token)}
+        {/* Main Content Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Token Balances */}
+          <div className="lg:col-span-2 space-y-4">
+            <h3 className="text-lg font-semibold text-gray-900">Token Balances</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {isRefreshingData ? (
+                <>
+                  <SkeletonCard lines={4} avatar={true} button={false} height="h-32" />
+                  <SkeletonCard lines={4} avatar={true} button={false} height="h-32" />
+                  <SkeletonCard lines={4} avatar={true} button={false} height="h-32" />
+                  <SkeletonCard lines={4} avatar={true} button={false} height="h-32" />
+                </>
+              ) : (
+                tokens.map((token) => (
+                  <BalanceCard
+                    key={token.contractAddress}
+                    token={token}
+                    onClick={() => setSelectedToken(token)}
+                  />
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Side Panel */}
+          <div className="space-y-6">
+            {/* Mini Chart */}
+            {showChart && (
+              <div className="bg-white rounded-lg shadow-md p-6 border border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">30-Day Performance</h3>
+                {isRefreshingData ? (
+                  <SkeletonCard lines={6} avatar={false} button={false} height="h-48" />
+                ) : (
+                  <MiniChart data={historicalData} />
+                )}
+              </div>
+            )}
+
+            {/* Conversion Calculator */}
+            {showConversion && (
+              isRefreshingData ? (
+                <SkeletonCard lines={8} avatar={false} button={true} height="h-64" />
+              ) : (
+                <ConversionPanel
+                  tokens={tokens}
+                  conversionRates={conversionRates}
                 />
-              ))
+              )
             )}
           </div>
         </div>
 
-        {/* Side Panel */}
-        <div className="space-y-6">
-          {/* Mini Chart */}
-          {showChart && (
-            <div className="bg-white rounded-lg shadow-md p-6 border border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">30-Day Performance</h3>
-              {isRefreshingData ? (
-                <SkeletonCard lines={6} avatar={false} button={false} height="h-48" />
-              ) : (
-                <MiniChart data={historicalData} />
-              )}
-            </div>
-          )}
-
-          {/* Conversion Calculator */}
-          {showConversion && (
-            isRefreshingData ? (
-              <SkeletonCard lines={8} avatar={false} button={true} height="h-64" />
-            ) : (
-              <ConversionPanel
-                tokens={tokens}
-                conversionRates={conversionRates}
-              />
-            )
-          )}
-        </div>
-      </div>
-
-      {/* Token Detail Modal */}
-      {selectedToken && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Token Details</h3>
-              <button
-                onClick={() => setSelectedToken(null)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <p className="text-sm text-gray-500">Contract Address</p>
-                <p className="font-mono text-sm bg-gray-100 p-2 rounded">{selectedToken.contractAddress}</p>
+        {/* Token Detail Modal */}
+        {selectedToken && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100]">
+            <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Token Details</h3>
+                <button
+                  onClick={() => setSelectedToken(null)}
+                  className="text-gray-400 hover:text-gray-600 text-xl"
+                >
+                  ✕
+                </button>
               </div>
-              <div>
-                <p className="text-sm text-gray-500">Decimals</p>
-                <p className="font-semibold">{selectedToken.decimals}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">24h Change</p>
-                <p className={`font-semibold ${selectedToken.change24h >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {selectedToken.change24h >= 0 ? '+' : ''}{selectedToken.change24h}%
-                </p>
+              <div className="space-y-4">
+                <div>
+                  <p className="text-sm text-gray-500">Contract Address</p>
+                  <p className="font-mono text-xs bg-gray-100 p-2 rounded break-all">{selectedToken.contractAddress}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Decimals</p>
+                  <p className="font-semibold">{selectedToken.decimals}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">24h Change</p>
+                  <p className={`font-semibold ${selectedToken.change24h >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {selectedToken.change24h >= 0 ? '+' : ''}{selectedToken.change24h}%
+                  </p>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
       </div>
     </LoadingOverlay>
   );

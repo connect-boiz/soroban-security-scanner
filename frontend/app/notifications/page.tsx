@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useState } from 'react';
 import { NotificationProvider, useNotifications } from '../../hooks/notifications';
 import EmailPreferencesPanel from '../../components/notifications/EmailPreferences';
