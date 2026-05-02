@@ -3,20 +3,24 @@
 use crate::vulnerabilities::VulnerabilityType;
 use crate::invariants::InvariantRule;
 use crate::analysis::AnalysisResult;
+use crate::emergency_stop::EmergencyStop;
 use crate::{ScanResult, Severity};
 use syn::{Item, ItemFn, ItemStruct, ItemEnum, Expr, ExprCall, ExprMethodCall, ExprPath};
 use std::path::Path;
 use std::fs;
 use regex::Regex;
 use anyhow::Result;
+use log::{info, warn};
 
 pub struct SecurityScanner {
     vulnerability_patterns: Vec<(VulnerabilityType, Regex)>,
     ignore_patterns: Vec<Regex>,
+    pub emergency_stop: EmergencyStop,
 }
 
 pub struct InvariantScanner {
     invariant_rules: Vec<(InvariantRule, Regex)>,
+    emergency_stop: EmergencyStop,
 }
 
 impl SecurityScanner {
@@ -24,6 +28,18 @@ impl SecurityScanner {
         let mut scanner = Self {
             vulnerability_patterns: Vec::new(),
             ignore_patterns: Vec::new(),
+            emergency_stop: EmergencyStop::new()?,
+        };
+        
+        scanner.initialize_patterns()?;
+        Ok(scanner)
+    }
+
+    pub fn new_with_emergency_stop(emergency_stop: EmergencyStop) -> Result<Self> {
+        let mut scanner = Self {
+            vulnerability_patterns: Vec::new(),
+            ignore_patterns: Vec::new(),
+            emergency_stop,
         };
         
         scanner.initialize_patterns()?;
@@ -43,6 +59,18 @@ impl SecurityScanner {
         
         self.add_pattern(VulnerabilityType::UnauthorizedBurn,
             r"fn\s+burn.*\{[^}]*?(?!require_auth)[^}]*?balance.*-=")?;
+        
+        self.add_pattern(VulnerabilityType::InsufficientBalance,
+            r"transfer.*\{[^}]*?(?!balance.*>=|require.*balance)[^}]*?balance.*-=")?;
+        
+        self.add_pattern(VulnerabilityType::BalanceUnderflow,
+            r"balance.*-=.*(?!checked_|wrapping_|saturating_)")?;
+        
+        self.add_pattern(VulnerabilityType::BalanceOverflow,
+            r"balance.*\+=.*(?!checked_|wrapping_|saturating_)")?;
+        
+        self.add_pattern(VulnerabilityType::TransferWithoutBalanceCheck,
+            r"fn\s+transfer.*\{[^}]*?(?!require.*balance|balance.*>=)[^}]*?env\.invoke_contract|balance.*-=.*balance.*\+=")?;
 
         // Token Economics Vulnerabilities
         self.add_pattern(VulnerabilityType::InfiniteMint,
@@ -53,6 +81,9 @@ impl SecurityScanner {
         
         self.add_pattern(VulnerabilityType::IntegerOverflow,
             r"\+\s*=|-\s*=|\*\s*=|/\s*=.*(?!checked_|wrapping_|saturating_)")?;
+        
+        self.add_pattern(VulnerabilityType::IntegerUnderflow,
+            r"balance.*-=[^}]*?(?!checked_|wrapping_|saturating_)")?;
 
         // Logic Vulnerabilities
         self.add_pattern(VulnerabilityType::FrozenFunds,
@@ -91,6 +122,54 @@ impl SecurityScanner {
         self.add_pattern(VulnerabilityType::InformationLeakage,
             r"event!\([^)]*\b(secret|private|password|key)\b")?;
 
+        // Gas Limit Vulnerabilities
+        self.add_pattern(VulnerabilityType::InsufficientGasLimitConsiderations,
+            r"fn\s+(claim_reward|release_escrow|emergency_distribute).*\{[^}]*?(?!gas|limit|estimate)[^}]*?}")?;
+        
+        self.add_pattern(VulnerabilityType::ComplexOperationGasExhaustion,
+            r"for.*\{[^}]*?env\.invoke_contract[^}]*?for.*\{[^}]*?env\.invoke_contract")?;
+        
+        self.add_pattern(VulnerabilityType::EscrowReleaseGasRisk,
+            r"fn\s+release_escrow.*\{[^}]*?for.*in.*\{[^}]*?transfer[^}]*?\}")?;
+        
+        self.add_pattern(VulnerabilityType::EmergencyDistributionGasRisk,
+            r"fn\s+emergency.*\{[^}]*?for.*in.*\{[^}]*?reward[^}]*?\}")?;
+        
+        self.add_pattern(VulnerabilityType::BatchOperationGasLimit,
+            r"for.*\{[^}]*?env\.invoke_contract[^}]*?\}[^}]*?for.*\{[^}]*?env\.invoke_contract")?;
+
+        // Event Logging Vulnerabilities
+        self.add_pattern(VulnerabilityType::MissingCriticalEventLogging,
+            r"fn\s+(transfer|withdraw|claim|approve|release).*\{[^}]*?(?!event|emit)[^}]*?balance.*=")?;
+        
+        self.add_pattern(VulnerabilityType::CriticalOperationWithoutEvents,
+            r"fn\s+(transfer_funds|release_escrow|distribute_rewards).*\{[^}]*?(?!event|emit)[^}]*?\}")?;
+        
+        self.add_pattern(VulnerabilityType::IncompleteEventAuditTrail,
+            r"event!\([^)]*\)[^}]*?balance.*=[^}]*?(?!event|emit)[^}]*?\}")?;
+        
+        self.add_pattern(VulnerabilityType::InsufficientEventMetadata,
+            r"event!\([^)]*\)([^)]*\([^)]*\)){0,1}[^)]*\(,[^)]*\)[^)]*\(,[^)]*\)[^)]*\)")?;
+        
+        self.add_pattern(VulnerabilityType::EventLoggingBypass,
+            r"if.*condition.*\{[^}]*?return[^}]*?\}[^}]*?event!\(")?;
+
+        // Randomness and ID Generation Vulnerabilities
+        self.add_pattern(VulnerabilityType::PredictableLedgerSequenceIds,
+            r"env\.ledger\(\)\.sequence\(\).*id|id.*env\.ledger\(\)\.sequence\(\)")?;
+        
+        self.add_pattern(VulnerabilityType::WeakRandomnessInIdGeneration,
+            r"generate.*id.*\{[^}]*?ledger\.sequence[^}]*?\}")?;
+        
+        self.add_pattern(VulnerabilityType::InsufficientEntropySources,
+            r"fn.*generate.*random.*\{[^}]*?(timestamp|sequence)[^}]*?\}")?;
+        
+        self.add_pattern(VulnerabilityType::DeterministicNonceGeneration,
+            r"generate.*nonce.*\{[^}]*?(format|concat)[^}]*?\}")?;
+        
+        self.add_pattern(VulnerabilityType::IdCollisionVulnerability,
+            r"hash.*\{[^}]*?(simple|weak|predictable)[^}]*?\}.*id")?;
+
         Ok(())
     }
 
@@ -101,6 +180,12 @@ impl SecurityScanner {
     }
 
     pub fn scan_file(&self, file_path: &Path) -> Result<ScanResult> {
+        // Check for emergency stop before processing
+        if self.emergency_stop.is_stopped() {
+            info!("Scan cancelled due to emergency stop");
+            return Ok(ScanResult::new(file_path.to_string_lossy().to_string()));
+        }
+
         let content = fs::read_to_string(file_path)?;
         let mut result = ScanResult::new(file_path.to_string_lossy().to_string());
 
@@ -114,10 +199,23 @@ impl SecurityScanner {
         
         // Check for vulnerabilities
         for (vuln_type, pattern) in &self.vulnerability_patterns {
+            // Check for emergency stop during pattern matching
+            check_emergency_stop!(self.emergency_stop);
+            
             if let Some(matches) = pattern.find(&content) {
                 // Additional context analysis
                 if self.is_vulnerability_context_valid(&syntax, &content, matches.range()) {
                     result.vulnerabilities.push(vuln_type.clone());
+                    
+                    // Trigger emergency stop for critical vulnerabilities
+                    if vuln_type.severity() == Severity::Critical {
+                        warn!("Critical vulnerability detected in {}: {}", 
+                              file_path.display(), vuln_type.to_string());
+                        self.emergency_stop.stop_on_critical_vulnerability(
+                            &file_path.to_string_lossy(),
+                            &vuln_type.to_string()
+                        )?;
+                    }
                 }
             }
         }
@@ -200,6 +298,12 @@ impl SecurityScanner {
         let mut results = Vec::new();
         
         for entry in walkdir::WalkDir::new(dir_path) {
+            // Check for emergency stop before processing each file
+            if self.emergency_stop.is_stopped() {
+                info!("Directory scan cancelled due to emergency stop");
+                break;
+            }
+            
             let entry = entry?;
             let path = entry.path();
             
@@ -218,6 +322,17 @@ impl InvariantScanner {
     pub fn new() -> Result<Self> {
         let mut scanner = Self {
             invariant_rules: Vec::new(),
+            emergency_stop: EmergencyStop::new()?,
+        };
+        
+        scanner.initialize_rules()?;
+        Ok(scanner)
+    }
+
+    pub fn new_with_emergency_stop(emergency_stop: EmergencyStop) -> Result<Self> {
+        let mut scanner = Self {
+            invariant_rules: Vec::new(),
+            emergency_stop,
         };
         
         scanner.initialize_rules()?;
@@ -232,6 +347,18 @@ impl InvariantScanner {
         self.add_rule(InvariantRule::BalanceNonNegative,
             r"balance.*<.*0|balance.*-=.*balance")?;
         
+        self.add_rule(InvariantRule::SufficientBalanceCheck,
+            r"transfer.*\{[^}]*?(?!balance.*>=|require.*balance)[^}]*?balance.*-=")?;
+        
+        self.add_rule(InvariantRule::BalanceBoundsCheck,
+            r"balance.*\+=.*(?!max_balance|limit)|balance.*-=.*(?!min_balance)")?;
+        
+        self.add_rule(InvariantRule::TransferAtomicity,
+            r"transfer.*\{[^}]*?balance.*-=.*balance.*\+=")?;
+        
+        self.add_rule(InvariantRule::BalanceIntegrity,
+            r"balance.*=.*(?!checked_|safe_)")?;
+        
         self.add_rule(InvariantRule::TransferConservation,
             r"transfer.*from.*to.*amount")?;
 
@@ -241,6 +368,9 @@ impl InvariantScanner {
         
         self.add_rule(InvariantRule::OverflowProtection,
             r"checked_add|checked_sub|checked_mul|checked_div")?;
+        
+        self.add_rule(InvariantRule::BalanceBoundsCheck,
+            r"balance.*<=.*max_balance|max_balance.*>=.*balance")?;
 
         // State Consistency
         self.add_rule(InvariantRule::StateTransitionValidity,
@@ -259,10 +389,19 @@ impl InvariantScanner {
     }
 
     pub fn scan_file(&self, file_path: &Path) -> Result<ScanResult> {
+        // Check for emergency stop before processing
+        if self.emergency_stop.is_stopped() {
+            info!("Invariant scan cancelled due to emergency stop");
+            return Ok(ScanResult::new(file_path.to_string_lossy().to_string()));
+        }
+
         let content = fs::read_to_string(file_path)?;
         let mut result = ScanResult::new(file_path.to_string_lossy().to_string());
 
         for (rule, pattern) in &self.invariant_rules {
+            // Check for emergency stop during rule checking
+            check_emergency_stop!(self.emergency_stop);
+            
             if pattern.is_match(&content) {
                 result.invariant_violations.push(rule.clone());
             }
@@ -275,6 +414,12 @@ impl InvariantScanner {
         let mut results = Vec::new();
         
         for entry in walkdir::WalkDir::new(dir_path) {
+            // Check for emergency stop before processing each file
+            if self.emergency_stop.is_stopped() {
+                info!("Invariant directory scan cancelled due to emergency stop");
+                break;
+            }
+            
             let entry = entry?;
             let path = entry.path();
             

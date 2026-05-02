@@ -1,0 +1,66 @@
+# Node.js dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Next.js build artifacts
+.next/
+out/
+build/
+dist/
+
+# SWC artifacts
+.swc/
+
+# TypeScript build info
+*.tsbuildinfo
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# Build artifacts (C/Rust)
+target/
+*.o
+*.rcgu.o
+*.d
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Validation scripts
+validate.ps1
+validate.sh
+validate_dashboard.sh
+validate_fixed.ps1
+validate_contract.8hu8pe3ae7mxwafub8p8w97h5.rcgu.o
+validate_contract.validate_contract.8d339ca6b30484-cgu.0.rcgu.o
+validate_contract.validate_contract.8d339ca6b30484-cgu.1.rcgu.o
+validate_contract.validate_contract.8d339ca6b30484-cgu.2.rcgu.o
+validate_contract.rs
+
+# Config files
+stellar-scanner.toml
+
+# Documentation and templates
+PULL_REQUEST_TEMPLATE.md
+whitelist.md
