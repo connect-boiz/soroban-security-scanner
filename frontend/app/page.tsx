@@ -199,7 +199,7 @@ export default function App() {
 
     switch (activeTab) {
       case 'bounties':
-        return <BountyBoard onBountySelect={handleBountySelect} />;
+        return <BountyBoard />;
       case 'leaderboard':
         return <Leaderboard />;
       case 'scanner':
@@ -332,7 +332,7 @@ export default function App() {
         </div>
       </main>
 
-      {/* Floating Help Button */}
+{/* Floating Help Button */}
       <div className="fixed bottom-8 right-8 z-[90]">
         <button
           onClick={() => setHelpPanelTopic(activeTab as any)}
