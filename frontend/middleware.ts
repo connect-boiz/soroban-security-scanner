@@ -163,8 +163,16 @@ export function middleware(request: NextRequest) {
   // Get security headers
   const securityHeaders = getSecurityHeaders(nonce, isProduction);
   
+  // Expose the nonce to server components that render inline scripts.
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set('x-nonce', nonce);
+
   // Create response
-  const response = NextResponse.next();
+  const response = NextResponse.next({
+    request: {
+      headers: requestHeaders,
+    },
+  });
   
   // Apply all security headers
   Object.entries(securityHeaders).forEach(([key, value]) => {
