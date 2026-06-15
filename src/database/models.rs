@@ -281,6 +281,86 @@ pub struct RateLimit {
     pub created_at: DateTime<Utc>,
 }
 
+// Notification delivery tracking models
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct NotificationDeliveryTracking {
+    pub id: Uuid,
+    pub notification_id: String,
+    pub recipient_id: String,
+    pub channel: String,
+    pub status: DeliveryDbStatus,
+    pub attempts: i32,
+    pub last_attempt_at: Option<DateTime<Utc>>,
+    pub delivered_at: Option<DateTime<Utc>>,
+    pub error_message: Option<String>,
+    pub external_id: Option<String>,
+    pub metadata: serde_json::Value,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
+#[sqlx(type_name = "delivery_status", rename_all = "snake_case")]
+pub enum DeliveryDbStatus {
+    Pending,
+    Processing,
+    Sent,
+    Delivered,
+    Failed,
+    Retrying,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct NotificationPreference {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub channel: String,
+    pub enabled: bool,
+    pub quiet_hours_start: Option<i32>,
+    pub quiet_hours_end: Option<i32>,
+    pub timezone: String,
+    pub max_priority: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct DeliveryRetryResult {
+    pub tracking_id: Uuid,
+    pub notification_id: String,
+    pub recipient_id: String,
+    pub channel: String,
+    pub current_attempts: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct DailyDeliveryStats {
+    pub delivery_date: chrono::NaiveDate,
+    pub channel: String,
+    pub total_attempts: i64,
+    pub delivered_count: i64,
+    pub failed_count: i64,
+    pub retrying_count: i64,
+    pub avg_delivery_time_seconds: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateDeliveryTrackingRequest {
+    pub notification_id: String,
+    pub recipient_id: String,
+    pub channel: String,
+    pub metadata: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateDeliveryStatusRequest {
+    pub status: DeliveryDbStatus,
+    pub error_message: Option<String>,
+    pub external_id: Option<String>,
+    pub delivered_at: Option<DateTime<Utc>>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct UserDevice {
     pub id: Uuid,

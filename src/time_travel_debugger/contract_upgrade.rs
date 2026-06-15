@@ -4,10 +4,179 @@
 //! with existing state and identifies potential issues.
 
 use std::collections::HashMap;
+use std::time::Duration;
 use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
 use soroban_sdk::xdr::{ScVal, ContractCodeEntry, ContractDataEntry, LedgerEntry};
 use crate::time_travel_debugger::{ContractState, TimeTravelConfig};
+
+/// Per-key storage compatibility analysis result
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KeyCompatibility {
+    /// Storage key name
+    pub key: String,
+    /// Expected type in the new WASM
+    pub expected_type: String,
+    /// Actual type found in the current state
+    pub actual_type: String,
+    /// Migration status
+    pub status: StorageKeyStatus,
+    /// Whether the expected data type matches the stored data type
+    pub type_matches: bool,
+    /// Human-readable description of the compatibility issue or success
+    pub description: String,
+}
+
+/// Migration status for a specific storage key
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum StorageKeyStatus {
+    /// Key exists in both layouts with matching types — no action needed
+    Compatible,
+    /// Key exists in old storage but not in new layout — data may be orphaned
+    MissingInNew,
+    /// Key expected by new layout but missing from current state — may cause runtime error
+    MissingInCurrent,
+    /// Key exists in both but with a type mismatch — may need manual migration
+    TypeMismatch,
+    /// Key changed format between versions — coercion may be possible
+    FormatChanged,
+}
+
+/// Categorization of incompatibility severity for the migration report
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum IssueCategory {
+    /// Data loss risk — incompatible type or critical key missing
+    Critical,
+    /// Type coercion possible or key format changed
+    Warning,
+    /// Key added or removed — informational only
+    Info,
+}
+
+/// A single old-vs-new storage entry pair for the diff view
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StorageDiffEntry {
+    /// Storage key
+    pub key: String,
+    /// Value in the old (current) contract version
+    pub old_value: Option<String>,
+    /// Expected value or layout in the new contract version
+    pub new_value: Option<String>,
+    /// Whether the entry is compatible
+    pub status: StorageKeyStatus,
+}
+
+/// Full storage diff between old and new contract versions
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StorageDiff {
+    /// List of per-key diffs
+    pub entries: Vec<StorageDiffEntry>,
+    /// Total keys in old storage
+    pub old_total_keys: usize,
+    /// Total keys expected by new layout
+    pub new_total_keys: usize,
+    /// Number of fully compatible keys
+    pub compatible_count: usize,
+    /// Number of keys that will be orphaned
+    pub orphaned_count: usize,
+    /// Number of type mismatches
+    pub type_mismatch_count: usize,
+    /// Number of keys missing in current state
+    pub missing_in_current_count: usize,
+}
+
+/// Human-readable storage migration report
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StorageMigrationReport {
+    /// Per-key compatibility analysis
+    pub key_compatibilities: Vec<KeyCompatibility>,
+    /// Full storage diff
+    pub storage_diff: StorageDiff,
+    /// Issues categorized by severity
+    pub critical_issues: Vec<String>,
+    pub warnings: Vec<String>,
+    pub info_messages: Vec<String>,
+    /// Whether a migration function is required
+    pub migration_required: bool,
+    /// Recommended migration strategy
+    pub recommendation: String,
+    /// Human-readable summary
+    pub summary: String,
+}
+
+impl StorageMigrationReport {
+    /// Generate a human-readable summary string
+    pub fn to_readable_string(&self) -> String {
+        let mut output = String::new();
+        output.push_str("═══════════════════════════════════════════\n");
+        output.push_str("   STORAGE MIGRATION REPORT\n");
+        output.push_str("═══════════════════════════════════════════\n");
+        output.push_str(&format!("Overall: {}\n", self.summary));
+        output.push_str(&format!("Migration required: {}\n", self.migration_required));
+        output.push('\n');
+
+        if !self.critical_issues.is_empty() {
+            output.push_str("─── 🔴 CRITICAL ISSUES ───\n");
+            for issue in &self.critical_issues {
+                output.push_str(&format!("  • {}\n", issue));
+            }
+            output.push('\n');
+        }
+
+        if !self.warnings.is_empty() {
+            output.push_str("─── 🟡 WARNINGS ───\n");
+            for warning in &self.warnings {
+                output.push_str(&format!("  • {}\n", warning));
+            }
+            output.push('\n');
+        }
+
+        if !self.info_messages.is_empty() {
+            output.push_str("─── ℹ️  INFO ───\n");
+            for info in &self.info_messages {
+                output.push_str(&format!("  • {}\n", info));
+            }
+            output.push('\n');
+        }
+
+        output.push_str("─── PER-KEY ANALYSIS ───\n");
+        for kc in &self.key_compatibilities {
+            let icon = match kc.status {
+                StorageKeyStatus::Compatible => "✅",
+                StorageKeyStatus::MissingInNew => "🔴",
+                StorageKeyStatus::MissingInCurrent => "🟡",
+                StorageKeyStatus::TypeMismatch => "🔴",
+                StorageKeyStatus::FormatChanged => "🟡",
+            };
+            output.push_str(&format!(
+                "  {} [{}] key='{}': expected={}, actual={} — {}\n",
+                icon, kc.status, kc.key, kc.expected_type, kc.actual_type, kc.description
+            ));
+        }
+        output.push('\n');
+
+        output.push_str(&format!("─── DIFF SUMMARY ───\n"));
+        output.push_str(&format!("  Total old keys: {}\n", self.storage_diff.old_total_keys));
+        output.push_str(&format!("  Total new keys: {}\n", self.storage_diff.new_total_keys));
+        output.push_str(&format!("  Compatible: {} | Orphaned: {} | Type mismatch: {} | Missing in current: {}\n",
+            self.storage_diff.compatible_count,
+            self.storage_diff.orphaned_count,
+            self.storage_diff.type_mismatch_count,
+            self.storage_diff.missing_in_current_count));
+        output.push('\n');
+
+        output.push_str(&format!("Recommendation: {}\n", self.recommendation));
+        output.push_str("═══════════════════════════════════════════\n");
+
+        output
+    }
+
+    /// Generate a concise JSON-serializable report for machine consumption
+    pub fn to_json_string(&self) -> Result<String> {
+        serde_json::to_string_pretty(self)
+            .map_err(|e| anyhow!("Failed to serialize report: {}", e))
+    }
+}
 
 /// Simulates contract upgrades and checks for compatibility
 pub struct ContractUpgradeSimulator {
@@ -33,7 +202,7 @@ impl ContractUpgradeSimulator {
         // Parse new WASM to extract expected storage layout
         let new_storage_layout = self.parse_wasm_storage_layout(new_wasm).await?;
         
-        // Compare with current storage
+        // Compare with current storage — now generates per-key analysis
         let compatibility_issues = self.check_storage_compatibility(
             &current_state.storage,
             &new_storage_layout,
@@ -48,6 +217,12 @@ impl ContractUpgradeSimulator {
         ).await?;
         
         orphaned_entries.extend(orphaned);
+
+        // Generate the storage migration report
+        let migration_report = self.generate_migration_report(
+            &current_state.storage,
+            &new_storage_layout,
+        ).await?;
 
         // Validate WASM compatibility
         let wasm_issues = self.validate_wasm_compatibility(new_wasm).await?;
@@ -64,6 +239,7 @@ impl ContractUpgradeSimulator {
             compatibility_issues: issues,
             orphaned_entries,
             warnings,
+            migration_report: Some(migration_report),
         })
     }
 
@@ -103,6 +279,176 @@ impl ContractUpgradeSimulator {
         }
         
         Ok(layout)
+    }
+
+    /// Generate a comprehensive storage migration report with per-key analysis
+    async fn generate_migration_report(
+        &self,
+        current_storage: &HashMap<String, ScVal>,
+        new_layout: &HashMap<String, StorageLayoutInfo>,
+    ) -> Result<StorageMigrationReport> {
+        let mut key_compatibilities = Vec::new();
+        let mut diff_entries = Vec::new();
+        let mut critical_issues = Vec::new();
+        let mut warnings = Vec::new();
+        let mut info_messages = Vec::new();
+
+        let mut compatible_count = 0;
+        let mut orphaned_count = 0;
+        let mut type_mismatch_count = 0;
+        let mut missing_in_current_count = 0;
+
+        // Analyze each key in the current storage
+        for (key, current_value) in current_storage {
+            let actual_type = self.scval_to_type_string(current_value);
+
+            if let Some(layout_info) = new_layout.get(key) {
+                let expected_type = format!("{:?}", layout_info.storage_type);
+                let type_validation = self.validate_storage_type(current_value, layout_info);
+                let format_check = self.has_format_incompatibility(current_value, layout_info);
+
+                let (status, desc) = if type_validation.is_ok() && !format_check {
+                    compatible_count += 1;
+                    (StorageKeyStatus::Compatible, format!("Key '{}' is fully compatible — "Type {:?} matches expected {:?}", key, actual_type, layout_info.storage_type))
+                } else if type_validation.is_err() {
+                    type_mismatch_count += 1;
+                    let err_msg = format!("{}", type_validation.err().unwrap());
+                    critical_issues.push(format!("Type mismatch for key '{}': expected {:?}, actual {}. {}", key, layout_info.storage_type, actual_type, err_msg));
+                    (StorageKeyStatus::TypeMismatch, format!("Type mismatch: expected {:?}, actual {}. Migration required.", layout_info.storage_type, actual_type))
+                } else {
+                    type_mismatch_count += 1;
+                    warnings.push(format!("Format change detected for key '{}' — type {:?} but size/layout differs", key, layout_info.storage_type));
+                    (StorageKeyStatus::FormatChanged, format!("Format changed for key '{}'. Type {:?} matches but structure differs — coercion possible.", key, layout_info.storage_type))
+                };
+
+                key_compatibilities.push(KeyCompatibility {
+                    key: key.clone(),
+                    expected_type: expected_type,
+                    actual_type: actual_type.clone(),
+                    status,
+                    type_matches: type_validation.is_ok(),
+                    description: desc,
+                });
+
+                diff_entries.push(StorageDiffEntry {
+                    key: key.clone(),
+                    old_value: Some(self.scval_to_display_string(current_value)),
+                    new_value: layout_info.description.clone().into(),
+                    status,
+                });
+            } else if key != "instance" {
+                // Key exists in old but not in new — orphaned
+                orphaned_count += 1;
+                let severity = self.assess_key_importance(key);
+                let desc = format!("Key '{}' (type: {}) exists in current state but is NOT referenced by the new WASM — data will be orphaned after upgrade.", key, actual_type);
+
+                match severity {
+                    IssueCategory::Critical => {
+                        critical_issues.push(format!("{} Data loss risk: key '{}' will be orphaned.", desc, key));
+                    }
+                    IssueCategory::Warning => {
+                        warnings.push(format!("{} Key '{}' may be orphaned.", desc, key));
+                    }
+                    IssueCategory::Info => {
+                        info_messages.push(format!("Key '{}' was removed in the new version — this is expected if the key was deprecated.", key));
+                    }
+                }
+
+                key_compatibilities.push(KeyCompatibility {
+                    key: key.clone(),
+                    expected_type: "none (not in new WASM)".to_string(),
+                    actual_type: actual_type.clone(),
+                    status: StorageKeyStatus::MissingInNew,
+                    type_matches: false,
+                    description: desc,
+                });
+
+                diff_entries.push(StorageDiffEntry {
+                    key: key.clone(),
+                    old_value: Some(self.scval_to_display_string(current_value)),
+                    new_value: None,
+                    status: StorageKeyStatus::MissingInNew,
+                });
+            }
+        }
+
+        // Check for keys expected by new layout but missing from current state
+        for (key, layout_info) in new_layout {
+            if !current_storage.contains_key(key) && key != "instance" {
+                missing_in_current_count += 1;
+                let desc = format!("Key '{}' is expected by the new WASM ({:?}, required: {}) but is missing from current state.", key, layout_info.storage_type, layout_info.required);
+
+                if layout_info.required {
+                    critical_issues.push(format!("Required key '{}' is missing from current state — contract may panic on access.", key));
+                } else {
+                    warnings.push(format!("Optional key '{}' is missing — will be initialized with default value.", key));
+                }
+
+                key_compatibilities.push(KeyCompatibility {
+                    key: key.clone(),
+                    expected_type: format!("{:?}", layout_info.storage_type),
+                    actual_type: "missing".to_string(),
+                    status: StorageKeyStatus::MissingInCurrent,
+                    type_matches: false,
+                    description: desc,
+                });
+
+                diff_entries.push(StorageDiffEntry {
+                    key: key.clone(),
+                    old_value: None,
+                    new_value: Some(layout_info.description.clone()),
+                    status: StorageKeyStatus::MissingInCurrent,
+                });
+            }
+        }
+
+        let migration_required = !critical_issues.is_empty() || type_mismatch_count > 0;
+
+        let summary = if migration_required {
+            format!(
+                "Migration required: {} critical issue(s), {} warning(s). {} key(s) orphaned, {} type mismatch(es), {} key(s) missing in current state. A migration function is required before upgrading.",
+                critical_issues.len(), warnings.len(), orphaned_count, type_mismatch_count, missing_in_current_count
+            )
+        } else if !warnings.is_empty() {
+            format!(
+                "Compatible with warnings: {} warning(s). {} key(s) orphaned, {} key(s) missing. Review warnings before proceeding.",
+                warnings.len(), orphaned_count, missing_in_current_count
+            )
+        } else {
+            format!(
+                "Fully compatible: {} key(s) match between old and new WASM. No migration needed.",
+                compatible_count
+            )
+        };
+
+        let recommendation = if migration_required {
+            "Create a migration function that transforms the old storage format to the new format. Use the per-key analysis above to determine which keys need manual migration. For type mismatches, write conversion functions. For orphaned keys, either preserve them in the new layout or export before upgrade.".to_string()
+        } else if orphaned_count > 0 {
+            "Consider adding the orphaned keys to the new WASM layout if they contain important data. Otherwise, the upgrade can proceed with data loss for those keys.".to_string()
+        } else {
+            "No migration steps required. The new WASM is fully compatible with the existing storage.".to_string()
+        };
+
+        let storage_diff = StorageDiff {
+            entries: diff_entries,
+            old_total_keys: current_storage.len(),
+            new_total_keys: new_layout.len(),
+            compatible_count,
+            orphaned_count,
+            type_mismatch_count,
+            missing_in_current_count,
+        };
+
+        Ok(StorageMigrationReport {
+            key_compatibilities,
+            storage_diff,
+            critical_issues,
+            warnings,
+            info_messages,
+            migration_required,
+            recommendation,
+            summary,
+        })
     }
 
     /// Check storage compatibility between current state and new layout
@@ -290,6 +636,67 @@ impl ContractUpgradeSimulator {
         }
     }
 
+    /// Convert an ScVal to a human-readable type string
+    fn scval_to_type_string(&self, value: &ScVal) -> String {
+        match value {
+            ScVal::Void => "void".to_string(),
+            ScVal::Bool(_) => "bool".to_string(),
+            ScVal::U32(_) => "u32".to_string(),
+            ScVal::I32(_) => "i32".to_string(),
+            ScVal::U64(_) => "u64".to_string(),
+            ScVal::I64(_) => "i64".to_string(),
+            ScVal::Bytes(b) => format!("bytes[{}]", b.len()),
+            ScVal::String(s) => format!("string[{}]", s.len()),
+            ScVal::Symbol(s) => format!("symbol[{}]", s.len()),
+            ScVal::Map(m) => format!("map[{}]", m.len()),
+            ScVal::Vec(v) => format!("vec[{}]", v.len()),
+            ScVal::Instance(_) => "instance".to_string(),
+            _ => "unknown".to_string(),
+        }
+    }
+
+    /// Convert an ScVal to a concise display string (truncated)
+    fn scval_to_display_string(&self, value: &ScVal) -> String {
+        match value {
+            ScVal::Void => "void".to_string(),
+            ScVal::Bool(b) => format!("{}", b),
+            ScVal::U32(u) => format!("{}", u),
+            ScVal::I32(i) => format!("{}", i),
+            ScVal::U64(u) => format!("{}", u),
+            ScVal::I64(i) => format!("{}", i),
+            ScVal::Bytes(b) => {
+                if b.len() <= 16 {
+                    hex::encode(b)
+                } else {
+                    format!("{}... ({} bytes)", hex::encode(&b[..8]), b.len())
+                }
+            },
+            ScVal::String(s) => {
+                if s.len() <= 40 {
+                    s.clone()
+                } else {
+                    format!("{}... ({} chars)", &s[..37], s.len())
+                }
+            },
+            ScVal::Symbol(s) => s.clone(),
+            ScVal::Map(m) => format!("map[{} entries]", m.len()),
+            ScVal::Vec(v) => format!("vec[{} elements]", v.len()),
+            ScVal::Instance(_) => "<instance>".to_string(),
+            _ => "<complex>".to_string(),
+        }
+    }
+
+    /// Assess the importance/criticality of a storage key
+    fn assess_key_importance(&self, key: &str) -> IssueCategory {
+        if key.contains("balance") || key.contains("total_supply") || key.contains("owner") || key.contains("admin") {
+            IssueCategory::Critical
+        } else if key.contains("allowance") || key.contains("approval") || key.contains("metadata") || key.contains("config") || key.contains("nonce") {
+            IssueCategory::Warning
+        } else {
+            IssueCategory::Info
+        }
+    }
+
     /// Check if a storage value is a complex type
     fn is_complex_storage_type(&self, value: &ScVal) -> bool {
         match value {
@@ -390,6 +797,8 @@ pub struct UpgradeSimulationResult {
     pub compatibility_issues: Vec<String>,
     pub orphaned_entries: Vec<String>,
     pub warnings: Vec<String>,
+    /// Detailed per-key storage migration report, if generation succeeded
+    pub migration_report: Option<StorageMigrationReport>,
 }
 
 /// Result of upgrade process simulation
@@ -410,8 +819,6 @@ pub struct ResourceRequirements {
     pub storage_kb: u32,
     pub network_bandwidth_kb: u32,
 }
-
-use std::time::Duration;
 
 #[cfg(test)]
 mod tests {

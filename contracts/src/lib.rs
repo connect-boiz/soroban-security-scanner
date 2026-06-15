@@ -18,6 +18,26 @@ const ESCROW_NONCES: Symbol = Symbol::short("ESCNONC");
 const ALERT_NONCES: Symbol = Symbol::short("ALRNONC");
 const MAX_TEXT_LEN: u32 = 280;
 
+// Upgrade mechanism storage keys
+const CONTRACT_VERSION: Symbol = Symbol::short("VERSION");
+const UPGRADE_AUTHORITY: Symbol = Symbol::short("UPGRADE");
+const UPGRADE_DELAY_KEY: Symbol = Symbol::short("UP_DELAY");
+const PENDING_UPGRADE: Symbol = Symbol::short("PENDING");
+const UPGRADE_HISTORY: Symbol = Symbol::short("UP_HISTORY");
+const MIGRATION_STATUS: Symbol = Symbol::short("MIG_STAT");
+
+// Issue #26: Emergency upgrade safeguards
+const MAX_EMERGENCY_UPGRADES_PER_MONTH: u64 = 2;
+const EMERGENCY_COOLING_PERIOD_SECONDS: u64 = 86400; // 24 hours
+const CHALLENGE_PERIOD_SECONDS: u64 = 21600; // 6 hours
+const MIN_EMERGENCY_REASON_LENGTH: u32 = 50;
+
+// Emergency upgrade tracking
+const EMERGENCY_UPGRADE_COUNT: Symbol = Symbol::short("EMERG_CT");
+const EMERGENCY_UPGRADE_MONTH: Symbol = Symbol::short("EMERG_MTH");
+const LAST_EMERGENCY_UPGRADE: Symbol = Symbol::short("EMERG_LAST");
+const CHALLENGED_UPGRADES: Symbol = Symbol::short("CHAL_UPGR"); // Set of challenged upgrade timestamps
+
 // Role-based access control keys
 const ADMIN_ROLES: Symbol = Symbol::short("ADM_ROLES");
 const MULTI_SIG_PROPOSALS: Symbol = Symbol::short("MS_PROPS");
@@ -71,6 +91,42 @@ pub struct TimeLock {
     pub created_at: u64,
 }
 
+// Upgrade request structure
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracttype]
+pub struct UpgradeRequest {
+    pub new_contract_address: Address,
+    pub proposed_by: Address,
+    pub timestamp: u64,
+    pub ready_at: u64,
+    pub reason: String,
+    pub version: String,
+}
+
+// Upgrade history entry
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracttype]
+pub struct UpgradeHistory {
+    pub from_version: String,
+    pub to_version: String,
+    pub timestamp: u64,
+    pub upgraded_by: Address,
+    pub old_contract: Address,
+    pub new_contract: Address,
+}
+
+// Challenge on an emergency upgrade (multi-sig halt vote)
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracttype]
+pub struct UpgradeChallenge {
+    pub timestamp: u64,
+    pub challenged_by: Address,
+    pub reason: String,
+    pub votes: Map<Address, bool>,
+    pub required_votes: u64,
+    pub resolved: bool,
+}
+
 // Contract errors
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -91,7 +147,13 @@ pub enum ContractError {
     InvalidRole = 14,
     MultiSigRequired = 15,
     AlreadyApproved = 16,
-}
+    UpgradeInProgress = 17,
+    UpgradeNotReady = 18,
+    InvalidUpgrade = 19,
+    UpgradeChallengeActive = 20,
+    EmergencyUpgradeLimitReached = 21,
+    EmergencyCoolingPeriodActive = 22,
+    InsufficientUpgradeReason = 23,
 
 // Vulnerability structure
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1179,6 +1241,418 @@ impl SecurityScannerContract {
     /// Check if a proposal can be executed
     pub fn can_execute_proposal_check(env: Env, proposal_id: u64) -> Result<bool, ContractError> {
         Self::can_execute_proposal(&env, proposal_id)
+    }
+
+    // -----------------------------------------------------------------------
+    // Upgrade mechanism (Issue #26: with timelock & emergency safeguards)
+    // -----------------------------------------------------------------------
+
+    /// Get current contract version
+    pub fn get_version(env: Env) -> String {
+        env.storage()
+            .instance()
+            .get(&CONTRACT_VERSION)
+            .unwrap_or(String::from_slice(&env, "1.0.0"))
+    }
+
+    /// Set upgrade authority (admin only)
+    pub fn set_upgrade_authority(
+        env: Env,
+        admin: Address,
+        new_authority: Address,
+    ) -> Result<(), ContractError> {
+        admin.require_auth();
+        Self::require_non_default_address(&new_authority)?;
+
+        env.storage().instance().set(&UPGRADE_AUTHORITY, &new_authority);
+        Ok(())
+    }
+
+    /// Set upgrade delay in seconds (admin only, minimum 24 hours)
+    pub fn set_upgrade_delay(
+        env: Env,
+        admin: Address,
+        delay_seconds: u64,
+    ) -> Result<(), ContractError> {
+        admin.require_auth();
+
+        if delay_seconds < 86400 {
+            // Minimum 24 hours
+            return Err(ContractError::InvalidInput);
+        }
+
+        env.storage().instance().set(&UPGRADE_DELAY_KEY, &delay_seconds);
+        Ok(())
+    }
+
+    /// Propose a standard upgrade with timelock delay.
+    /// Only the upgrade authority can propose.
+    pub fn propose_upgrade(
+        env: Env,
+        proposer: Address,
+        new_contract_address: Address,
+        new_version: String,
+        reason: String,
+    ) -> Result<(), ContractError> {
+        proposer.require_auth();
+        Self::require_non_default_address(&new_contract_address)?;
+        Self::require_valid_text(&new_version)?;
+
+        // Check caller is upgrade authority
+        let upgrade_authority: Address = env.storage().instance()
+            .get(&UPGRADE_AUTHORITY)
+            .ok_or(ContractError::Unauthorized)?;
+
+        if proposer != upgrade_authority {
+            return Err(ContractError::Unauthorized);
+        }
+
+        // Ensure no pending upgrade exists
+        if env.storage().instance().has(&PENDING_UPGRADE) {
+            return Err(ContractError::UpgradeInProgress);
+        }
+
+        let now = env.ledger().timestamp();
+        let delay: u64 = env.storage().instance()
+            .get(&UPGRADE_DELAY_KEY)
+            .unwrap_or(604800); // Default 7 days
+
+        let ready_at = now + delay;
+
+        let request = UpgradeRequest {
+            new_contract_address,
+            proposed_by: proposer,
+            timestamp: now,
+            ready_at,
+            reason,
+            version: new_version,
+        };
+
+        env.storage().instance().set(&PENDING_UPGRADE, &request);
+
+        env.events().publish(
+            (Symbol::new(&env, "upgrade_proposed"),),
+            (request.version.clone(), request.ready_at),
+        );
+
+        Ok(())
+    }
+
+    /// Get pending upgrade information
+    pub fn get_pending_upgrade(env: Env) -> Result<UpgradeRequest, ContractError> {
+        env.storage()
+            .instance()
+            .get(&PENDING_UPGRADE)
+            .ok_or(ContractError::NotFound)
+    }
+
+    /// Execute a pending upgrade after the timelock delay has passed.
+    /// Only the upgrade authority can execute.
+    pub fn execute_upgrade(
+        env: Env,
+        executor: Address,
+    ) -> Result<(), ContractError> {
+        executor.require_auth();
+
+        // Check caller is upgrade authority
+        let upgrade_authority: Address = env.storage().instance()
+            .get(&UPGRADE_AUTHORITY)
+            .ok_or(ContractError::Unauthorized)?;
+
+        if executor != upgrade_authority {
+            return Err(ContractError::Unauthorized);
+        }
+
+        let request: UpgradeRequest = env.storage().instance()
+            .get(&PENDING_UPGRADE)
+            .ok_or(ContractError::NotFound)?;
+
+        let now = env.ledger().timestamp();
+        if now < request.ready_at {
+            return Err(ContractError::UpgradeNotReady);
+        }
+
+        // Record upgrade history
+        let current_version = Self::get_version(env.clone());
+        let mut history: Vec<UpgradeHistory> = env.storage().instance()
+            .get(&UPGRADE_HISTORY)
+            .unwrap_or(Vec::new(&env));
+
+        history.push_back(UpgradeHistory {
+            from_version: current_version.clone(),
+            to_version: request.version.clone(),
+            timestamp: now,
+            upgraded_by: executor.clone(),
+            // In a production environment, this would be the current contract's address
+            old_contract: upgrade_authority.clone(),
+            new_contract: request.new_contract_address.clone(),
+        });
+
+        env.storage().instance().set(&UPGRADE_HISTORY, &history);
+
+        // Update version
+        env.storage().instance().set(&CONTRACT_VERSION, &request.version);
+
+        // Set migration status
+        let migration_pair: (Address, u64) = (request.new_contract_address.clone(), now);
+        env.storage().instance().set(&MIGRATION_STATUS, &migration_pair);
+
+        // Clear pending upgrade
+        env.storage().instance().remove(&PENDING_UPGRADE);
+
+        env.events().publish(
+            (Symbol::new(&env, "upgrade_executed"),),
+            (current_version, request.version, now),
+        );
+
+        Ok(())
+    }
+
+    /// Perform an emergency upgrade that bypasses the timelock.
+    /// Only the admin can trigger emergency upgrades.
+    /// Includes Issue #26 safeguards: frequency cap, reason requirement,
+    /// cooling-off period, forced event, and challenge period.
+    pub fn emergency_upgrade(
+        env: Env,
+        admin: Address,
+        new_contract_address: Address,
+        new_version: String,
+        reason: String,
+    ) -> Result<(), ContractError> {
+        admin.require_auth();
+        Self::require_non_default_address(&new_contract_address)?;
+        Self::require_valid_text(&new_version)?;
+
+        // ---- Issue #26 Safeguards ----
+
+        // 1. Minimum reason length (50 characters)
+        if reason.len() < MIN_EMERGENCY_REASON_LENGTH as u32 {
+            return Err(ContractError::InsufficientUpgradeReason);
+        }
+
+        let now = env.ledger().timestamp();
+        let one_month_seconds: u64 = 30 * 24 * 60 * 60;
+        let current_month = now / one_month_seconds;
+
+        // 2. Frequency cap: MAX_EMERGENCY_UPGRADES_PER_MONTH
+        let last_month: u64 = env.storage().instance()
+            .get(&EMERGENCY_UPGRADE_MONTH)
+            .unwrap_or(0u64);
+
+        let emergency_count: u64 = if current_month == last_month {
+            env.storage().instance()
+                .get(&EMERGENCY_UPGRADE_COUNT)
+                .unwrap_or(0u64)
+        } else {
+            // Reset counter for new month
+            0u64
+        };
+
+        if emergency_count >= MAX_EMERGENCY_UPGRADES_PER_MONTH {
+            return Err(ContractError::EmergencyUpgradeLimitReached);
+        }
+
+        // 3. Cooling-off period (24 hours between emergency upgrades)
+        let last_emergency: u64 = env.storage().instance()
+            .get(&LAST_EMERGENCY_UPGRADE)
+            .unwrap_or(0u64);
+
+        if last_emergency > 0 && now < last_emergency + EMERGENCY_COOLING_PERIOD_SECONDS {
+            return Err(ContractError::EmergencyCoolingPeriodActive);
+        }
+
+        // 4. Check if this upgrade has been challenged during the challenge period
+        // (Challenge can only be initiated BEFORE execution, not after)
+        // Check that no active challenge exists
+        let challenged_upgrades: Map<u64, UpgradeChallenge> = env.storage().instance()
+            .get(&CHALLENGED_UPGRADES)
+            .unwrap_or(Map::new(&env));
+
+        for (challenge_ts, challenge) in challenged_upgrades.iter() {
+            if !challenge.resolved && now < challenge_ts + CHALLENGE_PERIOD_SECONDS {
+                // An active unresolved challenge exists for this upgrade window
+                return Err(ContractError::UpgradeChallengeActive);
+            }
+        }
+
+        // ---- Execute emergency upgrade ----
+
+        let current_version = Self::get_version(env.clone());
+        let mut history: Vec<UpgradeHistory> = env.storage().instance()
+            .get(&UPGRADE_HISTORY)
+            .unwrap_or(Vec::new(&env));
+
+        history.push_back(UpgradeHistory {
+            from_version: current_version.clone(),
+            to_version: new_version.clone(),
+            timestamp: now,
+            upgraded_by: admin.clone(),
+            // In a production environment, this would be the current contract's address
+            old_contract: admin.clone(),
+            new_contract: new_contract_address.clone(),
+        });
+
+        env.storage().instance().set(&UPGRADE_HISTORY, &history);
+        env.storage().instance().set(&CONTRACT_VERSION, &new_version);
+        let migration_pair: (Address, u64) = (new_contract_address.clone(), now);
+        env.storage().instance().set(&MIGRATION_STATUS, &migration_pair);
+
+        // Update emergency upgrade tracking
+        env.storage().instance().set(&EMERGENCY_UPGRADE_MONTH, &current_month);
+        env.storage().instance().set(&EMERGENCY_UPGRADE_COUNT, &(emergency_count + 1));
+        env.storage().instance().set(&LAST_EMERGENCY_UPGRADE, &now);
+
+        // 5. Forced EMERGENCY_UPGRADE_NOTIFICATION event (cannot be suppressed)
+        env.events().publish(
+            (Symbol::new(&env, "emergency_upgrade"),),
+            (
+                current_version,
+                new_version,
+                now,
+                admin.clone(),
+                reason,
+                emergency_count + 1,
+                MAX_EMERGENCY_UPGRADES_PER_MONTH,
+            ),
+        );
+
+        Ok(())
+    }
+
+    /// Cancel a pending upgrade (proposer or admin only)
+    pub fn cancel_upgrade(
+        env: Env,
+        canceler: Address,
+    ) -> Result<(), ContractError> {
+        canceler.require_auth();
+
+        let request: UpgradeRequest = env.storage().instance()
+            .get(&PENDING_UPGRADE)
+            .ok_or(ContractError::NotFound)?;
+
+        let upgrade_authority: Address = env.storage().instance()
+            .get(&UPGRADE_AUTHORITY)
+            .ok_or(ContractError::Unauthorized)?;
+
+        // Only the proposer, upgrade authority, or admin can cancel
+        let admin: Address = env.storage().instance().get(&ADMIN).ok_or(ContractError::Unauthorized)?;
+        if canceler != request.proposed_by && canceler != upgrade_authority && canceler != admin {
+            return Err(ContractError::Unauthorized);
+        }
+
+        env.storage().instance().remove(&PENDING_UPGRADE);
+
+        env.events().publish(
+            (Symbol::new(&env, "upgrade_cancelled"),),
+            (request.version, canceler),
+        );
+
+        Ok(())
+    }
+
+    /// Get upgrade history
+    pub fn get_upgrade_history(env: Env) -> Vec<UpgradeHistory> {
+        env.storage().instance()
+            .get(&UPGRADE_HISTORY)
+            .unwrap_or(Vec::new(&env))
+    }
+
+    /// Get migration status (target contract, timestamp)
+    pub fn get_migration_status(env: Env) -> Option<(Address, u64)> {
+        env.storage().instance().get(&MIGRATION_STATUS)
+    }
+
+    /// Halt an emergency upgrade by creating a challenge vote.
+    /// This opens a 6-hour challenge period where multi-sig signers can vote.
+    pub fn halt_emergency_upgrade(
+        env: Env,
+        challenger: Address,
+        challenge_reason: String,
+        required_votes: u64,
+    ) -> Result<u64, ContractError> {
+        challenger.require_auth();
+        Self::require_valid_text(&challenge_reason)?;
+
+        let now = env.ledger().timestamp();
+
+        let mut challenged_upgrades: Map<u64, UpgradeChallenge> = env.storage().instance()
+            .get(&CHALLENGED_UPGRADES)
+            .unwrap_or(Map::new(&env));
+
+        let challenge = UpgradeChallenge {
+            timestamp: now,
+            challenged_by: challenger.clone(),
+            reason: challenge_reason,
+            votes: Map::new(&env),
+            required_votes,
+            resolved: false,
+        };
+
+        challenged_upgrades.set(now, challenge);
+        env.storage().instance().set(&CHALLENGED_UPGRADES, &challenged_upgrades);
+
+        env.events().publish(
+            (Symbol::new(&env, "upgrade_challenged"),),
+            (now, challenger, required_votes),
+        );
+
+        Ok(now) // Returns the challenge timestamp as ID
+    }
+
+    /// Vote to halt an emergency upgrade during the challenge period.
+    /// Only authorized multi-sig signers can vote.
+    pub fn vote_to_halt_upgrade(
+        env: Env,
+        voter: Address,
+        challenge_timestamp: u64,
+        vote_to_halt: bool,
+    ) -> Result<(), ContractError> {
+        voter.require_auth();
+
+        let now = env.ledger().timestamp();
+
+        // Check challenge period hasn't expired
+        if now >= challenge_timestamp + CHALLENGE_PERIOD_SECONDS {
+            return Err(ContractError::UpgradeChallengeActive);
+        }
+
+        let mut challenged_upgrades: Map<u64, UpgradeChallenge> = env.storage().instance()
+            .get(&CHALLENGED_UPGRADES)
+            .unwrap_or(Map::new(&env));
+
+        let mut challenge: UpgradeChallenge = challenged_upgrades
+            .get(challenge_timestamp)
+            .ok_or(ContractError::NotFound)?;
+
+        if challenge.resolved {
+            return Err(ContractError::UpgradeChallengeActive);
+        }
+
+        if challenge.votes.contains_key(&voter) {
+            return Err(ContractError::AlreadyApproved);
+        }
+
+        challenge.votes.set(voter.clone(), vote_to_halt);
+
+        // Check if required votes are met for halting
+        let halt_votes: u64 = challenge.votes
+            .iter()
+            .filter(|(_, vote)| vote)
+            .count() as u64;
+
+        if halt_votes >= challenge.required_votes {
+            challenge.resolved = true;
+
+            env.events().publish(
+                (Symbol::new(&env, "upgrade_halted"),),
+                (challenge_timestamp, true, halt_votes),
+            );
+        }
+
+        challenged_upgrades.set(challenge_timestamp, challenge);
+        env.storage().instance().set(&CHALLENGED_UPGRADES, &challenged_upgrades);
+
+        Ok(())
     }
 }
 

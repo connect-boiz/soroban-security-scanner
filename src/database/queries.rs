@@ -650,6 +650,269 @@ impl Database {
     }
 }
 
+// Notification delivery tracking queries
+impl Database {
+    pub async fn create_delivery_tracking(&self, request: CreateDeliveryTrackingRequest) -> Result<NotificationDeliveryTracking> {
+        let tracking = sqlx::query_as!(
+            NotificationDeliveryTracking,
+            r#"
+            INSERT INTO notification_delivery_tracking (
+                notification_id, recipient_id, channel, status, attempts, metadata
+            )
+            VALUES ($1, $2, $3, 'pending', 0, COALESCE($4, '{}'))
+            ON CONFLICT (notification_id, recipient_id, channel)
+            DO UPDATE SET
+                status = 'pending',
+                attempts = notification_delivery_tracking.attempts,
+                last_attempt_at = NOW(),
+                updated_at = NOW()
+            RETURNING *
+            "#,
+            request.notification_id,
+            request.recipient_id,
+            request.channel,
+            request.metadata
+        )
+        .fetch_one(self.pool())
+        .await?;
+
+        Ok(tracking)
+    }
+
+    pub async fn get_delivery_tracking(
+        &self,
+        notification_id: &str,
+        recipient_id: &str,
+        channel: &str,
+    ) -> Result<Option<NotificationDeliveryTracking>> {
+        let tracking = sqlx::query_as!(
+            NotificationDeliveryTracking,
+            r#"
+            SELECT * FROM notification_delivery_tracking
+            WHERE notification_id = $1 AND recipient_id = $2 AND channel = $3
+            "#,
+            notification_id,
+            recipient_id,
+            channel
+        )
+        .fetch_optional(self.pool())
+        .await?;
+
+        Ok(tracking)
+    }
+
+    pub async fn update_delivery_status(
+        &self,
+        notification_id: &str,
+        recipient_id: &str,
+        channel: &str,
+        update: UpdateDeliveryStatusRequest,
+    ) -> Result<NotificationDeliveryTracking> {
+        let tracking = sqlx::query_as!(
+            NotificationDeliveryTracking,
+            r#"
+            UPDATE notification_delivery_tracking
+            SET
+                status = $4,
+                attempts = attempts + 1,
+                last_attempt_at = NOW(),
+                delivered_at = COALESCE($5, delivered_at),
+                error_message = COALESCE($6, error_message),
+                external_id = COALESCE($7, external_id),
+                updated_at = NOW()
+            WHERE notification_id = $1 AND recipient_id = $2 AND channel = $3
+            RETURNING *
+            "#,
+            notification_id,
+            recipient_id,
+            channel,
+            update.status as DeliveryDbStatus,
+            update.delivered_at,
+            update.error_message,
+            update.external_id
+        )
+        .fetch_one(self.pool())
+        .await?;
+
+        Ok(tracking)
+    }
+
+    pub async fn get_notification_delivery_trackings(&self, notification_id: &str) -> Result<Vec<NotificationDeliveryTracking>> {
+        let trackings = sqlx::query_as!(
+            NotificationDeliveryTracking,
+            r#"
+            SELECT * FROM notification_delivery_tracking
+            WHERE notification_id = $1
+            ORDER BY created_at DESC
+            "#,
+            notification_id
+        )
+        .fetch_all(self.pool())
+        .await?;
+
+        Ok(trackings)
+    }
+
+    pub async fn get_recipient_delivery_trackings(&self, recipient_id: &str) -> Result<Vec<NotificationDeliveryTracking>> {
+        let trackings = sqlx::query_as!(
+            NotificationDeliveryTracking,
+            r#"
+            SELECT * FROM notification_delivery_tracking
+            WHERE recipient_id = $1
+            ORDER BY created_at DESC
+            "#,
+            recipient_id
+        )
+        .fetch_all(self.pool())
+        .await?;
+
+        Ok(trackings)
+    }
+
+    pub async fn get_failed_delivery_trackings(&self, max_attempts: i32) -> Result<Vec<NotificationDeliveryTracking>> {
+        let trackings = sqlx::query_as!(
+            NotificationDeliveryTracking,
+            r#"
+            SELECT * FROM notification_delivery_tracking
+            WHERE status = 'failed' AND attempts < $1
+            ORDER BY last_attempt_at ASC
+            LIMIT 100
+            "#,
+            max_attempts
+        )
+        .fetch_all(self.pool())
+        .await?;
+
+        Ok(trackings)
+    }
+
+    pub async fn get_delivery_stats_in_period(
+        &self,
+        start_time: DateTime<Utc>,
+        end_time: DateTime<Utc>,
+    ) -> Result<Vec<NotificationDeliveryTracking>> {
+        let trackings = sqlx::query_as!(
+            NotificationDeliveryTracking,
+            r#"
+            SELECT * FROM notification_delivery_tracking
+            WHERE created_at >= $1 AND created_at <= $2
+            "#,
+            start_time,
+            end_time
+        )
+        .fetch_all(self.pool())
+        .await?;
+
+        Ok(trackings)
+    }
+
+    pub async fn cleanup_old_delivery_records(&self, retention_days: i32) -> Result<u64> {
+        let result = sqlx::query!(
+            r#"
+            DELETE FROM notification_delivery_tracking
+            WHERE created_at < NOW() - ($1 || ' days')::INTERVAL
+              AND status IN ('delivered', 'failed')
+            "#,
+            retention_days
+        )
+        .execute(self.pool())
+        .await?;
+
+        Ok(result.rows_affected())
+    }
+
+    pub async fn retry_failed_deliveries(&self, max_retries: i32) -> Result<Vec<DeliveryRetryResult>> {
+        let rows = sqlx::query_as!(
+            DeliveryRetryResult,
+            r#"
+            UPDATE notification_delivery_tracking
+            SET
+                status = 'retrying',
+                attempts = attempts + 1,
+                last_attempt_at = NOW(),
+                updated_at = NOW()
+            WHERE id IN (
+                SELECT id
+                FROM notification_delivery_tracking
+                WHERE status = 'failed'
+                  AND attempts < $1
+                  AND last_attempt_at <= NOW() - INTERVAL '5 minutes'
+                ORDER BY last_attempt_at ASC
+                LIMIT 100
+                FOR UPDATE SKIP LOCKED
+            )
+            RETURNING
+                id as tracking_id,
+                notification_id,
+                recipient_id,
+                channel,
+                attempts as current_attempts
+            "#,
+            max_retries
+        )
+        .fetch_all(self.pool())
+        .await?;
+
+        Ok(rows)
+    }
+
+    pub async fn get_daily_delivery_stats(&self, days: i32) -> Result<Vec<DailyDeliveryStats>> {
+        let stats = sqlx::query_as!(
+            DailyDeliveryStats,
+            r#"
+            SELECT
+                DATE(created_at) as delivery_date,
+                channel,
+                COUNT(*)::bigint as total_attempts,
+                COUNT(*) FILTER (WHERE status = 'delivered')::bigint as delivered_count,
+                COUNT(*) FILTER (WHERE status = 'failed')::bigint as failed_count,
+                COUNT(*) FILTER (WHERE status = 'retrying')::bigint as retrying_count,
+                COALESCE(AVG(CASE WHEN status = 'delivered' AND delivered_at IS NOT NULL
+                    THEN EXTRACT(EPOCH FROM (delivered_at - last_attempt_at)) END), 0.0) as avg_delivery_time_seconds
+            FROM notification_delivery_tracking
+            WHERE created_at >= CURRENT_DATE - ($1 || ' days')::INTERVAL
+            GROUP BY DATE(created_at), channel
+            ORDER BY delivery_date DESC, channel
+            "#,
+            days
+        )
+        .fetch_all(self.pool())
+        .await?;
+
+        Ok(stats)
+    }
+
+    pub async fn retry_specific_delivery(
+        &self,
+        notification_id: &str,
+        recipient_id: &str,
+        channel: &str,
+    ) -> Result<Option<NotificationDeliveryTracking>> {
+        let tracking = sqlx::query_as!(
+            NotificationDeliveryTracking,
+            r#"
+            UPDATE notification_delivery_tracking
+            SET
+                status = 'retrying',
+                attempts = attempts + 1,
+                last_attempt_at = NOW(),
+                updated_at = NOW()
+            WHERE notification_id = $1 AND recipient_id = $2 AND channel = $3
+              AND status = 'failed'
+              AND attempts < 5
+            RETURNING *
+            "#,
+            notification_id,
+            recipient_id,
+            channel
+        )
+        .fetch_optional(self.pool())
+        .await?;
+
+        Ok(tracking)
+    }
+}
+
 // Partial update structs
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PartialUserUpdate {

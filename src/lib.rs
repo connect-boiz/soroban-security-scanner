@@ -31,6 +31,8 @@ pub mod session;
 pub mod time_travel_debugger;
 pub mod wallet;
 
+#[cfg(test)]
+mod multisig_tests;
 
 pub use scanners::{SecurityScanner, InvariantScanner};
 pub use vulnerabilities::VulnerabilityType;
@@ -59,7 +61,7 @@ pub use batch_operations::{
 };
 pub use notification_service::{
     NotificationService, NotificationServiceTrait, NotificationTemplate, TemplateManager,
-    DeliveryTracker, NotificationProvider, NotificationChannel, NotificationPriority,
+    DeliveryTracker, StorageBackend, InMemoryBackend, NotificationProvider, NotificationChannel, NotificationPriority,
     DeliveryStatus, Recipient, NotificationMessage, NotificationResult
 };
 pub use rate_limiting::{

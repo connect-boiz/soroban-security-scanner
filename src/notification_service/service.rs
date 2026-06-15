@@ -3,7 +3,7 @@
 use crate::notification_service::{
     providers::{NotificationProvider, EmailProvider, SMSProvider, PushProvider, InAppProvider},
     templates::TemplateManager,
-    tracking::DeliveryTracker,
+    tracking::{DeliveryTracker, StorageBackend, InMemoryBackend},
     types::{
         NotificationMessage, Recipient, NotificationChannel, NotificationResult,
         TemplateContext, ProviderConfig, NotificationPriority, ServiceError, 
@@ -27,10 +27,11 @@ pub struct NotificationService {
 }
 
 impl NotificationService {
-    /// Create a new notification service
+    /// Create a new notification service with the default in-memory storage
     pub fn new() -> Result<Self, ServiceError> {
         let template_manager = Arc::new(RwLock::new(TemplateManager::new()?));
-        let delivery_tracker = Arc::new(RwLock::new(DeliveryTracker::new()));
+        let storage = Arc::new(InMemoryBackend::new());
+        let delivery_tracker = Arc::new(RwLock::new(DeliveryTracker::new(storage.clone() as Arc<dyn StorageBackend>)));
         let mut providers: HashMap<NotificationChannel, Arc<dyn NotificationProvider>> = HashMap::new();
         let mut rate_limiters: HashMap<NotificationChannel, RateLimiter> = HashMap::new();
 
@@ -210,6 +211,35 @@ impl NotificationService {
         Ok(())
     }
 
+    /// Create a new notification service with a custom storage backend
+    pub fn with_storage(storage: Arc<dyn StorageBackend>) -> Result<Self, ServiceError> {
+        let template_manager = Arc::new(RwLock::new(TemplateManager::new()?));
+        let delivery_tracker = Arc::new(RwLock::new(DeliveryTracker::new(storage)));
+        let mut providers: HashMap<NotificationChannel, Arc<dyn NotificationProvider>> = HashMap::new();
+        let mut rate_limiters: HashMap<NotificationChannel, RateLimiter> = HashMap::new();
+
+        let default_configs = Self::get_default_provider_configs();
+        
+        for (channel, config) in default_configs {
+            let provider = match channel {
+                NotificationChannel::Email => Arc::new(EmailProvider::new(config)?),
+                NotificationChannel::SMS => Arc::new(SMSProvider::new(config)?),
+                NotificationChannel::Push => Arc::new(PushProvider::new(config)?),
+                NotificationChannel::InApp => Arc::new(InAppProvider::new(config)?),
+            };
+            
+            providers.insert(channel.clone(), provider);
+            rate_limiters.insert(channel, RateLimiter::new(100, 1000, 10000));
+        }
+
+        Ok(Self {
+            template_manager,
+            delivery_tracker,
+            providers,
+            rate_limiters,
+        })
+    }
+
     /// Get delivery tracking
     pub async fn get_delivery_tracking(
         &self,
@@ -218,7 +248,7 @@ impl NotificationService {
         channel: NotificationChannel,
     ) -> Result<Option<crate::notification_service::types::DeliveryTracking>, ServiceError> {
         let tracker = self.delivery_tracker.read().await;
-        tracker.get_tracking(notification_id, recipient_id, channel).await.map_err(ServiceError::TrackingError)
+        tracker.get_tracking(notification_id, recipient_id, &channel).await.map_err(ServiceError::TrackingError)
     }
 
     /// Get delivery statistics

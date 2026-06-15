@@ -14,6 +14,9 @@ pub mod tracking;
 pub mod types;
 pub mod service;
 
+#[cfg(feature = "database")]
+pub mod db_storage;
+
 #[cfg(test)]
 mod tests;
 
@@ -22,3 +25,6 @@ pub use types::*;
 pub use providers::*;
 pub use templates::*;
 pub use tracking::*;
+
+#[cfg(feature = "database")]
+pub use db_storage::*;

@@ -103,8 +103,10 @@ pub struct IpRestrictions {
     pub blocked_ranges: Vec<String>,
     /// Whitelisted IP addresses (bypass all limits)
     pub whitelisted_ips: Vec<IpAddr>,
-    /// Trusted proxy IPs
+    /// Trusted proxy IPs (exact match)
     pub trusted_proxies: Vec<IpAddr>,
+    /// Trusted proxy CIDR ranges (e.g. 10.0.0.0/8, 172.16.0.0/12)
+    pub trusted_proxy_ranges: Vec<String>,
     /// Maximum concurrent connections per IP
     pub max_concurrent_per_ip: u32,
     /// Rate limit for unknown/new IPs
@@ -122,6 +124,7 @@ impl Default for IpRestrictions {
             blocked_ranges: Vec::new(),
             whitelisted_ips: Vec::new(),
             trusted_proxies: Vec::new(),
+            trusted_proxy_ranges: Vec::new(),
             max_concurrent_per_ip: 10,
             unknown_ip_policy: Some(RateLimitPolicy::new(5, RateLimitWindow::Minute)),
             enable_reputation_check: false,

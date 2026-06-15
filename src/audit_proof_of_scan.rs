@@ -20,12 +20,39 @@ const VALIDITY_PERIOD: u64 = 30 * 24 * 60 * 60; // 30 days in seconds
 const MAX_CERTIFICATES_PER_CONTRACT: u64 = 10; // Limit history per contract
 const CERTIFICATE_RETENTION_DAYS: u64 = 90; // Keep certificates for 90 days
 
+// CRL storage key
+const CRL_REVOCATION_LIST: Symbol = Symbol::short("CRL_LIST");
+
 // Certificate status
 #[derive(Clone, Debug, PartialEq, Eq, contracttype)]
 pub enum CertificateStatus {
     Active,
     Revoked,
     Expired,
+}
+
+// Revocation reason (RFC 5280 compliant subset)
+#[derive(Clone, Debug, PartialEq, Eq, contracttype)]
+pub enum RevocationReason {
+    Unspecified,
+    KeyCompromise,
+    CertificateAuthorityCompromise,
+    AffiliationChanged,
+    Superseded,
+    CessationOfOperation,
+}
+
+impl RevocationReason {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            RevocationReason::Unspecified => "unspecified",
+            RevocationReason::KeyCompromise => "key_compromise",
+            RevocationReason::CertificateAuthorityCompromise => "ca_compromise",
+            RevocationReason::AffiliationChanged => "affiliation_changed",
+            RevocationReason::Superseded => "superseded",
+            RevocationReason::CessationOfOperation => "cessation_of_operation",
+        }
+    }
 }
 
 // Risk score levels
@@ -80,7 +107,17 @@ pub struct SecurityCertificate {
     pub expires_at: u64,
     pub issued_by: Address, // Scanner public key
     pub revoked_at: Option<u64>,
-    pub revoke_reason: Option<String>,
+    pub revoke_reason: Option<RevocationReason>,
+}
+
+// CRL entry — stored separately from the certificate for efficient revocation list queries
+#[derive(Clone, Debug, PartialEq, Eq, contracttype)]
+pub struct RevocationRecord {
+    pub certificate_id: u64,
+    pub revoked_at: u64,
+    pub revoked_by: Address,
+    pub reason: RevocationReason,
+    pub contract_id: Address,
 }
 
 // Event topics
@@ -237,13 +274,30 @@ impl AuditProofOfScan {
     /// 
     /// # Events
     /// Emits CERTIFICATE_REVOKED event
-    pub fn revoke_certificate(env: Env, certificate_id: u64, reason: String) {
-        // Check authorization (admin or scanner)
+    pub fn revoke_certificate(env: Env, certificate_id: u64, reason: RevocationReason) {
+        // Check authorization — caller must be admin or scanner
         let admin = Self::get_admin(&env);
         let scanner = Self::get_scanner_public_key(&env);
         
-        let caller = env.current_contract_address();
-        if caller != admin && caller != scanner {
+        // Use require_auth() for proper Soroban authorization
+        // We check if the caller authorized as admin or scanner
+        // The caller must be one of the authorized addresses
+        let caller_is_authorized = {
+            // Try admin auth first, then scanner auth
+            let admin_auth = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                admin.require_auth();
+            }));
+            if admin_auth.is_ok() {
+                true
+            } else {
+                let scanner_auth = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    scanner.require_auth();
+                }));
+                scanner_auth.is_ok()
+            }
+        };
+
+        if !caller_is_authorized {
             panic_with_error!(&env, AuditError::NotAuthorized);
         }
 
@@ -255,21 +309,73 @@ impl AuditProofOfScan {
             panic_with_error!(&env, AuditError::CertificateRevoked);
         }
 
+        // Determine who performed the revocation (use the authorized address)
+        let revoked_by = Self::determine_revoker(&env, admin, scanner);
+
         // Revoke certificate
         certificate.status = CertificateStatus::Revoked;
         certificate.revoked_at = Some(env.ledger().timestamp());
         certificate.revoke_reason = Some(reason.clone());
 
-        // Update certificate
+        // Update certificate in certificate store
         let mut certificates = Self::get_certificates(&env);
         certificates.set(certificate_id, certificate.clone());
         env.storage().instance().set(&CERTIFICATES, &certificates);
 
+        // Add to CRL
+        let revocation_record = RevocationRecord {
+            certificate_id,
+            revoked_at: env.ledger().timestamp(),
+            revoked_by,
+            reason: reason.clone(),
+            contract_id: certificate.contract_id,
+        };
+        Self::add_to_crl(&env, certificate_id, revocation_record);
+
         // Emit event
         env.events().publish(
             (CERTIFICATE_REVOKED, certificate_id),
-            (certificate.contract_id, reason, env.ledger().timestamp()),
+            (certificate.contract_id, reason.as_str(), env.ledger().timestamp(), revoked_by),
         );
+    }
+
+    /// Verify that a certificate has not been revoked.
+    /// Returns true if the certificate is active and not in the CRL.
+    pub fn verify_certificate_not_revoked(env: Env, certificate_id: u64) -> bool {
+        let certificate = Self::get_certificate(&env, certificate_id);
+        
+        // If the certificate status itself is Revoked, it's revoked
+        if certificate.status == CertificateStatus::Revoked {
+            return false;
+        }
+
+        // Also check the CRL directly (defense in depth)
+        let crl = Self::get_revocation_list(&env);
+        if crl.contains_key(certificate_id) {
+            return false;
+        }
+
+        true
+    }
+
+    /// Get the full Certificate Revocation List (internal helper)
+    fn get_revocation_list(env: &Env) -> Map<u64, RevocationRecord> {
+        env.storage()
+            .instance()
+            .get(&CRL_REVOCATION_LIST)
+            .unwrap_or_else(|| Map::new(env))
+    }
+
+    /// Get a single revocation record by certificate ID
+    pub fn get_revocation_record(env: Env, certificate_id: u64) -> Option<RevocationRecord> {
+        let crl = Self::get_revocation_list(&env);
+        crl.get(certificate_id)
+    }
+
+    /// Get the total number of revoked certificates
+    pub fn get_revoked_count(env: Env) -> u64 {
+        let crl = Self::get_revocation_list(&env);
+        crl.len()
     }
 
     /// Check if a contract is "Cleared" (has active certificate)
@@ -470,6 +576,46 @@ impl AuditProofOfScan {
         env.storage().instance().set(&CERTIFICATES, &certificates);
     }
 
+    /// Helper: determine which authorized address performed the revocation
+    fn determine_revoker(env: &Env, admin: Address, scanner: Address) -> Address {
+        // Attempt to determine who authorized by checking each
+        let admin_check = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            admin.require_auth();
+        }));
+        if admin_check.is_ok() {
+            return admin;
+        }
+        
+        let scanner_check = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            scanner.require_auth();
+        }));
+        if scanner_check.is_ok() {
+            return scanner;
+        }
+
+        // Fallback (shouldn't reach here since we already checked authorization)
+        scanner
+    }
+
+    /// Add a revocation record to the CRL
+    fn add_to_crl(env: &Env, certificate_id: u64, record: RevocationRecord) {
+        let mut crl = Self::get_revocation_list(env);
+        crl.set(certificate_id, record);
+        env.storage().instance().set(&CRL_REVOCATION_LIST, &crl);
+    }
+
+    /// Remove an entry from the CRL (admin only, for error correction)
+    pub fn remove_from_crl(env: Env, certificate_id: u64) {
+        let admin = Self::get_admin(&env);
+        admin.require_auth();
+
+        let mut crl = Self::get_revocation_list(&env);
+        if crl.contains_key(certificate_id) {
+            crl.remove(certificate_id);
+            env.storage().instance().set(&CRL_REVOCATION_LIST, &crl);
+        }
+    }
+
     /// Clean up old and expired certificates to optimize storage
     pub fn cleanup_certificates(env: Env) -> u64 {
         let now = env.ledger().timestamp();
@@ -487,7 +633,7 @@ impl AuditProofOfScan {
             .filter(|(_, cert)| {
                 cert.status == CertificateStatus::Expired || 
                 cert.status == CertificateStatus::Revoked ||
-                cert.timestamp < cutoff_time
+                cert.report.timestamp < cutoff_time
             })
             .map(|(cert_id, _)| cert_id)
             .collect();

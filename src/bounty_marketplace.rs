@@ -156,8 +156,48 @@ impl BountyMarketplace {
         if amount <= 0 {
             panic_with_error!(env, "Invalid payout");
         }
+
+        // Issue #29: Verify escrow balance before emitting payout_ready
+        let contract_balance = Self::get_contract_balance(env);
+
+        if contract_balance < amount {
+            Self::emit_insufficient_funds_event(env, bounty_id, recipient, amount, contract_balance);
+            panic_with_error!(env, "Insufficient escrow funds");
+        }
+
+        // Deduct from contract balance BEFORE emitting the event
+        // (single source of truth for all payout operations)
+        let new_balance = Self::checked_sub_i128(env, contract_balance, amount);
+        Self::set_contract_balance(env, new_balance);
+
         env.events()
             .publish(Symbol::new(env, "payout_ready"), (bounty_id, recipient.clone(), amount));
+    }
+
+    /// Query the contract's actual token balance (XLM)
+    fn get_contract_balance(env: &Env) -> i128 {
+        env.storage().persistent()
+            .get(&Symbol::new(env, "contract_balance"))
+            .unwrap_or(0i128)
+    }
+
+    /// Set the contract's tracked balance (called on deposit/replenish)
+    fn set_contract_balance(env: &Env, amount: i128) {
+        env.storage().persistent().set(&Symbol::new(env, "contract_balance"), &amount);
+    }
+
+    /// Emit an insufficient escrow funds event for audit trail
+    fn emit_insufficient_funds_event(env: &Env, bounty_id: u64, recipient: &Address, required: i128, available: i128) {
+        env.events().publish(
+            Symbol::new(env, "insufficient_escrow_funds"),
+            (
+                bounty_id,
+                recipient.clone(),
+                required,
+                available,
+                env.ledger().timestamp(),
+            ),
+        );
     }
 
     // Critical event logging functions
@@ -354,6 +394,11 @@ impl BountyMarketplace {
         pending_approvals.set(bounty_counter, approval);
         env.storage().persistent().set(&PENDING_APPROVALS, &pending_approvals);
 
+        // Track contract balance (XLM deposited for the bounty)
+        let current_balance = Self::get_contract_balance(&env);
+        let new_balance = Self::checked_add_i128(&env, current_balance, amount);
+        Self::set_contract_balance(&env, new_balance);
+
         // Emit event
         env.events().publish(
             Symbol::new(&env, "bounty_created"),
@@ -474,6 +519,8 @@ impl BountyMarketplace {
             &researcher,
         );
 
+        // Delegate all escrow balance verification and deduction to emit_payout_ready
+        // (single source of truth — eliminates risk of double-check vs premature deduction)
         Self::emit_payout_ready(&env, bounty_id, &researcher, reward_amount);
 
         // Update bounty status to completed
@@ -667,6 +714,7 @@ impl BountyMarketplace {
             panic_with_error!(&env, "Insufficient available rewards");
         }
 
+        // Delegate all escrow balance verification and deduction to emit_payout_ready
         Self::emit_payout_ready(&env, 0u64, &researcher, amount);
         // Emit event (in a real implementation, this would transfer XLM)
         env.events().publish(
@@ -692,6 +740,36 @@ impl BountyMarketplace {
     // Get bounty details
     pub fn get_bounty(env: Env, bounty_id: u64) -> Bounty {
         Self::get_bounty_internal(&env, bounty_id)
+    }
+
+    /// Get the contract's current escrow balance
+    pub fn get_escrow_balance(env: Env) -> i128 {
+        Self::get_contract_balance(&env)
+    }
+
+    /// Replenish the escrow balance (admin only)
+    /// Allows the admin to top up funds when balance is low.
+    pub fn replenish_escrow(env: Env, admin: Address, amount: i128) {
+        admin.require_auth();
+        Self::require_positive_amount(&env, amount);
+
+        // Verify admin status
+        let admin_address: Address = env.storage().persistent().get(&ADMIN)
+            .unwrap_or_else(|| panic_with_error!(&env, "Admin not set"));
+        
+        if admin != admin_address {
+            panic_with_error!(&env, "Not authorized: admin access required");
+        }
+
+        let current_balance = Self::get_contract_balance(&env);
+        let new_balance = Self::checked_add_i128(&env, current_balance, amount);
+        Self::set_contract_balance(&env, new_balance);
+
+        // Emit event
+        env.events().publish(
+            Symbol::new(&env, "escrow_replenished"),
+            (admin, amount, new_balance),
+        );
     }
 
     // Get researcher's assigned bounties

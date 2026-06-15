@@ -4,10 +4,11 @@
 //! for Stellar multi-signature transactions.
 
 use async_trait::async_trait;
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, Utc};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tracing::{info, warn};
 use uuid::Uuid;
 
 use crate::multisig::types::{
@@ -139,6 +140,7 @@ impl MultiSigService {
                 comments: None,
                 created_at: now,
                 updated_at: now,
+                revoked_at: None,
             })
             .collect();
 
@@ -182,6 +184,16 @@ impl MultiSigService {
             .iter()
             .position(|s| s.signer_address == req.signer_address)
             .ok_or_else(|| MultiSigError::UnknownSigner(req.signer_address.clone()))?;
+
+        // Reject if the signer has been revoked
+        if !proposal.signers[signer_idx].is_active() {
+            let revoked_at = proposal.signers[signer_idx].revoked_at;
+            warn!(
+                "Revoked signer {} attempted to submit signature on proposal {}. Revoked at: {:?}",
+                req.signer_address, req.proposal_id, revoked_at
+            );
+            return Err(MultiSigError::SignerRevoked(req.signer_address.clone()));
+        }
 
         if proposal.signers[signer_idx].decision != SignerDecision::Pending {
             return Err(MultiSigError::AlreadySigned(req.signer_address.clone()));
@@ -289,6 +301,7 @@ impl MultiSigService {
     // -----------------------------------------------------------------------
 
     /// Mark a proposal as executed after successful Stellar submission.
+    /// Validates that all approving signers are still active before execution.
     pub async fn mark_executed(
         &self,
         proposal_id: Uuid,
@@ -301,11 +314,97 @@ impl MultiSigService {
             return Err(MultiSigError::InvalidState(proposal.status.clone()));
         }
 
+        // Validate that all approving signers are still active (not revoked)
+        let revoked_approvers: Vec<&str> = proposal
+            .signers
+            .iter()
+            .filter(|s| s.decision == SignerDecision::Approved && !s.is_active())
+            .map(|s| s.signer_address.as_str())
+            .collect();
+
+        if !revoked_approvers.is_empty() {
+            for address in &revoked_approvers {
+                warn!(
+                    "Execution blocked for proposal {}: approving signer {} was revoked after signing",
+                    proposal_id, address
+                );
+            }
+            return Err(MultiSigError::RevokedSignerOnExecution(
+                revoked_approvers.join(", "),
+            ));
+        }
+
         let now = Utc::now();
         proposal.status = ProposalStatus::Executed;
         proposal.executed_at = Some(now);
         proposal.executed_transaction_hash = Some(transaction_hash);
         proposal.updated_at = now;
+
+        info!(
+            "Proposal {} executed with {} approved signers. Transaction hash: {}",
+            proposal_id,
+            proposal.signers.iter().filter(|s| s.decision == SignerDecision::Approved).count(),
+            transaction_hash
+        );
+
+        self.store.update_proposal(&proposal).await?;
+        Ok(proposal)
+    }
+
+    /// Revoke a signer's ability to participate in a proposal.
+    /// Only the proposal owner can revoke a signer.
+    pub async fn revoke_signer(
+        &self,
+        proposal_id: Uuid,
+        user_id: Uuid,
+        signer_address: String,
+    ) -> Result<MultiSigProposal, MultiSigError> {
+        let mut proposal = self.get_owned_proposal(proposal_id, user_id).await?;
+
+        if proposal.status != ProposalStatus::Pending {
+            return Err(MultiSigError::InvalidState(proposal.status.clone()));
+        }
+
+        let signer_idx = proposal
+            .signers
+            .iter()
+            .position(|s| s.signer_address == signer_address)
+            .ok_or_else(|| MultiSigError::UnknownSigner(signer_address.clone()))?;
+
+        if !proposal.signers[signer_idx].is_active() {
+            return Err(MultiSigError::SignerRevoked(signer_address.clone()));
+        }
+
+        let now = Utc::now();
+        proposal.signers[signer_idx].revoked_at = Some(now);
+        proposal.signers[signer_idx].updated_at = now;
+
+        // Recalculate total_weight since the revoked signer can no longer contribute
+        proposal.total_weight = proposal
+            .signers
+            .iter()
+            .filter(|s| s.is_active())
+            .map(|s| s.weight)
+            .sum();
+
+        // If threshold exceeds new total, adjust threshold down
+        if proposal.threshold > proposal.total_weight {
+            info!(
+                "Reducing threshold from {} to {} after signer {} was revoked on proposal {}",
+                proposal.threshold, proposal.total_weight, signer_address, proposal_id
+            );
+            proposal.threshold = proposal.total_weight;
+        }
+
+        // Recalculate status (may become rejected if threshold is no longer achievable)
+        let previous_status = proposal.status.clone();
+        proposal.status = self.compute_status(&proposal);
+        proposal.updated_at = now;
+
+        info!(
+            "Signer {} revoked from proposal {}. Status changed from {:?} to {:?}",
+            signer_address, proposal_id, previous_status, proposal.status
+        );
 
         self.store.update_proposal(&proposal).await?;
         Ok(proposal)
@@ -351,15 +450,20 @@ impl MultiSigService {
         if proposal.is_threshold_met() {
             return ProposalStatus::Approved;
         }
-        // Rejection: if remaining possible weight can't reach threshold
-        let pending_weight: u32 = proposal
+        // Rejection: compute remaining possible weight from active, pending signers
+        // Revoked signers cannot contribute even if they haven't signed yet
+        let pending_active_weight: u32 = proposal
             .signers
             .iter()
-            .filter(|s| s.decision == SignerDecision::Pending)
+            .filter(|s| s.decision == SignerDecision::Pending && s.is_active())
             .map(|s| s.weight)
             .sum();
-        let max_achievable = proposal.approved_weight() + pending_weight;
+        let max_achievable = proposal.approved_weight() + pending_active_weight;
         if max_achievable < proposal.threshold {
+            info!(
+                "Proposal {} rejected: max achievable weight {} < threshold {}",
+                proposal.id, max_achievable, proposal.threshold
+            );
             return ProposalStatus::Rejected;
         }
         ProposalStatus::Pending

@@ -53,6 +53,16 @@ pub struct MultiSigSigner {
     pub comments: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// If Some, this signer was revoked and can no longer participate
+    #[serde(default)]
+    pub revoked_at: Option<DateTime<Utc>>,
+}
+
+impl MultiSigSigner {
+    /// Whether this signer is currently active (not revoked)
+    pub fn is_active(&self) -> bool {
+        self.revoked_at.is_none()
+    }
 }
 
 /// A multi-signature proposal
@@ -200,6 +210,12 @@ pub enum MultiSigError {
 
     #[error("Duplicate signer address: {0}")]
     DuplicateSigner(String),
+
+    #[error("Signer {0} has been revoked and can no longer sign")]
+    SignerRevoked(String),
+
+    #[error("Execution blocked: signer {0} was revoked after signing")]
+    RevokedSignerOnExecution(String),
 
     #[error("Database error: {0}")]
     DatabaseError(String),
