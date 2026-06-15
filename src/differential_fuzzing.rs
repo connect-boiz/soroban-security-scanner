@@ -20,7 +20,7 @@ use std::time::Instant;
 use anyhow::Result;
 
 pub use test_runner::{DifferentialTestRunner, TestConfig, TestResult};
-pub use input_generator::{InputGenerator, EdgeCaseType};
+pub use input_generator::{InputGenerator, EdgeCaseType, CompositeScenario};
 pub use execution_tracer::{ExecutionTracer, ExecutionTrace, TraceEvent};
 pub use discrepancy_detector::{DiscrepancyDetector, DiscrepancyType, DiscrepancyReport};
 pub use cross_contract_simulator::{CrossContractSimulator, ReentrancyPattern, CallGraph};
@@ -147,6 +147,9 @@ pub struct DifferentialFuzzingConfig {
     pub enable_deterministic_detection: bool,
     pub edge_case_types: Vec<EdgeCaseType>,
     pub gas_threshold_percentage: f64,
+    pub combinatorial_depth: usize,
+    pub enable_composite_edge_cases: bool,
+    pub max_composite_inputs: usize,
 }
 
 impl Default for DifferentialFuzzingConfig {
@@ -171,6 +174,9 @@ impl Default for DifferentialFuzzingConfig {
                 EdgeCaseType::ZeroValue,
             ],
             gas_threshold_percentage: 10.0,
+            combinatorial_depth: 2,
+            enable_composite_edge_cases: true,
+            max_composite_inputs: 500,
         }
     }
 }

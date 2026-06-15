@@ -508,4 +508,192 @@ mod tests {
                       Some(EdgeCaseType::Custom("cross_contract".to_string())));
         }
     }
+
+    #[test]
+    fn test_composite_scenario_descriptions() {
+        let scenarios = vec![
+            CompositeScenario::SelfTransfer,
+            CompositeScenario::ZeroAddressTransfer,
+            CompositeScenario::ZeroAddressSource,
+            CompositeScenario::SelfNullTransfer,
+            CompositeScenario::AllMaxI128,
+            CompositeScenario::AllMinI128,
+            CompositeScenario::MaxMinI128,
+            CompositeScenario::MaxOverload,
+            CompositeScenario::OverflowAccumulative,
+            CompositeScenario::EmptyVectorLongString,
+            CompositeScenario::LargeVectorMaxI128,
+            CompositeScenario::MaxMinU64,
+            CompositeScenario::NullAddressMaxAmount,
+        ];
+
+        for scenario in scenarios {
+            let desc = scenario.description();
+            assert!(!desc.is_empty(), "Description should not be empty");
+        }
+    }
+
+    #[test]
+    fn test_composite_input_generation_yields_unique_inputs() {
+        let mut generator = InputGenerator::new(vec![
+            EdgeCaseType::MaxI128,
+            EdgeCaseType::MinI128,
+            EdgeCaseType::ZeroValue,
+            EdgeCaseType::EmptyVector,
+            EdgeCaseType::LargeVector,
+        ]);
+
+        let inputs = generator.generate_composite_inputs(2, 100).unwrap();
+        
+        // Should generate inputs without duplicates
+        assert!(!inputs.is_empty(), "Should generate at least some composite inputs");
+        assert!(inputs.len() <= 100, "Should respect max_inputs limit");
+        
+        // Verify deduplication (no two inputs should have the same fingerprint)
+        let mut fingerprints = std::collections::HashSet::new();
+        for input in &inputs {
+            let fp = crate::differential_fuzzing::input_generator::fingerprint_input(input);
+            assert!(fingerprints.insert(fp), "Duplicate input detected");
+        }
+
+        // Verify metadata is set correctly
+        for input in &inputs {
+            assert_eq!(input.metadata.generation_method, "composite_edge_case");
+            assert!(input.metadata.complexity_score >= 0.5);
+            assert!(input.metadata.complexity_score <= 1.0);
+        }
+    }
+
+    #[test]
+    fn test_composite_self_transfer_produces_same_address() {
+        let mut generator = InputGenerator::new(vec![]);
+        let inputs = generator.generate_composite_inputs(1, 10).unwrap();
+
+        // Find self-transfer inputs and verify same address
+        let self_transfer_inputs: Vec<&crate::differential_fuzzing::TestInput> = inputs.iter()
+            .filter(|i| i.metadata.edge_case_type.as_ref().map_or(false, |e| {
+                matches!(e, EdgeCaseType::Custom(s) if s.contains("SelfTransfer"))
+            }))
+            .collect();
+
+        for input in self_transfer_inputs {
+            let addr_args: Vec<&ArgumentValue> = input.arguments.iter()
+                .filter(|a| matches!(a.value, ArgumentValue::Address(_)))
+                .map(|a| &a.value)
+                .collect();
+            
+            // If there are 2+ address args, they should be equal
+            if addr_args.len() >= 2 {
+                let first = format!("{:?}", addr_args[0]);
+                let second = format!("{:?}", addr_args[1]);
+                assert_eq!(first, second, "Self-transfer should use same address for all Address params");
+            }
+        }
+    }
+
+    #[test]
+    fn test_composite_zero_address_transfer_has_null_recipient() {
+        let mut generator = InputGenerator::new(vec![]);
+        let inputs = generator.generate_composite_inputs(1, 10).unwrap();
+
+        // Find zero-address-transfer inputs and verify recipient is [0u8; 32]
+        let zero_addr_inputs: Vec<&crate::differential_fuzzing::TestInput> = inputs.iter()
+            .filter(|i| i.metadata.edge_case_type.as_ref().map_or(false, |e| {
+                matches!(e, EdgeCaseType::Custom(s) if s.contains("ZeroAddressTransfer"))
+            }))
+            .collect();
+
+        for input in zero_addr_inputs {
+            // The second address arg should be zero
+            if input.arguments.len() >= 2 {
+                if let ArgumentValue::Address(addr) = &input.arguments[1].value {
+                    assert_eq!(*addr, [0u8; 32], "Recipient address should be zero");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_composite_all_max_i128_uses_i128_max() {
+        let mut generator = InputGenerator::new(vec![]);
+        let inputs = generator.generate_composite_inputs(1, 10).unwrap();
+
+        let max_inputs: Vec<&crate::differential_fuzzing::TestInput> = inputs.iter()
+            .filter(|i| i.metadata.edge_case_type.as_ref().map_or(false, |e| {
+                matches!(e, EdgeCaseType::Custom(s) if s.contains("AllMaxI128"))
+            }))
+            .collect();
+
+        for input in max_inputs {
+            for arg in &input.arguments {
+                if matches!(arg.value, ArgumentValue::I128(_)) {
+                    if let ArgumentValue::I128(val) = arg.value {
+                        assert_eq!(val, i128::MAX, "AllMaxI128 should use i128::MAX");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_composite_max_inputs_limit_respected() {
+        let mut generator = InputGenerator::new(vec![
+            EdgeCaseType::MaxI128,
+            EdgeCaseType::MinI128,
+            EdgeCaseType::ZeroValue,
+            EdgeCaseType::EmptyVector,
+            EdgeCaseType::LargeVector,
+        ]);
+
+        // Test with small max to verify limit is respected
+        let inputs = generator.generate_composite_inputs(2, 5).unwrap();
+        assert!(inputs.len() <= 5, "Should respect max_inputs of 5");
+    }
+
+    #[test]
+    fn test_composite_generates_at_least_50_distinct_from_5_base_types() {
+        let mut generator = InputGenerator::new(vec![
+            EdgeCaseType::MaxI128,
+            EdgeCaseType::MinI128,
+            EdgeCaseType::ZeroValue,
+            EdgeCaseType::EmptyVector,
+            EdgeCaseType::LargeVector,
+        ]);
+
+        let inputs = generator.generate_composite_inputs(2, 200).unwrap();
+        
+        // With 13 composite scenarios x ~5 function names = up to 65 inputs
+        // But we limit to 200, so we should get at least 50 distinct ones
+        assert!(inputs.len() >= 50, 
+            "Expected at least 50 distinct composite inputs from 5 base types, got {}", 
+            inputs.len());
+        
+        // Verify they're all unique
+        let mut fingerprints = std::collections::HashSet::new();
+        for input in &inputs {
+            let fp = crate::differential_fuzzing::input_generator::fingerprint_input(input);
+            assert!(fingerprints.insert(fp), "Should not have duplicates");
+        }
+    }
+
+    #[test]
+    fn test_combinatorial_depth_config() {
+        let config = DifferentialFuzzingConfig::default();
+        assert_eq!(config.combinatorial_depth, 2);
+        assert!(config.enable_composite_edge_cases);
+        assert_eq!(config.max_composite_inputs, 500);
+    }
+
+    #[test]
+    fn test_fingerprint_determinism() {
+        let mut generator = InputGenerator::new(vec![]);
+        let inputs = generator.generate_composite_inputs(1, 5).unwrap();
+        
+        // Same input should produce same fingerprint
+        for input in &inputs {
+            let fp1 = crate::differential_fuzzing::input_generator::fingerprint_input(input);
+            let fp2 = crate::differential_fuzzing::input_generator::fingerprint_input(input);
+            assert_eq!(fp1, fp2, "Fingerprint should be deterministic");
+        }
+    }
 }
