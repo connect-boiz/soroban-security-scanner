@@ -5,9 +5,11 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use log::{info, warn, error, debug};
+use sha2::{Sha256, Digest};
 
 /// Event logging configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -130,6 +132,10 @@ pub struct CriticalEvent {
     pub transaction_hash: Option<String>,
     /// Ledger sequence (if applicable)
     pub ledger_sequence: Option<u64>,
+    /// SHA-256 hash of this event's content (for tamper-evident chain)
+    pub event_hash: String,
+    /// SHA-256 hash of the previous event in the chain (empty string for first event)
+    pub previous_event_hash: String,
 }
 
 /// Event logging manager
@@ -177,17 +183,68 @@ impl EventLogger {
         Ok(())
     }
 
-    /// Store event in memory
+    /// Compute SHA-256 hash for an event (all fields serialized and hashed)
+    fn compute_event_hash(event: &CriticalEvent) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(event.event_id.as_bytes());
+        hasher.update(&event.timestamp.to_le_bytes());
+        hasher.update(format!("{:?}", event.operation).as_bytes());
+        hasher.update(format!("{:?}", event.severity).as_bytes());
+        hasher.update(format!("{:?}", event.status).as_bytes());
+        hasher.update(event.description.as_bytes());
+        hasher.update(event.actor.as_bytes());
+        if let Some(ref target) = event.target {
+            hasher.update(target.as_bytes());
+        }
+        if let Some(ref prev) = event.previous_state {
+            hasher.update(prev.as_bytes());
+        }
+        if let Some(ref new) = event.new_state {
+            hasher.update(new.as_bytes());
+        }
+        if let Some(ref error) = event.error_message {
+            hasher.update(error.as_bytes());
+        }
+        if let Some(ref tx) = event.transaction_hash {
+            hasher.update(tx.as_bytes());
+        }
+        format!("{:x}", hasher.finalize())
+    }
+
+    /// Compute the previous event hash (hash of the last event in the chain)
+    fn compute_previous_event_hash(events: &[CriticalEvent]) -> String {
+        events.last().map(|e| e.event_hash.clone()).unwrap_or_default()
+    }
+
+    /// Rebuild the hash chain for all events (used after eviction)
+    fn rebuild_hash_chain(events: &mut [CriticalEvent]) {
+        let mut prev_hash = String::new();
+        for event in events.iter_mut() {
+            event.previous_event_hash = prev_hash.clone();
+            event.event_hash = Self::compute_event_hash(event);
+            prev_hash = event.event_hash.clone();
+        }
+    }
+
+    /// Store event in memory with hash chaining
     fn store_event(&self, event: CriticalEvent) -> Result<()> {
         let mut events = self.events.lock().map_err(|e| {
             anyhow::anyhow!("Failed to acquire events lock: {}", e)
         })?;
 
-        events.push(event);
+        // Build the event with hash chaining
+        let previous_hash = Self::compute_previous_event_hash(&events);
+        let mut chained_event = event;
+        chained_event.previous_event_hash = previous_hash.clone();
+        chained_event.event_hash = Self::compute_event_hash(&chained_event);
 
-        // Enforce memory limit
+        events.push(chained_event);
+
+        // Enforce memory limit — rebuild hash chain if we evict the first event
         if events.len() > self.config.max_events_in_memory {
             events.remove(0);
+            // Rebuild the hash chain after eviction to maintain integrity
+            Self::rebuild_hash_chain(&mut events);
         }
 
         Ok(())
@@ -278,6 +335,179 @@ impl EventLogger {
 
         Ok(stats)
     }
+
+    // ── Paginated Query Methods ────────────────────────────────────────────
+
+    /// Get events by operation type with pagination
+    pub fn get_events_by_operation_paginated(
+        &self,
+        operation: &CriticalOperation,
+        offset: usize,
+        limit: usize,
+    ) -> Result<PageResult<CriticalEvent>> {
+        let events = self.get_events_by_operation(operation)?;
+        Ok(self.apply_pagination(events, offset, limit))
+    }
+
+    /// Get events by time range with pagination
+    pub fn get_events_by_time_range_paginated(
+        &self,
+        start_time: u64,
+        end_time: u64,
+        offset: usize,
+        limit: usize,
+    ) -> Result<PageResult<CriticalEvent>> {
+        let events = self.get_events_by_time_range(start_time, end_time)?;
+        Ok(self.apply_pagination(events, offset, limit))
+    }
+
+    /// Get events by actor with pagination
+    pub fn get_events_by_actor_paginated(
+        &self,
+        actor: &str,
+        offset: usize,
+        limit: usize,
+    ) -> Result<PageResult<CriticalEvent>> {
+        let events = self.get_events_by_actor(actor)?;
+        Ok(self.apply_pagination(events, offset, limit))
+    }
+
+    /// Internal: apply offset/limit to a filtered list
+    fn apply_pagination(&self, mut events: Vec<CriticalEvent>, offset: usize, limit: usize) -> PageResult<CriticalEvent> {
+        let total = events.len();
+        if offset >= total {
+            return PageResult {
+                items: vec![],
+                total,
+                offset,
+                limit,
+                has_more: false,
+            };
+        }
+        let end = (offset + limit).min(total);
+        let items: Vec<CriticalEvent> = events.drain(offset..end).collect();
+        PageResult {
+            has_more: end < total,
+            items,
+            total,
+            offset,
+            limit,
+        }
+    }
+
+    // ── Export Methods ─────────────────────────────────────────────────────
+
+    /// Export events to CSV format
+    pub fn events_to_csv(&self, events: &[CriticalEvent]) -> String {
+        let mut csv = String::from("event_id,timestamp,operation,severity,status,description,actor,target,previous_event_hash,event_hash,error_message,execution_duration_ms,gas_consumed,transaction_hash,ledger_sequence\n");
+        for event in events {
+            csv.push_str(&format!(
+                "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n",
+                Self::csv_escape(&event.event_id),
+                event.timestamp,
+                format!("{:?}", event.operation),
+                format!("{:?}", event.severity),
+                format!("{:?}", event.status),
+                Self::csv_escape(&event.description),
+                Self::csv_escape(&event.actor),
+                Self::csv_escape(&event.target.as_deref().unwrap_or("")),
+                event.previous_event_hash,
+                event.event_hash,
+                Self::csv_escape(&event.error_message.as_deref().unwrap_or("")),
+                event.execution_duration_ms.unwrap_or(0),
+                event.gas_consumed.unwrap_or(0),
+                Self::csv_escape(&event.transaction_hash.as_deref().unwrap_or("")),
+                event.ledger_sequence.unwrap_or(0),
+            ));
+        }
+        csv
+    }
+
+    /// Export events to JSON format
+    pub fn events_to_json(&self, events: &[CriticalEvent]) -> Result<String> {
+        Ok(serde_json::to_string_pretty(events)?)
+    }
+
+    /// Escape a string for CSV (wrap in quotes, escape internal quotes)
+    fn csv_escape(value: &str) -> String {
+        if value.contains(',') || value.contains('\"') || value.contains('\n') {
+            format!("\"{}\"", value.replace('\"', "\"\""))
+        } else {
+            value.to_string()
+        }
+    }
+
+    // ── Hash Chain Verification ────────────────────────────────────────────
+
+    /// Verify the integrity of the event hash chain from `from_index` to `to_index`.
+    /// Returns a map of indices where hash mismatches were found.
+    pub fn verify_chain(&self, from_index: usize, to_index: usize) -> Result<ChainVerificationResult> {
+        let events = self.events.lock().map_err(|e| {
+            anyhow::anyhow!("Failed to acquire events lock: {}", e)
+        })?;
+
+        let total = events.len();
+        let actual_to = to_index.min(total.saturating_sub(1));
+        let actual_from = from_index.min(actual_to);
+
+        let mut verified_count = 0;
+        let mut mismatches = Vec::new();
+
+        for i in actual_from..=actual_to {
+            let event = &events[i];
+            let recomputed_hash = Self::compute_event_hash(event);
+
+            if recomputed_hash != event.event_hash {
+                mismatches.push(ChainMismatch {
+                    index: i,
+                    event_id: event.event_id.clone(),
+                    expected_hash: recomputed_hash,
+                    actual_hash: event.event_hash.clone(),
+                    reason: "Event content hash mismatch — data has been tampered with".to_string(),
+                });
+            }
+
+            // Check previous event hash linkage
+            if i > actual_from {
+                let prev_hash = &events[i - 1].event_hash;
+                if event.previous_event_hash != *prev_hash {
+                    mismatches.push(ChainMismatch {
+                        index: i,
+                        event_id: event.event_id.clone(),
+                        expected_hash: prev_hash.clone(),
+                        actual_hash: event.previous_event_hash.clone(),
+                        reason: "Previous event hash mismatch — chain linkage broken".to_string(),
+                    });
+                }
+            }
+
+            verified_count += 1;
+        }
+
+        Ok(ChainVerificationResult {
+            chain_integrity: mismatches.is_empty(),
+            verified_count,
+            mismatches,
+            total_events_in_store: total,
+        })
+    }
+
+    /// Verify the entire event chain from the first event to the last
+    pub fn verify_full_chain(&self) -> Result<ChainVerificationResult> {
+        let events = self.events.lock().map_err(|e| {
+            anyhow::anyhow!("Failed to acquire events lock: {}", e)
+        })?;
+        if events.is_empty() {
+            return Ok(ChainVerificationResult {
+                chain_integrity: true,
+                verified_count: 0,
+                mismatches: vec![],
+                total_events_in_store: 0,
+            });
+        }
+        let to = events.len().saturating_sub(1);
+        self.verify_chain(0, to)
+    }
 }
 
 /// Event statistics
@@ -287,6 +517,35 @@ pub struct EventStatistics {
     pub by_operation: HashMap<CriticalOperation, usize>,
     pub by_severity: HashMap<EventSeverity, usize>,
     pub by_status: HashMap<EventStatus, usize>,
+}
+
+/// Paginated result wrapper
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PageResult<T> {
+    pub items: Vec<T>,
+    pub total: usize,
+    pub offset: usize,
+    pub limit: usize,
+    pub has_more: bool,
+}
+
+/// Result of chain verification
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChainVerificationResult {
+    pub chain_integrity: bool,
+    pub verified_count: usize,
+    pub mismatches: Vec<ChainMismatch>,
+    pub total_events_in_store: usize,
+}
+
+/// A single hash mismatch found during chain verification
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChainMismatch {
+    pub index: usize,
+    pub event_id: String,
+    pub expected_hash: String,
+    pub actual_hash: String,
+    pub reason: String,
 }
 
 /// Event builder for convenient event creation
@@ -395,8 +654,15 @@ impl EventBuilder {
         self
     }
 
-    /// Build the event
+    /// Build the event (hash fields are set by the EventLogger during storage)
     pub fn build(self) -> CriticalEvent {
+        self.event
+    }
+
+    /// Build the event with manual hash chaining (for testing)
+    pub fn build_with_hash(mut self, previous_hash: &str) -> CriticalEvent {
+        self.event.previous_event_hash = previous_hash.to_string();
+        self.event.event_hash = EventLogger::compute_event_hash(&self.event);
         self.event
     }
 }

@@ -441,6 +441,267 @@ mod tests {
     }
 
     #[test]
+    fn test_event_hash_chaining() {
+        let config = EventLoggingConfig::default();
+        let logger = EventLogger::new(config);
+
+        // Log 3 events — each should link to the previous via previous_event_hash
+        let e1 = EventBuilder::new(CriticalOperation::FundTransfer, "alice".to_string())
+            .description("First event".to_string())
+            .build();
+        logger.log_event(e1).unwrap();
+
+        let e2 = EventBuilder::new(CriticalOperation::FundTransfer, "bob".to_string())
+            .description("Second event".to_string())
+            .build();
+        logger.log_event(e2).unwrap();
+
+        let e3 = EventBuilder::new(CriticalOperation::AdminApproval, "charlie".to_string())
+            .description("Third event".to_string())
+            .build();
+        logger.log_event(e3).unwrap();
+
+        let all_events = logger.get_events_by_time_range(0, u64::MAX).unwrap();
+        assert_eq!(all_events.len(), 3);
+
+        // First event should have empty previous_event_hash
+        assert_eq!(all_events[0].previous_event_hash, "", "First event should have no previous hash");
+        assert!(!all_events[0].event_hash.is_empty(), "First event should have a hash");
+
+        // Second event should link to first
+        assert_eq!(all_events[1].previous_event_hash, all_events[0].event_hash,
+            "Second event should link to first");
+
+        // Third event should link to second
+        assert_eq!(all_events[2].previous_event_hash, all_events[1].event_hash,
+            "Third event should link to second");
+
+        // All hashes should be different
+        assert_ne!(all_events[0].event_hash, all_events[1].event_hash);
+        assert_ne!(all_events[1].event_hash, all_events[2].event_hash);
+    }
+
+    #[test]
+    fn test_verify_chain_integrity() {
+        let config = EventLoggingConfig::default();
+        let logger = EventLogger::new(config);
+
+        // Log 5 events
+        for i in 0..5 {
+            let event = EventBuilder::new(CriticalOperation::FundTransfer, format!("user{}", i))
+                .description(format!("Event {}", i))
+                .build();
+            logger.log_event(event).unwrap();
+        }
+
+        // Verify the full chain
+        let result = logger.verify_full_chain().unwrap();
+        assert!(result.chain_integrity, "Chain should have integrity");
+        assert_eq!(result.verified_count, 5);
+        assert!(result.mismatches.is_empty());
+        assert_eq!(result.total_events_in_store, 5);
+    }
+
+    #[test]
+    fn test_verify_chain_range() {
+        let config = EventLoggingConfig::default();
+        let logger = EventLogger::new(config);
+
+        for i in 0..10 {
+            let event = EventBuilder::new(CriticalOperation::FundTransfer, format!("user{}", i))
+                .description(format!("Event {}", i))
+                .build();
+            logger.log_event(event).unwrap();
+        }
+
+        // Verify a range (events 3-7)
+        let result = logger.verify_chain(3, 7).unwrap();
+        assert!(result.chain_integrity);
+        assert_eq!(result.verified_count, 5);
+    }
+
+    #[test]
+    fn test_pagination_basic() {
+        let config = EventLoggingConfig::default();
+        let logger = EventLogger::new(config);
+
+        // Log 10 events
+        for i in 0..10 {
+            let event = EventBuilder::new(CriticalOperation::FundTransfer, format!("user{}", i))
+                .description(format!("Event {}", i))
+                .build();
+            logger.log_event(event).unwrap();
+        }
+
+        // First page: offset=0, limit=3
+        let page = logger.get_events_by_time_range_paginated(0, u64::MAX, 0, 3).unwrap();
+        assert_eq!(page.items.len(), 3);
+        assert_eq!(page.total, 10);
+        assert_eq!(page.offset, 0);
+        assert_eq!(page.limit, 3);
+        assert!(page.has_more);
+
+        // Second page: offset=3, limit=3
+        let page2 = logger.get_events_by_time_range_paginated(0, u64::MAX, 3, 3).unwrap();
+        assert_eq!(page2.items.len(), 3);
+        assert_eq!(page2.offset, 3);
+        assert!(page2.has_more);
+
+        // Third page: offset=6, limit=3
+        let page3 = logger.get_events_by_time_range_paginated(0, u64::MAX, 6, 3).unwrap();
+        assert_eq!(page3.items.len(), 3);
+        assert!(page3.has_more);
+
+        // Fourth page: offset=9, limit=3 (only 1 remaining)
+        let page4 = logger.get_events_by_time_range_paginated(0, u64::MAX, 9, 3).unwrap();
+        assert_eq!(page4.items.len(), 1);
+        assert!(!page4.has_more);
+    }
+
+    #[test]
+    fn test_pagination_offset_beyond_total() {
+        let config = EventLoggingConfig::default();
+        let logger = EventLogger::new(config);
+
+        for i in 0..5 {
+            let event = EventBuilder::new(CriticalOperation::FundTransfer, format!("user{}", i))
+                .description(format!("Event {}", i))
+                .build();
+            logger.log_event(event).unwrap();
+        }
+
+        // Offset beyond total should return empty
+        let page = logger.get_events_by_time_range_paginated(0, u64::MAX, 100, 10).unwrap();
+        assert!(page.items.is_empty());
+        assert!(!page.has_more);
+    }
+
+    #[test]
+    fn test_pagination_by_operation() {
+        let config = EventLoggingConfig::default();
+        let logger = EventLogger::new(config);
+
+        for i in 0..8 {
+            let event = EventBuilder::new(CriticalOperation::FundTransfer, format!("user{}", i))
+                .description(format!("Transfer {}", i))
+                .build();
+            logger.log_event(event).unwrap();
+        }
+        for i in 0..3 {
+            let event = EventBuilder::new(CriticalOperation::AdminApproval, format!("admin{}", i))
+                .description(format!("Approval {}", i))
+                .build();
+            logger.log_event(event).unwrap();
+        }
+
+        // Paginate through FundTransfer events
+        let page = logger.get_events_by_operation_paginated(
+            &CriticalOperation::FundTransfer, 0, 5
+        ).unwrap();
+        assert_eq!(page.items.len(), 5);
+        assert!(page.has_more);
+        assert_eq!(page.total, 8);
+
+        let page2 = logger.get_events_by_operation_paginated(
+            &CriticalOperation::FundTransfer, 5, 5
+        ).unwrap();
+        assert_eq!(page2.items.len(), 3);
+        assert!(!page2.has_more);
+    }
+
+    #[test]
+    fn test_pagination_by_actor() {
+        let config = EventLoggingConfig::default();
+        let logger = EventLogger::new(config);
+
+        for i in 0..6 {
+            let event = EventBuilder::new(CriticalOperation::FundTransfer, "alice".to_string())
+                .description(format!("Alice event {}", i))
+                .build();
+            logger.log_event(event).unwrap();
+        }
+
+        let page = logger.get_events_by_actor_paginated("alice", 0, 4).unwrap();
+        assert_eq!(page.items.len(), 4);
+        assert!(page.has_more);
+        assert_eq!(page.total, 6);
+
+        let page2 = logger.get_events_by_actor_paginated("alice", 4, 4).unwrap();
+        assert_eq!(page2.items.len(), 2);
+        assert!(!page2.has_more);
+    }
+
+    #[test]
+    fn test_csv_export() {
+        let config = EventLoggingConfig::default();
+        let logger = EventLogger::new(config);
+
+        let event = EventBuilder::new(CriticalOperation::FundTransfer, "alice".to_string())
+            .description("Test transfer".to_string())
+            .severity(EventSeverity::High)
+            .target("bob".to_string())
+            .transaction_hash("tx123".to_string())
+            .build();
+        logger.log_event(event).unwrap();
+
+        let events = logger.get_events_by_operation(&CriticalOperation::FundTransfer).unwrap();
+        let csv = logger.events_to_csv(&events);
+
+        assert!(csv.contains("event_id"));
+        assert!(csv.contains("FundTransfer"));
+        assert!(csv.contains("alice"));
+        assert!(csv.contains("High"));
+        assert!(csv.contains("tx123"));
+    }
+
+    #[test]
+    fn test_json_export() {
+        let config = EventLoggingConfig::default();
+        let logger = EventLogger::new(config);
+
+        let event = EventBuilder::new(CriticalOperation::FundTransfer, "alice".to_string())
+            .description("JSON test".to_string())
+            .build();
+        logger.log_event(event).unwrap();
+
+        let events = logger.get_events_by_operation(&CriticalOperation::FundTransfer).unwrap();
+        let json = logger.events_to_json(&events).unwrap();
+
+        assert!(json.contains("event_id"));
+        assert!(json.contains("FundTransfer"));
+        assert!(json.contains("alice"));
+        assert!(json.contains("JSON test"));
+    }
+
+    #[test]
+    fn test_csv_escape_handles_special_chars() {
+        let config = EventLoggingConfig::default();
+        let logger = EventLogger::new(config);
+
+        let event = EventBuilder::new(CriticalOperation::FundTransfer, "alice".to_string())
+            .description("Transfer with, comma and \"quotes\" and newline".to_string())
+            .build();
+        logger.log_event(event).unwrap();
+
+        let events = logger.get_events_by_operation(&CriticalOperation::FundTransfer).unwrap();
+        let csv = logger.events_to_csv(&events);
+
+        // The description should be quoted since it contains commas
+        assert!(csv.contains("\"Transfer with"));
+    }
+
+    #[test]
+    fn test_empty_chain_verification() {
+        let config = EventLoggingConfig::default();
+        let logger = EventLogger::new(config);
+
+        let result = logger.verify_full_chain().unwrap();
+        assert!(result.chain_integrity);
+        assert_eq!(result.verified_count, 0);
+        assert!(result.mismatches.is_empty());
+    }
+
+    #[test]
     fn test_structured_logging_config() {
         let mut config = EventLoggingConfig::default();
         config.structured_logging = true;
