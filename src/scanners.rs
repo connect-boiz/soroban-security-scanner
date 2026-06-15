@@ -3,7 +3,7 @@
 use crate::vulnerabilities::VulnerabilityType;
 use crate::invariants::InvariantRule;
 use crate::analysis::AnalysisResult;
-use crate::emergency_stop::EmergencyStop;
+use crate::emergency_stop::{EmergencyStop, ScanWatchdog};
 use crate::{ScanResult, Severity};
 use syn::{Item, ItemFn, ItemStruct, ItemEnum, Expr, ExprCall, ExprMethodCall, ExprPath};
 use std::path::Path;
@@ -16,19 +16,21 @@ pub struct SecurityScanner {
     vulnerability_patterns: Vec<(VulnerabilityType, Regex)>,
     ignore_patterns: Vec<Regex>,
     pub emergency_stop: EmergencyStop,
-}
+    pub watchdog: ScanWatchdog,
 
 pub struct InvariantScanner {
     invariant_rules: Vec<(InvariantRule, Regex)>,
     emergency_stop: EmergencyStop,
-}
+    pub watchdog: ScanWatchdog,
 
-impl SecurityScanner {
-    pub fn new() -> Result<Self> {
+impl SecurityScanner {    pub fn new() -> Result<Self> {
+        let emergency_stop = EmergencyStop::new()?;
+        let watchdog = ScanWatchdog::new().with_emergency_stop(emergency_stop.clone());
         let mut scanner = Self {
             vulnerability_patterns: Vec::new(),
             ignore_patterns: Vec::new(),
-            emergency_stop: EmergencyStop::new()?,
+            emergency_stop,
+            watchdog,
         };
         
         scanner.initialize_patterns()?;
@@ -36,10 +38,24 @@ impl SecurityScanner {
     }
 
     pub fn new_with_emergency_stop(emergency_stop: EmergencyStop) -> Result<Self> {
+        let watchdog = ScanWatchdog::new().with_emergency_stop(emergency_stop.clone());
         let mut scanner = Self {
             vulnerability_patterns: Vec::new(),
             ignore_patterns: Vec::new(),
             emergency_stop,
+            watchdog,
+        };
+        
+        scanner.initialize_patterns()?;
+        Ok(scanner)
+    }
+
+    pub fn new_with_watchdog(emergency_stop: EmergencyStop, watchdog: ScanWatchdog) -> Result<Self> {
+        let mut scanner = Self {
+            vulnerability_patterns: Vec::new(),
+            ignore_patterns: Vec::new(),
+            emergency_stop,
+            watchdog,
         };
         
         scanner.initialize_patterns()?;
@@ -181,10 +197,13 @@ impl SecurityScanner {
 
     pub fn scan_file(&self, file_path: &Path) -> Result<ScanResult> {
         // Check for emergency stop before processing
-        if self.emergency_stop.is_stopped() {
-            info!("Scan cancelled due to emergency stop");
+        if self.emergency_stop.is_stopped() || self.watchdog.has_timed_out() {
+            info!("Scan cancelled due to emergency stop or watchdog timeout");
             return Ok(ScanResult::new(file_path.to_string_lossy().to_string()));
         }
+
+        // Set current file and record heartbeat
+        self.watchdog.heartbeat_with_file(&file_path.to_string_lossy());
 
         let content = fs::read_to_string(file_path)?;
         let mut result = ScanResult::new(file_path.to_string_lossy().to_string());
@@ -200,7 +219,10 @@ impl SecurityScanner {
         // Check for vulnerabilities
         for (vuln_type, pattern) in &self.vulnerability_patterns {
             // Check for emergency stop during pattern matching
-            check_emergency_stop!(self.emergency_stop);
+            if self.emergency_stop.is_stopped() || self.watchdog.has_timed_out() {
+                info!("Scan interrupted during pattern matching");
+                break;
+            }
             
             if let Some(matches) = pattern.find(&content) {
                 // Additional context analysis
@@ -222,6 +244,9 @@ impl SecurityScanner {
 
         // AST-based analysis
         self.analyze_ast(&syntax, &mut result);
+
+        // Record heartbeat after file completion
+        self.watchdog.heartbeat();
 
         Ok(result)
     }
@@ -297,10 +322,14 @@ impl SecurityScanner {
     pub fn scan_directory(&self, dir_path: &Path) -> Result<Vec<ScanResult>> {
         let mut results = Vec::new();
         
+        // Start the watchdog monitor thread
+        self.watchdog.start_monitoring();
+        self.watchdog.reset();
+        
         for entry in walkdir::WalkDir::new(dir_path) {
-            // Check for emergency stop before processing each file
-            if self.emergency_stop.is_stopped() {
-                info!("Directory scan cancelled due to emergency stop");
+            // Check for emergency stop or watchdog timeout before processing each file
+            if self.emergency_stop.is_stopped() || self.watchdog.has_timed_out() {
+                info!("Directory scan cancelled due to emergency stop or watchdog timeout");
                 break;
             }
             
@@ -314,15 +343,19 @@ impl SecurityScanner {
             }
         }
         
+        self.watchdog.stop_monitoring();
         Ok(results)
     }
 }
 
 impl InvariantScanner {
     pub fn new() -> Result<Self> {
+        let emergency_stop = EmergencyStop::new()?;
+        let watchdog = ScanWatchdog::new().with_emergency_stop(emergency_stop.clone());
         let mut scanner = Self {
             invariant_rules: Vec::new(),
-            emergency_stop: EmergencyStop::new()?,
+            emergency_stop,
+            watchdog,
         };
         
         scanner.initialize_rules()?;
@@ -330,9 +363,22 @@ impl InvariantScanner {
     }
 
     pub fn new_with_emergency_stop(emergency_stop: EmergencyStop) -> Result<Self> {
+        let watchdog = ScanWatchdog::new().with_emergency_stop(emergency_stop.clone());
         let mut scanner = Self {
             invariant_rules: Vec::new(),
             emergency_stop,
+            watchdog,
+        };
+        
+        scanner.initialize_rules()?;
+        Ok(scanner)
+    }
+
+    pub fn new_with_watchdog(emergency_stop: EmergencyStop, watchdog: ScanWatchdog) -> Result<Self> {
+        let mut scanner = Self {
+            invariant_rules: Vec::new(),
+            emergency_stop,
+            watchdog,
         };
         
         scanner.initialize_rules()?;
@@ -389,23 +435,32 @@ impl InvariantScanner {
     }
 
     pub fn scan_file(&self, file_path: &Path) -> Result<ScanResult> {
-        // Check for emergency stop before processing
-        if self.emergency_stop.is_stopped() {
-            info!("Invariant scan cancelled due to emergency stop");
+        // Check for emergency stop or watchdog timeout before processing
+        if self.emergency_stop.is_stopped() || self.watchdog.has_timed_out() {
+            info!("Invariant scan cancelled due to emergency stop or watchdog timeout");
             return Ok(ScanResult::new(file_path.to_string_lossy().to_string()));
         }
+
+        // Set current file and record heartbeat
+        self.watchdog.heartbeat_with_file(&file_path.to_string_lossy());
 
         let content = fs::read_to_string(file_path)?;
         let mut result = ScanResult::new(file_path.to_string_lossy().to_string());
 
         for (rule, pattern) in &self.invariant_rules {
             // Check for emergency stop during rule checking
-            check_emergency_stop!(self.emergency_stop);
+            if self.emergency_stop.is_stopped() || self.watchdog.has_timed_out() {
+                info!("Invariant scan interrupted during rule checking");
+                break;
+            }
             
             if pattern.is_match(&content) {
                 result.invariant_violations.push(rule.clone());
             }
         }
+
+        // Record heartbeat after file completion
+        self.watchdog.heartbeat();
 
         Ok(result)
     }
@@ -413,10 +468,14 @@ impl InvariantScanner {
     pub fn scan_directory(&self, dir_path: &Path) -> Result<Vec<ScanResult>> {
         let mut results = Vec::new();
         
+        // Start the watchdog monitor thread
+        self.watchdog.start_monitoring();
+        self.watchdog.reset();
+        
         for entry in walkdir::WalkDir::new(dir_path) {
-            // Check for emergency stop before processing each file
-            if self.emergency_stop.is_stopped() {
-                info!("Invariant directory scan cancelled due to emergency stop");
+            // Check for emergency stop or watchdog timeout before processing each file
+            if self.emergency_stop.is_stopped() || self.watchdog.has_timed_out() {
+                info!("Invariant directory scan cancelled due to emergency stop or watchdog timeout");
                 break;
             }
             
@@ -430,6 +489,7 @@ impl InvariantScanner {
             }
         }
         
+        self.watchdog.stop_monitoring();
         Ok(results)
     }
 }
