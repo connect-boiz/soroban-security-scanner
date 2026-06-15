@@ -461,6 +461,341 @@ pub struct GasValidationResult {
     pub recommendations: Vec<String>,
 }
 
+/// Batch operation types for gas estimation
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BatchOperationType {
+    EscrowRelease,
+    VulnerabilityVerification,
+}
+
+impl BatchOperationType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            BatchOperationType::EscrowRelease => "escrow_release",
+            BatchOperationType::VulnerabilityVerification => "vulnerability_verification",
+        }
+    }
+}
+
+/// Per-item gas estimate breakdown for batch operations
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ItemGasEstimate {
+    /// Item index in the batch
+    pub item_index: u64,
+    /// Operation type for this item
+    pub operation_type: BatchOperationType,
+    /// Estimated gas for this single item
+    pub estimated_gas: u64,
+    /// Base gas cost for this operation type
+    pub base_cost: u64,
+    /// Variable gas cost based on item complexity
+    pub variable_cost: u64,
+}
+
+/// Batch gas estimate with breakdown and recommendations
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchGasEstimate {
+    /// Total items in the batch
+    pub total_items: u64,
+    /// Breakdown of items by operation type
+    pub escrow_releases: u64,
+    pub verifications: u64,
+    /// Per-item gas estimates
+    pub item_estimates: Vec<ItemGasEstimate>,
+    /// Total estimated gas (sum of all items + overhead)
+    pub total_estimated_gas: u64,
+    /// Fixed overhead for batch processing
+    pub batch_overhead: u64,
+    /// Per-item overhead
+    pub per_item_overhead: u64,
+    /// Recommended gas limit (estimated + safety margin)
+    pub recommended_limit: u64,
+    /// Safety margin applied
+    pub safety_margin: u64,
+    /// Stellar maximum transaction gas limit
+    pub stellar_max_limit: u64,
+    /// Whether estimated gas exceeds 90% of Stellar limit
+    pub exceeds_recommended_threshold: bool,
+    /// Warning message if threshold is exceeded
+    pub threshold_warning: Option<String>,
+    /// Risk level for this batch
+    pub risk_level: GasRiskLevel,
+    /// Suggested number of splits if threshold is exceeded
+    pub suggested_splits: u64,
+    /// Estimated gas per split
+    pub estimated_gas_per_split: u64,
+}
+
+/// Batch gas estimator for pre-execution gas estimation
+pub struct BatchGasEstimator {
+    gas_limit_manager: GasLimitManager,
+    stellar_transaction_max_gas: u64,
+    threshold_percentage: f64,
+}
+
+impl BatchGasEstimator {
+    /// Create a new batch gas estimator
+    pub fn new(gas_limit_config: GasLimitConfig) -> Self {
+        let gas_limit_manager = GasLimitManager::new(gas_limit_config);
+        Self {
+            gas_limit_manager,
+            stellar_transaction_max_gas: 100_000_000, // ~100M max gas per Stellar transaction
+            threshold_percentage: 90.0, // Warn at 90% of Stellar limit
+        }
+    }
+
+    /// Create with custom Stellar max gas and threshold
+    pub fn with_limits(
+        gas_limit_config: GasLimitConfig,
+        stellar_max_gas: u64,
+        threshold_pct: f64,
+    ) -> Self {
+        let gas_limit_manager = GasLimitManager::new(gas_limit_config);
+        Self {
+            gas_limit_manager,
+            stellar_transaction_max_gas: stellar_max_gas,
+            threshold_percentage: threshold_pct,
+        }
+    }
+
+    /// Estimate gas for a batch of escrow releases
+    pub fn estimate_escrow_release_batch(&self, item_count: u64) -> Result<BatchGasEstimate> {
+        let operation_type = BatchOperationType::EscrowRelease;
+        let mut item_estimates = Vec::with_capacity(item_count as usize);
+
+        for i in 0..item_count {
+            // Each escrow release has 1 recipient (the beneficiary) and 1 amount transfer
+            let mut params = std::collections::HashMap::new();
+            params.insert("recipients".to_string(), 1);
+            params.insert("amount_transfers".to_string(), 1);
+
+            let estimation = self.gas_limit_manager
+                .estimate_gas(operation_type.as_str(), &params)?;
+
+            item_estimates.push(ItemGasEstimate {
+                item_index: i,
+                operation_type: operation_type.clone(),
+                estimated_gas: estimation.estimated_gas,
+                base_cost: 50_000,
+                variable_cost: estimation.estimated_gas - 50_000.min(estimation.estimated_gas),
+            });
+        }
+
+        self.build_batch_estimate(item_count, item_estimates, 0)
+    }
+
+    /// Estimate gas for a batch of vulnerability verifications
+    pub fn estimate_verification_batch(&self, item_count: u64) -> Result<BatchGasEstimate> {
+        let operation_type = BatchOperationType::VulnerabilityVerification;
+        let mut item_estimates = Vec::with_capacity(item_count as usize);
+
+        for i in 0..item_count {
+            // Each verification checks vulnerability data and updates status
+            let mut params = std::collections::HashMap::new();
+            params.insert("recipients".to_string(), 1);
+            params.insert("amount_transfers".to_string(), 1);
+            params.insert("reward_calculations".to_string(), 1);
+            params.insert("severity_checks".to_string(), 1);
+
+            let estimation = self.gas_limit_manager
+                .estimate_gas("reward_distribution", &params)?;
+
+            item_estimates.push(ItemGasEstimate {
+                item_index: i,
+                operation_type: operation_type.clone(),
+                estimated_gas: estimation.estimated_gas,
+                base_cost: 75_000,
+                variable_cost: estimation.estimated_gas - 75_000.min(estimation.estimated_gas),
+            });
+        }
+
+        self.build_batch_estimate(0, item_estimates, item_count)
+    }
+
+    /// Estimate gas for a mixed batch (escrow releases + verifications)
+    pub fn estimate_mixed_batch(
+        &self,
+        escrow_count: u64,
+        verification_count: u64,
+    ) -> Result<BatchGasEstimate> {
+        let mut item_estimates = Vec::with_capacity((escrow_count + verification_count) as usize);
+
+        // Estimate escrow items first
+        for i in 0..escrow_count {
+            let mut params = std::collections::HashMap::new();
+            params.insert("recipients".to_string(), 1);
+            params.insert("amount_transfers".to_string(), 1);
+
+            let estimation = self.gas_limit_manager
+                .estimate_gas("escrow_release", &params)?;
+
+            item_estimates.push(ItemGasEstimate {
+                item_index: i,
+                operation_type: BatchOperationType::EscrowRelease,
+                estimated_gas: estimation.estimated_gas,
+                base_cost: 50_000,
+                variable_cost: estimation.estimated_gas - 50_000.min(estimation.estimated_gas),
+            });
+        }
+
+        // Estimate verification items
+        for i in 0..verification_count {
+            let mut params = std::collections::HashMap::new();
+            params.insert("recipients".to_string(), 1);
+            params.insert("amount_transfers".to_string(), 1);
+            params.insert("reward_calculations".to_string(), 1);
+            params.insert("severity_checks".to_string(), 1);
+
+            let estimation = self.gas_limit_manager
+                .estimate_gas("reward_distribution", &params)?;
+
+            item_estimates.push(ItemGasEstimate {
+                item_index: escrow_count + i,
+                operation_type: BatchOperationType::VulnerabilityVerification,
+                estimated_gas: estimation.estimated_gas,
+                base_cost: 75_000,
+                variable_cost: estimation.estimated_gas - 75_000.min(estimation.estimated_gas),
+            });
+        }
+
+        self.build_batch_estimate(
+            escrow_count,
+            item_estimates,
+            verification_count,
+        )
+    }
+
+    /// Build the final batch estimate from item estimates
+    fn build_batch_estimate(
+        &self,
+        escrow_count: u64,
+        item_estimates: Vec<ItemGasEstimate>,
+        verification_count: u64,
+    ) -> Result<BatchGasEstimate> {
+        let total_items = escrow_count + verification_count;
+
+        // Calculate overhead: fixed batch overhead + per-item overhead
+        let batch_overhead = 10_000u64; // Fixed overhead for dispatching (10K gas)
+        let per_item_overhead = 2_000u64; // Per-item processing overhead (2K gas)
+
+        // Sum item gas estimates
+        let items_total: u64 = item_estimates.iter().map(|e| e.estimated_gas).sum();
+        let total_overhead = batch_overhead + (per_item_overhead * total_items);
+        let total_estimated_gas = items_total + total_overhead;
+
+        // Apply safety margin
+        let safety_margin = (total_estimated_gas as f64 * 0.10) as u64; // 10% safety
+        let recommended_limit = total_estimated_gas + safety_margin;
+
+        // Check if exceeds threshold
+        let threshold_gas = (self.stellar_transaction_max_gas as f64 * self.threshold_percentage / 100.0) as u64;
+        let exceeds_threshold = recommended_limit > threshold_gas;
+
+        let threshold_warning = if exceeds_threshold {
+            Some(format!(
+                "Estimated gas ({}) exceeds {:.0}% of Stellar transaction limit ({}). Consider splitting the batch.",
+                total_estimated_gas,
+                self.threshold_percentage,
+                self.stellar_transaction_max_gas
+            ))
+        } else {
+            None
+        };
+
+        // Calculate suggested splits
+        let suggested_splits = if exceeds_threshold {
+            let gas_per_item = total_estimated_gas / total_items.max(1);
+            let max_items_per_split = threshold_gas / gas_per_item.max(1);
+            let splits = (total_items + max_items_per_split - 1) / max_items_per_split.max(1);
+            splits.max(1)
+        } else {
+            1
+        };
+
+        let estimated_gas_per_split = if exceeds_threshold {
+            total_estimated_gas / suggested_splits
+        } else {
+            total_estimated_gas
+        };
+
+        // Assess risk level
+        let risk_level = self.assess_batch_risk(total_estimated_gas, recommended_limit);
+
+        Ok(BatchGasEstimate {
+            total_items,
+            escrow_releases: escrow_count,
+            verifications: verification_count,
+            item_estimates,
+            total_estimated_gas,
+            batch_overhead,
+            per_item_overhead,
+            recommended_limit,
+            safety_margin,
+            stellar_max_limit: self.stellar_transaction_max_gas,
+            exceeds_recommended_threshold: exceeds_threshold,
+            threshold_warning,
+            risk_level,
+            suggested_splits,
+            estimated_gas_per_split,
+        })
+    }
+
+    /// Assess gas risk for the batch
+    fn assess_batch_risk(&self, estimated_gas: u64, limit: u64) -> GasRiskLevel {
+        let usage_pct = (estimated_gas as f64 / limit as f64) * 100.0;
+        match usage_pct {
+            x if x >= 95.0 => GasRiskLevel::Critical,
+            x if x >= 80.0 => GasRiskLevel::High,
+            x if x >= 60.0 => GasRiskLevel::Medium,
+            _ => GasRiskLevel::Low,
+        }
+    }
+
+    /// Format the batch estimate as a human-readable string for CLI output
+    pub fn format_estimate(estimate: &BatchGasEstimate) -> String {
+        let mut output = String::new();
+        output.push_str(&format!("📊 Batch Gas Estimate\n"));
+        output.push_str(&format!("═══════════════════════════════════\n"));
+        output.push_str(&format!("  Total items:     {}\n", estimate.total_items));
+        output.push_str(&format!("  Escrow releases: {}\n", estimate.escrow_releases));
+        output.push_str(&format!("  Verifications:   {}\n", estimate.verifications));
+        output.push_str(&format!("\n"));
+        output.push_str(&format!("  Item gas total:     {}\n", estimate.total_estimated_gas - estimate.batch_overhead - (estimate.per_item_overhead * estimate.total_items)));
+        output.push_str(&format!("  Batch overhead:     {} (fixed: {}, per-item: {} x {})\n",
+            estimate.batch_overhead + (estimate.per_item_overhead * estimate.total_items),
+            estimate.batch_overhead,
+            estimate.per_item_overhead,
+            estimate.total_items
+        ));
+        output.push_str(&format!("  Total estimated:    {}\n", estimate.total_estimated_gas));
+        output.push_str(&format!("  Safety margin:      {}\n", estimate.safety_margin));
+        output.push_str(&format!("  Recommended limit:  {}\n", estimate.recommended_limit));
+        output.push_str(&format!("  Stellar max limit:  {}\n", estimate.stellar_max_limit));
+        output.push_str(&format!("\n"));
+        output.push_str(&format!("  Risk level: {}\n", match estimate.risk_level {
+            GasRiskLevel::Critical => "🔴 CRITICAL".to_string(),
+            GasRiskLevel::High => "🟠 HIGH".to_string(),
+            GasRiskLevel::Medium => "🟡 MEDIUM".to_string(),
+            GasRiskLevel::Low => "🟢 LOW".to_string(),
+        }));
+
+        if estimate.exceeds_recommended_threshold {
+            output.push_str(&format!("  ⚠️  WARNING: Estimated gas exceeds 90% of Stellar limit!\n"));
+            output.push_str(&format!("  💡  Suggested splits: {} ({} items, ~{} gas each)\n",
+                estimate.suggested_splits,
+                if estimate.total_items > 0 { estimate.total_items / estimate.suggested_splits } else { 0 },
+                estimate.estimated_gas_per_split
+            ));
+        }
+
+        if let Some(ref warning) = estimate.threshold_warning {
+            output.push_str(&format!("  ⚠️  {}\n", warning));
+        }
+
+        output
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

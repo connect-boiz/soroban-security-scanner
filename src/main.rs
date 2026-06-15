@@ -2,7 +2,7 @@
 
 use clap::{Parser, Subcommand};
 use colored::*;
-use stellar_security_scanner::{scanners::{SecurityScanner, InvariantScanner}, analysis::AnalysisResult, report::{SecurityReport, ReportFormat}, config::ScannerConfig, kubernetes::{K8sScanManager, ScanPodConfig, ScanAutoScaler}, time_travel_debugger::{TimeTravelDebugger, TimeTravelConfig, ForkedState, TestResult}, differential_fuzzing::{DifferentialFuzzer, DifferentialFuzzingConfig, SdkVersion}, emergency_stop::{EmergencyStop, StopCommand}};
+use stellar_security_scanner::{scanners::{SecurityScanner, InvariantScanner}, analysis::AnalysisResult, report::{SecurityReport, ReportFormat}, config::ScannerConfig, kubernetes::{K8sScanManager, ScanPodConfig, ScanAutoScaler}, time_travel_debugger::{TimeTravelDebugger, TimeTravelConfig, ForkedState, TestResult}, differential_fuzzing::{DifferentialFuzzer, DifferentialFuzzingConfig, SdkVersion}, emergency_stop::{EmergencyStop, StopCommand}, gas_limits::{BatchGasEstimator, GasLimitConfig, BatchGasEstimate}};
 use std::path::PathBuf;
 use std::time::{Instant, Duration};
 use anyhow::Result;
@@ -360,6 +360,25 @@ enum BatchAction {
         /// User address
         #[arg(short, long)]
         user: String,
+    },
+    
+    /// Estimate gas for a batch operation before execution
+    EstimateGas {
+        /// Number of escrow releases in the batch
+        #[arg(long, default_value = "0")]
+        escrow_count: u64,
+        
+        /// Number of vulnerability verifications in the batch
+        #[arg(long, default_value = "0")]
+        verification_count: u64,
+        
+        /// Batch ID to estimate (overrides escrow_count/verification_count if provided)
+        #[arg(long)]
+        batch_id: Option<u64>,
+        
+        /// Verbose output with per-item breakdown
+        #[arg(short, long)]
+        verbose: bool,
     },
 }
 
@@ -1337,6 +1356,54 @@ fn run_batch_action(action: BatchAction) -> Result<()> {
                 for batch_id in batch_ids.iter() {
                     println!("    📦 Batch ID: {}", batch_id);
                 }
+            }
+        }
+        
+        BatchAction::EstimateGas { escrow_count, verification_count, batch_id, verbose } => {
+            println!("⛽ Estimating batch gas consumption...");
+            
+            let gas_config = GasLimitConfig::default();
+            let estimator = BatchGasEstimator::new(gas_config);
+            
+            // If batch_id is provided, try to fetch batch details for estimation
+            let (est_escrow, est_verification) = if let Some(bid) = batch_id {
+                println!("  Fetching batch {} details...", bid);
+                let summary = BatchOperations::get_batch_summary(env.clone(), bid);
+                println!("  Batch total items: {}", summary.total_items);
+                (summary.total_items / 2, summary.total_items / 2)
+            } else {
+                (escrow_count, verification_count)
+            };
+            
+            if est_escrow == 0 && est_verification == 0 {
+                eprintln!("❌ Error: Must specify at least one operation type or a batch ID");
+                return Err(anyhow::anyhow!("No operations to estimate"));
+            }
+            
+            let estimate = if est_escrow > 0 && est_verification > 0 {
+                estimator.estimate_mixed_batch(est_escrow, est_verification)?
+            } else if est_escrow > 0 {
+                estimator.estimate_escrow_release_batch(est_escrow)?
+            } else {
+                estimator.estimate_verification_batch(est_verification)?
+            };
+            
+            println!("{}", BatchGasEstimator::format_estimate(&estimate));
+            
+            if verbose {
+                println!("  Per-item breakdown:");
+                for item in &estimate.item_estimates {
+                    println!("    Item {}: {:?} — {} gas", item.item_index, item.operation_type, item.estimated_gas);
+                }
+            }
+            
+            // Suggest split if needed
+            if estimate.exceeds_recommended_threshold {
+                println!("  💡 Recommendation: Split into {} batches of ~{} items each",
+                    estimate.suggested_splits,
+                    estimate.total_items / estimate.suggested_splits);
+            } else {
+                println!("  ✅ Batch gas estimate is within safe limits");
             }
         }
     }
