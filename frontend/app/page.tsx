@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState, useEffect } from 'react';
+import { Suspense, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { SectionErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { 
@@ -132,17 +132,12 @@ export default function App() {
   const [selectedSubmission, setSelectedSubmission] = useState<BountySubmissionType | null>(null);
   const [disputes, setDisputes] = useState<DisputeData[]>([]);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isClient, setIsClient] = useState(false);
 
   const { 
     setActiveTour, 
     helpPanelTopic, 
     setHelpPanelTopic 
   } = useHelpStore();
-
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
 
   const handleBountySelect = (bounty: Bounty) => {
     setSelectedBounty(bounty);
@@ -264,8 +259,6 @@ export default function App() {
         return null;
     }
   };
-
-  if (!isClient) return null;
 
   return (
     <div className="min-h-screen bg-gray-50">
