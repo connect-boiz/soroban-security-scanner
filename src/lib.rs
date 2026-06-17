@@ -33,7 +33,17 @@ pub use session::stateless::{
 };
 pub use time_travel_debugger::{
     TimeTravelDebugger, TimeTravelConfig, LedgerSnapshot, ContractState, 
-    ForkedState, TestResult, UpgradeSimulationResult, CacheStats
+    ForkedState, TestResult, UpgradeSimulationResult, CacheStats,
+    AccessController, UserRole, UserContext, UserTier, Permission,
+    ApprovalRequest, ApprovalStatus, PermissionCheck,
+    AuditLogger, AuditEntry, AuditOperation, AuditLogQuery, AuditLogSummary,
+    RateLimiter, RateLimitConfig, RateLimitStatus,
+    DataRetentionManager, RetentionPolicy, StoredDataType, StorageUsage,
+    RetentionCleanupReport,
+    DataEncryptor, EncryptionConfig, EncryptionAlgorithm, EncryptedData,
+    QuotaManager, QuotaConfig, QuotaOperation, QuotaStatus, UserQuotaState,
+    MonitoringEngine, MonitoringConfig, SuspiciousPattern, SuspiciousPatternType,
+    SuspiciousSeverity, UserPatternSummary,
 };
 pub use differential_fuzzing::{
     DifferentialFuzzer, DifferentialFuzzingConfig, DifferentialFuzzingReport,

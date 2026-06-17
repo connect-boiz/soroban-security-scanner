@@ -3,7 +3,7 @@
 //! This module provides functionality to "fork" the current Stellar Mainnet state at a specific 
 //! ledger sequence to test contracts against live data while maintaining read-only access.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use anyhow::{Result, anyhow};
@@ -13,10 +13,25 @@ use lru::LruCache;
 use reqwest::Client;
 use soroban_sdk::xdr::{ScVal, LedgerKey, ContractDataEntry, ContractCodeLedgerKey};
 
+use access_control::{AccessController, UserContext, UserRole, UserTier, Permission, ApprovalStatus};
+use audit_log::{AuditLogger, AuditOperation, AuditLogQuery, AuditLogSummary};
+use rate_limiter::{RateLimiter, RateLimitConfig, RateLimitStatus};
+use data_retention::{DataRetentionManager, RetentionPolicy, StoredDataType, RetentionCleanupReport, StorageUsage};
+use encryption::{DataEncryptor, EncryptionConfig, EncryptedData};
+use quota::{QuotaManager, QuotaConfig, QuotaOperation, QuotaStatus};
+use monitoring::{MonitoringEngine, MonitoringConfig, SuspiciousPattern, SuspiciousPatternType, UserPatternSummary};
+
 mod state_injection;
 mod contract_upgrade;
 mod orphaned_state;
 mod cache;
+mod access_control;
+mod audit_log;
+mod rate_limiter;
+mod data_retention;
+mod encryption;
+mod quota;
+mod monitoring;
 
 #[cfg(test)]
 mod tests;
@@ -25,6 +40,22 @@ pub use state_injection::StateInjector;
 pub use contract_upgrade::ContractUpgradeSimulator;
 pub use orphaned_state::OrphanedStateTracker;
 pub use cache::StateCache;
+pub use access_control::{
+    AccessController, UserRole, UserContext, UserTier, Permission, PermissionCheck,
+    ApprovalRequest, ApprovalStatus,
+};
+pub use audit_log::{AuditLogger, AuditEntry, AuditOperation, AuditLogQuery, AuditLogSummary};
+pub use rate_limiter::{RateLimiter, RateLimitConfig, RateLimitStatus};
+pub use data_retention::{
+    DataRetentionManager, RetentionPolicy, StoredDataType, StorageUsage,
+    RetentionCleanupReport,
+};
+pub use encryption::{DataEncryptor, EncryptionConfig, EncryptionAlgorithm, EncryptedData};
+pub use quota::{QuotaManager, QuotaConfig, QuotaOperation, QuotaStatus, UserQuotaState, UserTier as QuotaUserTier};
+pub use monitoring::{
+    MonitoringEngine, MonitoringConfig, SuspiciousPattern, SuspiciousPatternType,
+    SuspiciousSeverity, AccessPattern, UserPatternSummary,
+};
 
 /// Configuration for the Time Travel Debugger
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -39,6 +70,28 @@ pub struct TimeTravelConfig {
     pub request_timeout: u64,
     /// Maximum retry attempts for failed requests
     pub max_retries: u32,
+    /// Rate limit configuration
+    pub rate_limit_config: RateLimitConfig,
+    /// Retention policy for historical data
+    pub retention_policy: RetentionPolicy,
+    /// Encryption configuration
+    pub encryption_config: EncryptionConfig,
+    /// Monitoring configuration
+    pub monitoring_config: MonitoringConfig,
+    /// Maximum audit log entries
+    pub max_audit_log_entries: usize,
+    /// Enable access control
+    pub access_control_enabled: bool,
+    /// Enable audit logging
+    pub audit_logging_enabled: bool,
+    /// Enable rate limiting
+    pub rate_limiting_enabled: bool,
+    /// Enable data encryption
+    pub encryption_enabled: bool,
+    /// Enable quota management
+    pub quotas_enabled: bool,
+    /// Enable suspicious access monitoring
+    pub monitoring_enabled: bool,
 }
 
 impl Default for TimeTravelConfig {
@@ -49,6 +102,17 @@ impl Default for TimeTravelConfig {
             cache_size: 10000,
             request_timeout: 30,
             max_retries: 3,
+            rate_limit_config: RateLimitConfig::moderate(),
+            retention_policy: RetentionPolicy::default(),
+            encryption_config: EncryptionConfig::default(),
+            monitoring_config: MonitoringConfig::default(),
+            max_audit_log_entries: 10000,
+            access_control_enabled: true,
+            audit_logging_enabled: true,
+            rate_limiting_enabled: true,
+            encryption_enabled: true,
+            quotas_enabled: true,
+            monitoring_enabled: true,
         }
     }
 }
@@ -94,6 +158,14 @@ pub struct TimeTravelDebugger {
     state_injector: StateInjector,
     upgrade_simulator: ContractUpgradeSimulator,
     orphaned_tracker: OrphanedStateTracker,
+    access_controller: AccessController,
+    audit_logger: AuditLogger,
+    rate_limiter: RateLimiter,
+    data_retention: DataRetentionManager,
+    encryptor: DataEncryptor,
+    quota_manager: QuotaManager,
+    monitoring_engine: MonitoringEngine,
+    admin_key: Arc<RwLock<Option<Vec<u8>>>>,
 }
 
 impl TimeTravelDebugger {
@@ -117,6 +189,14 @@ impl TimeTravelDebugger {
         let upgrade_simulator = ContractUpgradeSimulator::new(config.clone());
         let orphaned_tracker = OrphanedStateTracker::new();
 
+        let access_controller = AccessController::new();
+        let audit_logger = AuditLogger::new(config.max_audit_log_entries);
+        let rate_limiter = RateLimiter::new(config.rate_limit_config.clone());
+        let data_retention = DataRetentionManager::new(config.retention_policy.clone());
+        let encryptor = DataEncryptor::new(config.encryption_config.clone());
+        let quota_manager = QuotaManager::new();
+        let monitoring_engine = MonitoringEngine::new(config.monitoring_config.clone());
+
         Ok(Self {
             config,
             http_client,
@@ -125,6 +205,14 @@ impl TimeTravelDebugger {
             state_injector,
             upgrade_simulator,
             orphaned_tracker,
+            access_controller,
+            audit_logger,
+            rate_limiter,
+            data_retention,
+            encryptor,
+            quota_manager,
+            monitoring_engine,
+            admin_key: Arc::new(RwLock::new(None)),
         })
     }
 
@@ -314,6 +402,315 @@ impl TimeTravelDebugger {
             max_ledgers: 1000,
         }
     }
+
+    // ============================================================
+    // Security & Access Control Methods
+    // ============================================================
+
+    pub async fn set_admin_key(&self, key: &[u8]) -> Result<()> {
+        let mut admin_key = self.admin_key.write().await;
+        *admin_key = Some(key.to_vec());
+        Ok(())
+    }
+
+    pub async fn initialize_encryption(&self, key: &[u8]) -> Result<()> {
+        if !self.config.encryption_enabled {
+            return Ok(());
+        }
+        self.encryptor.initialize(key).await
+    }
+
+    pub async fn authorize_operation(
+        &self,
+        user: &UserContext,
+        permission: &Permission,
+        contract_id: Option<&str>,
+        ledger_sequence: Option<u32>,
+    ) -> Result<()> {
+        if !self.config.access_control_enabled {
+            return Ok(());
+        }
+
+        let check = self.access_controller
+            .check_permission(user, permission, contract_id, ledger_sequence)
+            .await?;
+
+        if !check.allowed {
+            let reason = check.reason.clone().unwrap_or_default();
+            self.audit_logger
+                .log_permission_denied(
+                    &user.user_id,
+                    user.roles.iter().map(|r| format!("{:?}", r)).collect(),
+                    &format!("{:?}", permission),
+                    &reason,
+                )
+                .await;
+            return Err(anyhow!("Access denied: {}", reason));
+        }
+
+        Ok(())
+    }
+
+    pub async fn check_rate_limit(&self, user_id: &str) -> Result<RateLimitStatus> {
+        if !self.config.rate_limiting_enabled {
+            return Ok(RateLimitStatus {
+                allowed: true,
+                remaining_requests: u32::MAX,
+                retry_after_seconds: 0,
+                current_concurrent: 0,
+                max_concurrent: u32::MAX,
+            });
+        }
+
+        let status = self.rate_limiter.check_rate_limit(user_id).await;
+        if !status.allowed {
+            self.audit_logger
+                .log(
+                    user_id,
+                    Vec::new(),
+                    AuditOperation::RateLimitExceeded,
+                    "rate_limit",
+                    None,
+                    None,
+                    false,
+                    &format!("Rate limit exceeded. Retry after {}s", status.retry_after_seconds),
+                )
+                .await;
+        }
+        Ok(status)
+    }
+
+    pub async fn check_quota(
+        &self,
+        user_id: &str,
+        tier: &UserTier,
+        operation: &QuotaOperation,
+    ) -> Result<QuotaStatus> {
+        if !self.config.quotas_enabled {
+            return Ok(QuotaStatus {
+                operation: operation.clone(),
+                used: 0,
+                limit: u32::MAX,
+                remaining: u32::MAX,
+                resets_in_seconds: 0,
+                allowed: true,
+            });
+        }
+
+        let status = self.quota_manager.check_quota(user_id, tier, operation).await;
+        if !status.allowed {
+            self.audit_logger
+                .log(
+                    user_id,
+                    Vec::new(),
+                    AuditOperation::QuotaExceeded,
+                    &format!("{:?}", operation),
+                    None,
+                    None,
+                    false,
+                    &format!("Quota exceeded for {:?}: {}/{}", operation, status.used, status.limit),
+                )
+                .await;
+        }
+        Ok(status)
+    }
+
+    pub async fn record_quota_usage(
+        &self,
+        user_id: &str,
+        tier: &UserTier,
+        operation: &QuotaOperation,
+    ) -> QuotaStatus {
+        self.quota_manager.record_operation(user_id, tier, operation).await
+    }
+
+    pub async fn audit_log(
+        &self,
+        user_id: &str,
+        user_roles: Vec<String>,
+        operation: AuditOperation,
+        resource: &str,
+        ledger_sequence: Option<u32>,
+        contract_id: Option<&str>,
+        success: bool,
+        details: &str,
+    ) {
+        if self.config.audit_logging_enabled {
+            self.audit_logger
+                .log(
+                    user_id,
+                    user_roles,
+                    operation,
+                    resource,
+                    ledger_sequence,
+                    contract_id,
+                    success,
+                    details,
+                )
+                .await;
+        }
+    }
+
+    pub async fn monitor_access(
+        &self,
+        user_id: &str,
+        operation: &str,
+        contract_id: Option<&str>,
+        ledger_sequence: Option<u32>,
+    ) -> Option<SuspiciousPattern> {
+        if !self.config.monitoring_enabled {
+            return None;
+        }
+        self.monitoring_engine
+            .record_access(user_id, operation, contract_id, ledger_sequence, None)
+            .await
+    }
+
+    pub async fn check_concurrent_forks(&self, user_id: &str, tier: &UserTier) -> bool {
+        if !self.config.quotas_enabled {
+            return true;
+        }
+        self.quota_manager.check_concurrent_forks(user_id, tier).await
+    }
+
+    pub async fn track_active_fork(&self, user_id: &str, start: bool) {
+        if self.config.quotas_enabled {
+            self.quota_manager.track_active_fork(user_id, start).await;
+        }
+    }
+
+    // ============================================================
+    // Audit Log Methods
+    // ============================================================
+
+    pub async fn query_audit_logs(&self, query: &AuditLogQuery) -> Vec<AuditEntry> {
+        self.audit_logger.query(query).await
+    }
+
+    pub async fn get_audit_log_summary(&self) -> AuditLogSummary {
+        self.audit_logger.get_summary().await
+    }
+
+    // ============================================================
+    // Access Control Management Methods
+    // ============================================================
+
+    pub async fn register_contract_owner(
+        &self,
+        contract_id: &str,
+        owner_id: &str,
+    ) -> Result<()> {
+        self.access_controller
+            .register_contract_owner(contract_id, owner_id)
+            .await
+    }
+
+    pub async fn request_approval(
+        &self,
+        requester_id: &str,
+        operation: &str,
+        contract_id: Option<&str>,
+        ledger_sequence: Option<u32>,
+        reason: &str,
+    ) -> Result<ApprovalRequest> {
+        self.access_controller
+            .request_approval(requester_id, operation, contract_id, ledger_sequence, reason)
+            .await
+    }
+
+    pub async fn resolve_approval(
+        &self,
+        approval_id: &str,
+        resolver_id: &str,
+        approved: bool,
+    ) -> Result<()> {
+        self.access_controller
+            .resolve_approval(approval_id, resolver_id, approved)
+            .await
+    }
+
+    pub async fn check_approval_status(&self, approval_id: &str) -> Option<ApprovalStatus> {
+        self.access_controller.check_approval_status(approval_id).await
+    }
+
+    pub async fn get_pending_approvals(&self) -> Vec<ApprovalRequest> {
+        self.access_controller.get_pending_approvals().await
+    }
+
+    // ============================================================
+    // Data Retention Methods
+    // ============================================================
+
+    pub async fn perform_retention_cleanup(&self) -> RetentionCleanupReport {
+        self.data_retention.perform_cleanup().await
+    }
+
+    pub async fn get_storage_usage(&self) -> StorageUsage {
+        self.data_retention.get_storage_usage().await
+    }
+
+    pub async fn update_retention_policy(&self, policy: RetentionPolicy) -> Result<()> {
+        self.data_retention.update_retention_policy(policy).await
+    }
+
+    pub async fn get_retention_policy(&self) -> RetentionPolicy {
+        self.data_retention.get_retention_policy().await
+    }
+
+    // ============================================================
+    // Encryption Methods
+    // ============================================================
+
+    pub async fn encrypt_state_data(&self, data: &[u8]) -> Result<EncryptedData> {
+        if !self.config.encryption_enabled {
+            return Err(anyhow!("Encryption is disabled"));
+        }
+        self.encryptor.encrypt(data).await
+    }
+
+    pub async fn decrypt_state_data(&self, encrypted: &EncryptedData) -> Result<Vec<u8>> {
+        if !self.config.encryption_enabled {
+            return Err(anyhow!("Encryption is disabled"));
+        }
+        self.encryptor.decrypt(encrypted).await
+    }
+
+    pub async fn rotate_encryption_key(&self, new_key: &[u8]) -> Result<()> {
+        self.encryptor.rotate_key(new_key).await
+    }
+
+    // ============================================================
+    // Monitoring Methods
+    // ============================================================
+
+    pub async fn get_suspicious_events(
+        &self,
+        min_severity: Option<SuspiciousSeverity>,
+        limit: usize,
+    ) -> Vec<SuspiciousPattern> {
+        self.monitoring_engine
+            .get_suspicious_events(min_severity, limit)
+            .await
+    }
+
+    pub async fn get_user_pattern_summary(
+        &self,
+        user_id: &str,
+    ) -> Option<UserPatternSummary> {
+        self.monitoring_engine.get_user_pattern_summary(user_id).await
+    }
+
+    pub async fn should_alert(&self) -> bool {
+        self.monitoring_engine.should_alert().await
+    }
+
+    // ============================================================
+    // Quota Methods
+    // ============================================================
+
+    pub async fn get_user_quota_usage(&self, user_id: &str) -> Option<quota::UserQuotaState> {
+        self.quota_manager.get_usage(user_id).await
+    }
 }
 
 /// Represents a forked network state for testing
@@ -385,32 +782,4 @@ pub struct CacheStats {
     pub max_ledgers: usize,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
 
-    #[tokio::test]
-    async fn test_time_travel_debugger_creation() {
-        let config = TimeTravelConfig::default();
-        let debugger = TimeTravelDebugger::new(config).await;
-        assert!(debugger.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_ledger_snapshot_serialization() {
-        let snapshot = LedgerSnapshot {
-            ledger_sequence: 100000,
-            ledger_hash: "abcd1234".to_string(),
-            close_time: 1640995200,
-            protocol_version: 20,
-            operation_count: 10,
-            base_fee: 100,
-            base_reserve: 5000000,
-        };
-
-        let serialized = serde_json::to_string(&snapshot).unwrap();
-        let deserialized: LedgerSnapshot = serde_json::from_str(&serialized).unwrap();
-        
-        assert_eq!(snapshot, deserialized);
-    }
-}
