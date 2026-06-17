@@ -42,3 +42,4 @@ stellar-scanner.toml
 # Documentation files that are part of the repo template
 PULL_REQUEST_TEMPLATE.md
 whitelist.md
+node_modules

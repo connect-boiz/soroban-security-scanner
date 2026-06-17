@@ -29,4 +29,9 @@ module.exports = defineConfig({
       maxDiffPixelRatio: 0.02,
     },
   },
+  webServer: {
+    command: 'node tests/e2e/server.js',
+    port: 3000,
+    reuseExistingServer: !process.env.CI,
+  },
 });
