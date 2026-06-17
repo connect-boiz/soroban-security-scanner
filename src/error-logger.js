@@ -80,27 +80,37 @@ class ErrorLogger {
   }
 
   /** @param {string} message @param {Record<string, unknown>} [context] */
-  debug(message, context) { this._log('debug', message, { context }); }
+  debug(message, context) {
+    this._log('debug', message, { context });
+  }
 
   /** @param {string} message @param {Record<string, unknown>} [context] */
-  info(message, context) { this._log('info', message, { context }); }
+  info(message, context) {
+    this._log('info', message, { context });
+  }
 
   /** @param {string} message @param {Record<string, unknown>} [context] */
-  warn(message, context) { this._log('warn', message, { context }); }
+  warn(message, context) {
+    this._log('warn', message, { context });
+  }
 
   /**
    * @param {string} message
    * @param {unknown} error
    * @param {Record<string, unknown>} [context]
    */
-  error(message, error, context) { this._log('error', message, { error, context }); }
+  error(message, error, context) {
+    this._log('error', message, { error, context });
+  }
 
   /**
    * @param {string} message
    * @param {unknown} error
    * @param {Record<string, unknown>} [context]
    */
-  fatal(message, error, context) { this._log('fatal', message, { error, context }); }
+  fatal(message, error, context) {
+    this._log('fatal', message, { error, context });
+  }
 
   /**
    * Capture an unhandled exception.

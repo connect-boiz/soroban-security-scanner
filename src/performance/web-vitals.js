@@ -12,8 +12,8 @@ const PERFORMANCE_BUDGETS = {
   TTFB: { good: 800, needsImprovement: 1800 },
   // Resource budgets
   totalBundleSize: 500 * 1024, // 500KB
-  imageSize: 200 * 1024,       // 200KB per image
-  scriptSize: 150 * 1024,      // 150KB per script
+  imageSize: 200 * 1024, // 200KB per image
+  scriptSize: 150 * 1024, // 150KB per script
 };
 
 /**
