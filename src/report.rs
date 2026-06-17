@@ -2,6 +2,7 @@
 
 use crate::analysis::AnalysisResult;
 use crate::ScanResult;
+use crate::error::{ScannerResult, ScannerError};
 use colored::*;
 use serde_json;
 use std::fs;
@@ -24,7 +25,7 @@ impl SecurityReport {
         Self { format }
     }
 
-    pub fn generate(&self, analysis: &AnalysisResult, output_path: Option<&Path>) -> anyhow::Result<()> {
+    pub fn generate(&self, analysis: &AnalysisResult, output_path: Option<&Path>) -> ScannerResult<()> {
         match self.format {
             ReportFormat::Console => self.generate_console_report(analysis),
             ReportFormat::Json => self.generate_json_report(analysis, output_path),
@@ -33,7 +34,7 @@ impl SecurityReport {
         }
     }
 
-    fn generate_console_report(&self, analysis: &AnalysisResult) -> anyhow::Result<()> {
+    fn generate_console_report(&self, analysis: &AnalysisResult) -> ScannerResult<()> {
         println!("\n{}", "🔍 STELLAR SECURITY SCAN REPORT".bold().cyan());
         println!("{}", "═".repeat(50).cyan());
 
@@ -160,12 +161,14 @@ impl SecurityReport {
         }
     }
 
-    fn generate_json_report(&self, analysis: &AnalysisResult, output_path: Option<&Path>) -> anyhow::Result<()> {
-        let json = serde_json::to_string_pretty(analysis)?;
+    fn generate_json_report(&self, analysis: &AnalysisResult, output_path: Option<&Path>) -> ScannerResult<()> {
+        let json = serde_json::to_string_pretty(analysis)
+            .map_err(|e| ScannerError::config_with_source("Failed to serialize JSON report", Box::new(e)))?;
         
         match output_path {
             Some(path) => {
-                fs::write(path, json)?;
+                fs::write(path, json)
+                    .map_err(|e| ScannerError::file_operation("write", &path.to_string_lossy(), e))?;
                 println!("JSON report saved to: {}", path.display());
             }
             None => {
@@ -176,12 +179,13 @@ impl SecurityReport {
         Ok(())
     }
 
-    fn generate_html_report(&self, analysis: &AnalysisResult, output_path: Option<&Path>) -> anyhow::Result<()> {
+    fn generate_html_report(&self, analysis: &AnalysisResult, output_path: Option<&Path>) -> ScannerResult<()> {
         let html = self.create_html_content(analysis);
         
         match output_path {
             Some(path) => {
-                fs::write(path, html)?;
+                fs::write(path, html)
+                    .map_err(|e| ScannerError::file_operation("write", &path.to_string_lossy(), e))?;
                 println!("HTML report saved to: {}", path.display());
             }
             None => {
@@ -354,12 +358,13 @@ impl SecurityReport {
         html
     }
 
-    fn generate_markdown_report(&self, analysis: &AnalysisResult, output_path: Option<&Path>) -> anyhow::Result<()> {
+    fn generate_markdown_report(&self, analysis: &AnalysisResult, output_path: Option<&Path>) -> ScannerResult<()> {
         let markdown = self.create_markdown_content(analysis);
         
         match output_path {
             Some(path) => {
-                fs::write(path, markdown)?;
+                fs::write(path, markdown)
+                    .map_err(|e| ScannerError::file_operation("write", &path.to_string_lossy(), e))?;
                 println!("Markdown report saved to: {}", path.display());
             }
             None => {

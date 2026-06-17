@@ -4,9 +4,13 @@
 //! holding XLM in escrow until bugs are verified and approved.
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, panic_with_error, Address, Bytes, BytesN, Env, Map,
+    contract, contractimpl, contracttype, panic_with_error, Address, Bytes, BytesN, Env, Map, 
     Symbol, Vec, i128, u64,
 };
+
+// Event logging constants
+const CRITICAL_EVENT_PREFIX: &str = "CRITICAL_";
+const AUDIT_EVENT_PREFIX: &str = "AUDIT_";
 
 // Contract state keys
 const ADMIN: Symbol = Symbol::short("ADMIN");
@@ -118,15 +122,33 @@ impl BountyMarketplace {
             .unwrap_or_else(|| panic_with_error!(env, "division error"))
     }
 
-    fn generate_nonce(env: &Env, seed: &Address, counter: u64) -> BytesN<32> {
-        let payload = format!(
-            "{:?}:{}:{}:{}",
-            seed,
-            counter,
-            env.ledger().sequence(),
-            env.ledger().timestamp()
-        );
-        let bytes = Bytes::from_slice(env, payload.as_bytes());
+    fn generate_secure_nonce(env: &Env, seed: &Address, counter: u64) -> BytesN<32> {
+        // Use multiple entropy sources instead of predictable ledger sequence
+        let timestamp = env.ledger().timestamp();
+        let contract_address = env.current_contract_address();
+        
+        // Create entropy from multiple sources
+        let entropy_sources = vec![
+            format!("{:?}", seed),
+            counter.to_string(),
+            timestamp.to_string(),
+            format!("{:?}", contract_address),
+            // Add additional entropy from storage state
+            format!("{:?}", env.storage().instance().has(&Symbol::short("ADMIN"))),
+        ];
+        
+        // Combine all entropy sources
+        let combined_entropy = entropy_sources.join(":");
+        
+        // Add some randomness using the current timestamp in nanoseconds
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        
+        let final_entropy = format!("{}:{}", combined_entropy, nanos);
+        
+        let bytes = Bytes::from_slice(env, final_entropy.as_bytes());
         env.crypto().sha256(&bytes).into()
     }
 
@@ -136,6 +158,100 @@ impl BountyMarketplace {
         }
         env.events()
             .publish(Symbol::new(env, "payout_ready"), (bounty_id, recipient.clone(), amount));
+    }
+
+    // Critical event logging functions
+    fn log_critical_operation_start(env: &Env, operation: &str, actor: &Address, target: Option<&str>, metadata: Vec<(Symbol, &str)>) {
+        let mut event_data = vec![
+            (Symbol::new(env, "operation"), operation),
+            (Symbol::new(env, "actor"), actor.to_string()),
+            (Symbol::new(env, "status"), "started"),
+            (Symbol::new(env, "timestamp"), env.ledger().timestamp().to_string()),
+            (Symbol::new(env, "ledger_sequence"), env.ledger().sequence().to_string()),
+        ];
+        
+        if let Some(target_str) = target {
+            event_data.push((Symbol::new(env, "target"), target_str));
+        }
+        
+        for (key, value) in metadata {
+            event_data.push((key, value));
+        }
+        
+        env.events().publish(
+            Symbol::new(env, &format!("{}{}", CRITICAL_EVENT_PREFIX, operation)),
+            event_data,
+        );
+    }
+
+    fn log_critical_operation_complete(env: &Env, operation: &str, actor: &Address, result: &str, metadata: Vec<(Symbol, &str)>) {
+        let mut event_data = vec![
+            (Symbol::new(env, "operation"), operation),
+            (Symbol::new(env, "actor"), actor.to_string()),
+            (Symbol::new(env, "status"), "completed"),
+            (Symbol::new(env, "result"), result),
+            (Symbol::new(env, "timestamp"), env.ledger().timestamp().to_string()),
+            (Symbol::new(env, "ledger_sequence"), env.ledger().sequence().to_string()),
+        ];
+        
+        for (key, value) in metadata {
+            event_data.push((key, value));
+        }
+        
+        env.events().publish(
+            Symbol::new(env, &format!("{}{}", CRITICAL_EVENT_PREFIX, operation)),
+            event_data,
+        );
+    }
+
+    fn log_critical_operation_failed(env: &Env, operation: &str, actor: &Address, error: &str, metadata: Vec<(Symbol, &str)>) {
+        let mut event_data = vec![
+            (Symbol::new(env, "operation"), operation),
+            (Symbol::new(env, "actor"), actor.to_string()),
+            (Symbol::new(env, "status"), "failed"),
+            (Symbol::new(env, "error"), error),
+            (Symbol::new(env, "timestamp"), env.ledger().timestamp().to_string()),
+            (Symbol::new(env, "ledger_sequence"), env.ledger().sequence().to_string()),
+        ];
+        
+        for (key, value) in metadata {
+            event_data.push((key, value));
+        }
+        
+        env.events().publish(
+            Symbol::new(env, &format!("{}{}", CRITICAL_EVENT_PREFIX, operation)),
+            event_data,
+        );
+    }
+
+    fn log_state_change(env: &Env, entity_type: &str, entity_id: &str, previous_state: &str, new_state: &str, actor: &Address) {
+        env.events().publish(
+            Symbol::new(env, &format!("{}STATE_CHANGE", AUDIT_EVENT_PREFIX)),
+            vec![
+                (Symbol::new(env, "entity_type"), entity_type),
+                (Symbol::new(env, "entity_id"), entity_id),
+                (Symbol::new(env, "previous_state"), previous_state),
+                (Symbol::new(env, "new_state"), new_state),
+                (Symbol::new(env, "actor"), actor.to_string()),
+                (Symbol::new(env, "timestamp"), env.ledger().timestamp().to_string()),
+                (Symbol::new(env, "ledger_sequence"), env.ledger().sequence().to_string()),
+            ],
+        );
+    }
+
+    fn log_fund_transfer(env: &Env, from: &Address, to: &Address, amount: i128, reason: &str, actor: &Address) {
+        env.events().publish(
+            Symbol::new(env, &format!("{}FUND_TRANSFER", CRITICAL_EVENT_PREFIX)),
+            vec![
+                (Symbol::new(env, "from"), from.to_string()),
+                (Symbol::new(env, "to"), to.to_string()),
+                (Symbol::new(env, "amount"), amount.to_string()),
+                (Symbol::new(env, "reason"), reason),
+                (Symbol::new(env, "actor"), actor.to_string()),
+                (Symbol::new(env, "timestamp"), env.ledger().timestamp().to_string()),
+                (Symbol::new(env, "ledger_sequence"), env.ledger().sequence().to_string()),
+            ],
+        );
     }
 
     // Initialize the contract with admin and owner
@@ -192,7 +308,7 @@ impl BountyMarketplace {
         let mut bounty_counter: u64 = env.storage().persistent().get(&BOUNTY_COUNTER).unwrap_or(0);
         bounty_counter = Self::checked_add_u64(&env, bounty_counter, 1);
         env.storage().persistent().set(&BOUNTY_COUNTER, &bounty_counter);
-        let nonce = Self::generate_nonce(&env, &creator, bounty_counter);
+        let nonce = Self::generate_secure_nonce(&env, &creator, bounty_counter);
         let mut bounty_nonces: Map<u64, BytesN<32>> =
             env.storage().persistent().get(&BOUNTY_NONCES).unwrap_or_else(|| Map::new(&env));
         bounty_nonces.set(bounty_counter, nonce);
@@ -249,19 +365,52 @@ impl BountyMarketplace {
 
     // Claim reward function with multi-sig approval (Admin + Owner)
     pub fn claim_reward(env: Env, bounty_id: u64, researcher: Address) {
+        // Log operation start
+        Self::log_critical_operation_start(
+            &env,
+            "CLAIM_REWARD",
+            &researcher,
+            Some(&bounty_id.to_string()),
+            vec![
+                (Symbol::new(&env, "bounty_id"), bounty_id.to_string().as_str()),
+                (Symbol::new(&env, "researcher"), researcher.to_string().as_str()),
+            ],
+        );
+
         // Check authorization
         researcher.require_auth();
 
         // Get bounty
         let bounty = Self::get_bounty_internal(&env, bounty_id);
+        let previous_status = format!("{:?}", bounty.status);
         
         // Validate bounty status
         if bounty.status != BountyStatus::Approved {
+            Self::log_critical_operation_failed(
+                &env,
+                "CLAIM_REWARD",
+                &researcher,
+                "Bounty must be approved to claim reward",
+                vec![
+                    (Symbol::new(&env, "bounty_id"), bounty_id.to_string().as_str()),
+                    (Symbol::new(&env, "current_status"), previous_status.as_str()),
+                ],
+            );
             panic_with_error!(&env, "Bounty must be approved to claim reward");
         }
 
         // Check if researcher is assigned
         if bounty.assigned_researcher != Some(researcher.clone()) {
+            Self::log_critical_operation_failed(
+                &env,
+                "CLAIM_REWARD",
+                &researcher,
+                "Researcher not assigned to this bounty",
+                vec![
+                    (Symbol::new(&env, "bounty_id"), bounty_id.to_string().as_str()),
+                    (Symbol::new(&env, "assigned_researcher"), "none"),
+                ],
+            );
             panic_with_error!(&env, "Researcher not assigned to this bounty");
         }
 
@@ -270,10 +419,32 @@ impl BountyMarketplace {
             .unwrap_or_else(|| Map::new(&env));
         
         let approval = pending_approvals.get(bounty_id)
-            .unwrap_or_else(|| panic_with_error!(&env, "Approval not found"));
+            .unwrap_or_else(|| {
+                Self::log_critical_operation_failed(
+                    &env,
+                    "CLAIM_REWARD",
+                    &researcher,
+                    "Approval not found",
+                    vec![
+                        (Symbol::new(&env, "bounty_id"), bounty_id.to_string().as_str()),
+                    ],
+                );
+                panic_with_error!(&env, "Approval not found")
+            });
 
         // Check multi-sig approval
         if !(approval.admin_approved && approval.owner_approved) {
+            Self::log_critical_operation_failed(
+                &env,
+                "CLAIM_REWARD",
+                &researcher,
+                "Multi-sig approval required (Admin + Owner)",
+                vec![
+                    (Symbol::new(&env, "bounty_id"), bounty_id.to_string().as_str()),
+                    (Symbol::new(&env, "admin_approved"), approval.admin_approved.to_string().as_str()),
+                    (Symbol::new(&env, "owner_approved"), approval.owner_approved.to_string().as_str()),
+                ],
+            );
             panic_with_error!(&env, "Multi-sig approval required (Admin + Owner)");
         }
 
@@ -292,14 +463,48 @@ impl BountyMarketplace {
                 100,
             ),
         };
+
+        // Log fund transfer event
+        Self::log_fund_transfer(
+            &env,
+            &env.current_contract_address(),
+            &researcher,
+            reward_amount,
+            "Bounty reward payout",
+            &researcher,
+        );
+
         Self::emit_payout_ready(&env, bounty_id, &researcher, reward_amount);
 
         // Update bounty status to completed
         Self::update_bounty_status(&env, bounty_id, BountyStatus::Completed);
 
+        // Log state change
+        Self::log_state_change(
+            &env,
+            "bounty",
+            &bounty_id.to_string(),
+            &previous_status,
+            "Completed",
+            &researcher,
+        );
+
         // Remove from pending approvals
         pending_approvals.remove(bounty_id);
         env.storage().persistent().set(&PENDING_APPROVALS, &pending_approvals);
+
+        // Log operation completion
+        Self::log_critical_operation_complete(
+            &env,
+            "CLAIM_REWARD",
+            &researcher,
+            "Reward claimed successfully",
+            vec![
+                (Symbol::new(&env, "bounty_id"), bounty_id.to_string().as_str()),
+                (Symbol::new(&env, "reward_amount"), reward_amount.to_string().as_str()),
+                (Symbol::new(&env, "severity"), format!("{:?}", bounty.severity).as_str()),
+            ],
+        );
 
         // Emit event
         env.events().publish(

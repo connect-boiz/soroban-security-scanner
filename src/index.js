@@ -10,13 +10,13 @@ const SecurityReporter = require('./reporters/security-reporter');
 let emergencyStopActive = false;
 const emergencyStop = {
   isActive: () => emergencyStopActive,
-  trigger: reason => {
+  trigger: (reason) => {
     emergencyStopActive = true;
     console.log(chalk.red(`🛑 EMERGENCY STOP TRIGGERED: ${reason}`));
   },
   reset: () => {
     emergencyStopActive = false;
-  },
+  }
 };
 
 // Setup signal handlers for graceful shutdown
@@ -52,19 +52,19 @@ program
         console.log(chalk.yellow('🛑 Emergency stop system enabled'));
       }
 
+
       const detector = new TimeBasedAttackDetector();
       const reporter = new SecurityReporter();
 
       // Scan for time-based attack vulnerabilities
       const vulnerabilities = await detector.scan(contractPath, emergencyStop);
 
+
       // Check for emergency stop
       if (emergencyStop.isActive()) {
         console.log(chalk.yellow('⚠️  Scan was stopped due to emergency condition'));
         if (vulnerabilities.length > 0) {
-          console.log(
-            chalk.yellow(`📊 Partial results: ${vulnerabilities.length} vulnerabilities found`)
-          );
+          console.log(chalk.yellow(`📊 Partial results: ${vulnerabilities.length} vulnerabilities found`));
         }
         return;
       }
@@ -97,58 +97,57 @@ program
     new Command('trigger')
       .description('Trigger emergency stop manually')
       .option('-r, --reason <reason>', 'Reason for emergency stop')
-      .action(options => {
+      .action((options) => {
         const reason = options.reason || 'Manual trigger';
         emergencyStop.trigger(reason);
         console.log(chalk.red(`🛑 Emergency stop triggered: ${reason}`));
       })
   )
   .addCommand(
-    new Command('status').description('Check emergency stop status').action(() => {
-      if (emergencyStop.isActive()) {
-        console.log(chalk.red('🔴 Emergency stop is ACTIVE'));
-      } else {
-        console.log(chalk.green('🟢 Emergency stop is INACTIVE'));
-      }
-    })
+    new Command('status')
+      .description('Check emergency stop status')
+      .action(() => {
+        if (emergencyStop.isActive()) {
+          console.log(chalk.red('🔴 Emergency stop is ACTIVE'));
+        } else {
+          console.log(chalk.green('🟢 Emergency stop is INACTIVE'));
+        }
+      })
   )
   .addCommand(
-    new Command('test').description('Test emergency stop functionality').action(() => {
-      console.log(chalk.blue('🧪 Testing emergency stop functionality...'));
+    new Command('test')
+      .description('Test emergency stop functionality')
+      .action(() => {
+        console.log(chalk.blue('🧪 Testing emergency stop functionality...'));
 
-      // Test initial state
-      if (emergencyStop.isActive()) {
-        console.log(chalk.red('❌ Emergency stop should be inactive initially'));
-        return;
-      }
+        // Test initial state
+        if (emergencyStop.isActive()) {
+          console.log(chalk.red('❌ Emergency stop should be inactive initially'));
+          return;
+        }
 
-      // Test trigger
-      emergencyStop.trigger('Test trigger');
-      if (!emergencyStop.isActive()) {
-        console.log(chalk.red('❌ Emergency stop should be active after trigger'));
-        return;
-      }
+        // Test trigger
+        emergencyStop.trigger('Test trigger');
+        if (!emergencyStop.isActive()) {
+          console.log(chalk.red('❌ Emergency stop should be active after trigger'));
+          return;
+        }
 
-      console.log(chalk.green('✅ Emergency stop test passed'));
+        console.log(chalk.green('✅ Emergency stop test passed'));
 
-      // Reset after test
-      emergencyStop.reset();
-    })
+        // Reset after test
+        emergencyStop.reset();
+      })
   );
 
 // Legacy support for direct argument
 program
-  .argument(
-    '[contract-path]',
-    'Path to Soroban contract file or directory (deprecated, use "scan" command)'
-  )
+  .argument('[contract-path]', 'Path to Soroban contract file or directory (deprecated, use "scan" command)')
   .option('-o, --output <file>', 'Output report to file')
   .option('-f, --format <format>', 'Report format (json, text)', 'text')
   .action(async (contractPath, options) => {
     if (contractPath) {
-      console.log(
-        chalk.yellow('⚠️  Direct argument usage is deprecated. Use "scan" command instead.')
-      );
+      console.log(chalk.yellow('⚠️  Direct argument usage is deprecated. Use "scan" command instead.'));
       // Delegate to scan command
       await program.commands.find(cmd => cmd.name() === 'scan').action(contractPath, options);
     } else {

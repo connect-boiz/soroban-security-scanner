@@ -2,6 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use crate::gas_limits::GasLimitConfig as GasLimitConfigType;
+use crate::event_logging::EventLoggingConfig as EventLoggingConfigType;
+use crate::secure_id_generation::SecureIdConfig as SecureIdConfigType;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScannerConfig {
@@ -11,6 +14,10 @@ pub struct ScannerConfig {
     pub invariant_checks: InvariantConfig,
     pub output: OutputConfig,
     pub performance: PerformanceConfig,
+    pub emergency_stop: EmergencyStopConfig,
+    pub gas_limits: GasLimitConfigType,
+    pub event_logging: EventLoggingConfigType,
+    pub secure_id_generation: SecureIdConfigType,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,6 +61,15 @@ pub struct PerformanceConfig {
     pub cache_results: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmergencyStopConfig {
+    pub enabled: bool,
+    pub stop_on_critical: bool,
+    pub save_partial_results: bool,
+    pub timeout_seconds: u64,
+    pub max_memory_mb: usize,
+}
+
 impl Default for ScannerConfig {
     fn default() -> Self {
         Self {
@@ -67,6 +83,10 @@ impl Default for ScannerConfig {
             invariant_checks: InvariantConfig::default(),
             output: OutputConfig::default(),
             performance: PerformanceConfig::default(),
+            emergency_stop: EmergencyStopConfig::default(),
+            gas_limits: GasLimitConfigType::default(),
+            event_logging: EventLoggingConfigType::default(),
+            secure_id_generation: SecureIdConfigType::default(),
         }
     }
 }
@@ -128,24 +148,43 @@ impl Default for PerformanceConfig {
     }
 }
 
+impl Default for EmergencyStopConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            stop_on_critical: true,
+            save_partial_results: true,
+            timeout_seconds: 300,
+            max_memory_mb: 1024,
+        }
+    }
+}
+
 impl ScannerConfig {
-    pub fn load_from_file(path: &PathBuf) -> anyhow::Result<Self> {
-        let content = std::fs::read_to_string(path)?;
+    pub fn load_from_file(path: &PathBuf) -> ScannerResult<Self> {
+        let content = std::fs::read_to_string(path)
+            .map_err(|e| ScannerError::file_operation("read", &path.to_string_lossy(), e))?;
+        
         let config: ScannerConfig = if path.extension().and_then(|s| s.to_str()) == Some("toml") {
-            toml::from_str(&content)?
+            toml::from_str(&content)
+                .map_err(|e| ScannerError::parsing_with_source("TOML", &path.to_string_lossy(), "Invalid configuration format", Box::new(e)))?
         } else {
-            serde_json::from_str(&content)?
+            serde_json::from_str(&content)
+                .map_err(|e| ScannerError::parsing_with_source("JSON", &path.to_string_lossy(), "Invalid configuration format", Box::new(e)))?
         };
         Ok(config)
     }
 
-    pub fn save_to_file(&self, path: &PathBuf) -> anyhow::Result<()> {
+    pub fn save_to_file(&self, path: &PathBuf) -> ScannerResult<()> {
         let content = if path.extension().and_then(|s| s.to_str()) == Some("toml") {
-            toml::to_string_pretty(self)?
+            toml::to_string_pretty(self)
+                .map_err(|e| ScannerError::config_with_source("Failed to serialize TOML configuration", Box::new(e)))?
         } else {
-            serde_json::to_string_pretty(self)?
+            serde_json::to_string_pretty(self)
+                .map_err(|e| ScannerError::config_with_source("Failed to serialize JSON configuration", Box::new(e)))?
         };
-        std::fs::write(path, content)?;
+        std::fs::write(path, content)
+            .map_err(|e| ScannerError::file_operation("write", &path.to_string_lossy(), e))?;
         Ok(())
     }
 

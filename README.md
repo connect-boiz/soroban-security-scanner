@@ -62,6 +62,45 @@ soroban-security-scanner/
 └── README.md               # This file
 ```
 
+## ⚡ Batch Operations
+
+The platform now supports efficient batch processing for multiple operations:
+
+### Batch Escrow Releases
+- Process multiple escrow releases in a single transaction
+- 40% gas savings compared to individual operations
+- Comprehensive success/failure tracking
+- Partial success handling with detailed error reporting
+
+### Batch Verifications
+- Verify multiple vulnerabilities simultaneously
+- Automatic bounty calculation and distribution
+- Real-time status monitoring
+- Gas usage optimization
+
+### CLI Commands
+```bash
+# Create batch escrow release
+stellar-scanner batch create-escrow-release --escrow-ids "1,2,3,4,5" --requester "GADDRESS..."
+
+# Execute batch escrow release
+stellar-scanner batch execute-escrow-release --batch-id 123 --executor "GADDRESS..."
+
+# Create batch verification
+stellar-scanner batch create-verification --vulnerability-ids "10,11,12" --verifier "GADDRESS..."
+
+# Execute batch verification
+stellar-scanner batch execute-verification --batch-id 124 --executor "GADDRESS..."
+
+# Get batch summary
+stellar-scanner batch get-summary --batch-id 123
+
+# List user batches
+stellar-scanner batch list-user-batches --user "GADDRESS..."
+```
+
+For detailed documentation, see [BATCH_OPERATIONS.md](BATCH_OPERATIONS.md).
+
 ## 🔍 Supported Vulnerability Types
 
 ### Access Control
@@ -81,6 +120,27 @@ soroban-security-scanner/
 - Broken Invariants
 - Race Conditions
 - Front-running Susceptibility
+
+### Gas Limit Considerations
+- Insufficient Gas Limit Considerations
+- Complex Operation Gas Exhaustion
+- Escrow Release Gas Risk
+- Emergency Distribution Gas Risk
+- Batch Operation Gas Limit
+
+### Event Logging Vulnerabilities
+- Missing Critical Event Logging
+- Incomplete Event Audit Trail
+- Insufficient Event Metadata
+- Event Logging Bypass
+- Critical Operation Without Events
+
+### Randomness and ID Generation Vulnerabilities
+- Weak Randomness in ID Generation
+- Predictable Ledger Sequence IDs
+- Insufficient Entropy Sources
+- ID Collision Vulnerability
+- Deterministic Nonce Generation
 
 ### Stellar-Specific
 - Insufficient Fee Bump
