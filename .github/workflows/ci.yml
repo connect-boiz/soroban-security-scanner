@@ -19,11 +19,11 @@ jobs:
   detect-changes:
     runs-on: ubuntu-latest
     outputs:
-      backend: ${{ steps.changes.outputs.backend_any_changed }}
-      frontend: ${{ steps.changes.outputs.frontend_any_changed }}
-      contracts: ${{ steps.changes.outputs.contracts_any_changed }}
-      component_library: ${{ steps.changes.outputs.component_library_any_changed }}
-      root: ${{ steps.changes.outputs.root_any_changed }}
+      backend: ${{ steps.changes.outputs.backend }}
+      frontend: ${{ steps.changes.outputs.frontend }}
+      contracts: ${{ steps.changes.outputs.contracts }}
+      component_library: ${{ steps.changes.outputs.component_library }}
+      root: ${{ steps.changes.outputs.root }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -67,15 +67,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install Rust toolchain
-        run: |
-          rustup toolchain install ${{ env.RUST_VERSION }} --profile minimal -t wasm32-unknown-unknown -c clippy -c rustfmt
-          rustup default ${{ env.RUST_VERSION }}
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          targets: wasm32-unknown-unknown
+          components: clippy, rustfmt
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: "./contracts -> target"
-          key: contracts-v3-${{ hashFiles('contracts/Cargo.toml', 'contracts/Cargo.lock') }}
-          shared-key: contracts-v3
+          key: contracts-${{ hashFiles('contracts/Cargo.toml') }}
+          shared-key: contracts-cache
       - name: cargo fmt
         run: cargo fmt --check
       - name: cargo clippy
@@ -95,9 +97,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install Rust toolchain
-        run: |
-          rustup toolchain install ${{ env.RUST_VERSION }} --profile minimal -c clippy -c rustfmt
-          rustup default ${{ env.RUST_VERSION }}
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          components: clippy, rustfmt
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
