@@ -70,6 +70,8 @@ jobs:
         run: |
           rustup toolchain install ${{ env.RUST_VERSION }} --profile minimal -t wasm32-unknown-unknown -c clippy -c rustfmt
           rustup default ${{ env.RUST_VERSION }}
+      - name: Clean corrupted Cargo registry
+        run: rm -rf ~/.cargo/registry/cache ~/.cargo/registry/src
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
