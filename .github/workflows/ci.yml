@@ -59,8 +59,7 @@ jobs:
     if: |
       needs.detect-changes.outputs.contracts == 'true' ||
       needs.detect-changes.outputs.root == 'true' ||
-      github.ref_name == 'main' || github.ref_name == 'master' ||
-      github.ref_name == 'develop'
+      github.ref_name == 'main' || github.ref_name == 'master'
     runs-on: ubuntu-latest
     defaults:
       run:
