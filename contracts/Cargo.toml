@@ -22,4 +22,5 @@ debug = 0
 codegen-units = 1
 
 [features]
+default = []
 testutils = ["soroban-sdk/testutils"]
