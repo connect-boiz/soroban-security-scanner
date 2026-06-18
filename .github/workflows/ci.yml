@@ -68,7 +68,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install Rust toolchain
         run: |
-          rustup toolchain install ${{ env.RUST_VERSION }} --profile minimal --target wasm32-unknown-unknown --component clippy,rustfmt
+          rustup toolchain install ${{ env.RUST_VERSION }} --profile minimal -t wasm32-unknown-unknown -c clippy -c rustfmt
           rustup default ${{ env.RUST_VERSION }}
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
@@ -96,7 +96,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install Rust toolchain
         run: |
-          rustup toolchain install ${{ env.RUST_VERSION }} --profile minimal --component clippy,rustfmt
+          rustup toolchain install ${{ env.RUST_VERSION }} --profile minimal -c clippy -c rustfmt
           rustup default ${{ env.RUST_VERSION }}
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
