@@ -74,8 +74,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: "./contracts -> target"
-          key: contracts-${{ hashFiles('contracts/Cargo.toml') }}
-          shared-key: contracts-cache
+          key: contracts-v2-${{ hashFiles('contracts/Cargo.toml', 'contracts/Cargo.lock') }}
+          shared-key: contracts-v2
       - name: cargo fmt
         run: cargo fmt --check
       - name: cargo clippy
