@@ -19,11 +19,11 @@ jobs:
   detect-changes:
     runs-on: ubuntu-latest
     outputs:
-      backend: ${{ steps.changes.outputs.backend }}
-      frontend: ${{ steps.changes.outputs.frontend }}
-      contracts: ${{ steps.changes.outputs.contracts }}
-      component_library: ${{ steps.changes.outputs.component_library }}
-      root: ${{ steps.changes.outputs.root }}
+      backend: ${{ steps.changes.outputs.backend_any_changed }}
+      frontend: ${{ steps.changes.outputs.frontend_any_changed }}
+      contracts: ${{ steps.changes.outputs.contracts_any_changed }}
+      component_library: ${{ steps.changes.outputs.component_library_any_changed }}
+      root: ${{ steps.changes.outputs.root_any_changed }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -67,11 +67,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ env.RUST_VERSION }}
-          targets: wasm32-unknown-unknown
-          components: clippy, rustfmt
+        run: |
+          rustup toolchain install ${{ env.RUST_VERSION }} --profile minimal -t wasm32-unknown-unknown -c clippy -c rustfmt
+          rustup default ${{ env.RUST_VERSION }}
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
@@ -91,7 +89,6 @@ jobs:
     needs: detect-changes
     if: |
       needs.detect-changes.outputs.backend == 'true' ||
-      needs.detect-changes.outputs.root == 'true' ||
       github.ref_name == 'main' || github.ref_name == 'master'
     runs-on: ubuntu-latest
     steps:
@@ -119,7 +116,6 @@ jobs:
     needs: detect-changes
     if: |
       needs.detect-changes.outputs.backend == 'true' ||
-      needs.detect-changes.outputs.root == 'true' ||
       github.ref_name == 'main' || github.ref_name == 'master'
     runs-on: ubuntu-latest
     steps:
@@ -143,7 +139,6 @@ jobs:
     if: |
       needs.detect-changes.outputs.frontend == 'true' ||
       needs.detect-changes.outputs.component_library == 'true' ||
-      needs.detect-changes.outputs.root == 'true' ||
       github.ref_name == 'main' || github.ref_name == 'master'
     runs-on: ubuntu-latest
     defaults:
@@ -175,7 +170,6 @@ jobs:
     needs: detect-changes
     if: |
       needs.detect-changes.outputs.component_library == 'true' ||
-      needs.detect-changes.outputs.root == 'true' ||
       github.ref_name == 'main' || github.ref_name == 'master'
     runs-on: ubuntu-latest
     defaults:
