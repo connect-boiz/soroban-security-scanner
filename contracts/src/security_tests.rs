@@ -1,8 +1,10 @@
 #[cfg(test)]
 mod security {
-    use soroban_sdk::{Address, BytesN, Env, String};
+    use crate::{
+        ContractError, Role, SecurityScannerContract, SecurityScannerContractClient, ADMIN_ROLES,
+    };
     use soroban_sdk::testutils::{Address as _, Ledger as _};
-    use crate::{ContractError, Role, SecurityScannerContract, SecurityScannerContractClient, ADMIN_ROLES};
+    use soroban_sdk::{Address, BytesN, Env, String};
 
     fn test_address(env: &Env, _seed: u64) -> Address {
         Address::generate(env)
@@ -11,9 +13,14 @@ mod security {
     /// Directly grant a role to a user by manipulating storage, bypassing multi-sig.
     fn grant_role(env: &Env, contract_id: &Address, user: &Address, role: &Role) {
         env.as_contract(contract_id, || {
-            let mut admin_roles: soroban_sdk::Map<Address, soroban_sdk::Vec<Role>> =
-                env.storage().instance().get(&ADMIN_ROLES).unwrap_or(soroban_sdk::Map::new(env));
-            let mut user_roles = admin_roles.get(user.clone()).unwrap_or(soroban_sdk::Vec::new(env));
+            let mut admin_roles: soroban_sdk::Map<Address, soroban_sdk::Vec<Role>> = env
+                .storage()
+                .instance()
+                .get(&ADMIN_ROLES)
+                .unwrap_or(soroban_sdk::Map::new(env));
+            let mut user_roles = admin_roles
+                .get(user.clone())
+                .unwrap_or(soroban_sdk::Vec::new(env));
             if !user_roles.contains(role) {
                 user_roles.push_back(role.clone());
             }
@@ -95,9 +102,8 @@ mod security {
         );
 
         // Create multi-sig proposal
-        let proposal_id = client.propose_high_bounty_verification(
-            &verifier1, &report_id, &2000000i128, &2, &0,
-        );
+        let proposal_id =
+            client.propose_high_bounty_verification(&verifier1, &report_id, &2000000i128, &2, &0);
 
         // First approval
         client.approve_bounty_verification(&verifier1, &proposal_id);
@@ -151,9 +157,8 @@ mod security {
         );
 
         // Create multi-sig proposal for emergency verification
-        let proposal_id = client.propose_emergency_verification(
-            &verifier1, &alert_id, &true, &3, &3600,
-        );
+        let proposal_id =
+            client.propose_emergency_verification(&verifier1, &alert_id, &true, &3, &3600);
 
         let proposal = client.get_proposal(&proposal_id);
         assert_eq!(proposal.required_approvals, 3);
@@ -221,7 +226,12 @@ mod security {
 
         client.initialize(&admin);
 
-        grant_role(&env, &contract_id, &treasury_manager, &Role::TreasuryManager);
+        grant_role(
+            &env,
+            &contract_id,
+            &treasury_manager,
+            &Role::TreasuryManager,
+        );
 
         // Treasury manager can fund emergency pool
         client.fund_emergency_pool(&treasury_manager, &5_000_000i128);
@@ -261,9 +271,7 @@ mod security {
         );
 
         // Propose with low values gets upgraded to minimums
-        let proposal_id = client.propose_role_grant(
-            &admin, &new_user, &Role::Verifier, &1, &100,
-        );
+        let proposal_id = client.propose_role_grant(&admin, &new_user, &Role::Verifier, &1, &100);
         let proposal = client.get_proposal(&proposal_id);
         assert_eq!(proposal.required_approvals, 2);
         assert_eq!(proposal.execution_delay, 86400);
