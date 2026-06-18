@@ -9,6 +9,7 @@ on:
 jobs:
   lighthouse:
     if: secrets.LHCI_GITHUB_APP_TOKEN != ''
+
 runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
