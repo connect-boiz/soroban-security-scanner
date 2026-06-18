@@ -19,11 +19,11 @@ jobs:
   detect-changes:
     runs-on: ubuntu-latest
     outputs:
-      backend: ${{ steps.changes.outputs.backend }}
-      frontend: ${{ steps.changes.outputs.frontend }}
-      contracts: ${{ steps.changes.outputs.contracts }}
-      component_library: ${{ steps.changes.outputs.component_library }}
-      root: ${{ steps.changes.outputs.root }}
+      backend: ${{ steps.changes.outputs.backend_any_changed }}
+      frontend: ${{ steps.changes.outputs.frontend_any_changed }}
+      contracts: ${{ steps.changes.outputs.contracts_any_changed }}
+      component_library: ${{ steps.changes.outputs.component_library_any_changed }}
+      root: ${{ steps.changes.outputs.root_any_changed }}
     steps:
       - uses: actions/checkout@v4
         with:
