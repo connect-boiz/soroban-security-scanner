@@ -1,123 +1,150 @@
 #[cfg(test)]
-mod security {
+mod security_tests {
+    use soroban_sdk::{symbol_short, Address, BytesN, Env, String};
     use crate::{
-        ContractError, Role, SecurityScannerContract, SecurityScannerContractClient, ADMIN_ROLES,
+        ContractError, SecurityScannerContract, Role, Permission,
+        MultiSigProposal, ADMIN_ROLES, MULTI_SIG_PROPOSALS
     };
-    use soroban_sdk::testutils::{Address as _, Ledger as _};
-    use soroban_sdk::{Address, BytesN, Env, String};
-
-    fn test_address(env: &Env, _seed: u64) -> Address {
-        Address::generate(env)
-    }
-
-    /// Directly grant a role to a user by manipulating storage, bypassing multi-sig.
-    fn grant_role(env: &Env, contract_id: &Address, user: &Address, role: &Role) {
-        env.as_contract(contract_id, || {
-            let mut admin_roles: soroban_sdk::Map<Address, soroban_sdk::Vec<Role>> = env
-                .storage()
-                .instance()
-                .get(&ADMIN_ROLES)
-                .unwrap_or(soroban_sdk::Map::new(env));
-            let mut user_roles = admin_roles
-                .get(user.clone())
-                .unwrap_or(soroban_sdk::Vec::new(env));
-            if !user_roles.contains(role) {
-                user_roles.push_back(role.clone());
-            }
-            admin_roles.set(user.clone(), user_roles);
-            env.storage().instance().set(&ADMIN_ROLES, &admin_roles);
-        });
-    }
 
     #[test]
     fn test_role_based_access_control() {
         let env = Env::default();
         env.mock_all_auths();
-        let contract_id = env.register_contract(None, SecurityScannerContract);
-        let client = SecurityScannerContractClient::new(&env, &contract_id);
-
-        let admin = test_address(&env, 1);
-        let verifier = test_address(&env, 2);
-        let unauthorized_user = test_address(&env, 3);
-
-        client.initialize(&admin);
-
-        // Grant Verifier role to verifier
-        grant_role(&env, &contract_id, &verifier, &Role::Verifier);
-
-        let roles = client.get_user_roles(&verifier);
+        
+        let admin = Address::generate(&env);
+        let verifier = Address::generate(&env);
+        let escrow_manager = Address::generate(&env);
+        let unauthorized_user = Address::generate(&env);
+        
+        // Initialize contract
+        SecurityScannerContract::initialize(env.clone(), admin.clone()).unwrap();
+        
+        // Grant Verifier role through multi-sig process
+        let proposal_id = SecurityScannerContract::propose_role_grant(
+            env.clone(),
+            admin.clone(),
+            verifier.clone(),
+            Role::Verifier,
+            2, // required approvals
+            0,  // no delay for test
+        ).unwrap();
+        
+        // Approve proposal (admin approves)
+        SecurityScannerContract::approve_role_grant(env.clone(), admin.clone(), proposal_id).unwrap();
+        
+        // Execute role grant
+        SecurityScannerContract::execute_role_grant(env.clone(), admin.clone(), proposal_id).unwrap();
+        
+        // Verify role was granted
+        let roles = SecurityScannerContract::get_user_roles(env.clone(), verifier.clone()).unwrap();
         assert!(roles.contains(&Role::Verifier));
-
-        // Report a vulnerability
-        let contract_id_bytes = BytesN::from_array(&env, &[1; 32]);
-        let report_id = client.report_vulnerability(
-            &test_address(&env, 10),
-            &contract_id_bytes,
-            &String::from_str(&env, "reentrancy"),
-            &String::from_str(&env, "high"),
-            &String::from_str(&env, "Test vulnerability"),
-            &String::from_str(&env, "function xyz"),
+        
+        // Test that verifier can verify vulnerability but unauthorized user cannot
+        let contract_id = BytesN::from_array(&env, &[1; 32]);
+        let report_id = SecurityScannerContract::report_vulnerability(
+            env.clone(),
+            Address::generate(&env),
+            contract_id,
+            String::from_str(&env, "reentrancy"),
+            String::from_str(&env, "high"),
+            String::from_str(&env, "Test vulnerability"),
+            String::from_str(&env, "function xyz"),
+        ).unwrap();
+        
+        // Verifier should be able to verify (with small bounty)
+        let result = SecurityScannerContract::verify_vulnerability(
+            env.clone(),
+            verifier.clone(),
+            report_id,
+            100000, // Small bounty, no multi-sig required
         );
-
-        // Verifier can verify
-        client.verify_vulnerability(&verifier, &report_id, &100000i128);
-
-        // Unauthorized user cannot verify
-        assert_eq!(
-            client.try_verify_vulnerability(&unauthorized_user, &report_id, &100000i128),
-            Err(Ok(ContractError::InsufficientPermissions))
+        assert!(result.is_ok());
+        
+        // Unauthorized user should not be able to verify
+        let result = SecurityScannerContract::verify_vulnerability(
+            env.clone(),
+            unauthorized_user.clone(),
+            report_id,
+            100000,
         );
+        assert_eq!(result, Err(ContractError::InsufficientPermissions));
     }
 
     #[test]
     fn test_multi_signature_requirements() {
         let env = Env::default();
         env.mock_all_auths();
-        let contract_id = env.register_contract(None, SecurityScannerContract);
-        let client = SecurityScannerContractClient::new(&env, &contract_id);
-
-        let admin = test_address(&env, 1);
-        let verifier1 = test_address(&env, 2);
-        let verifier2 = test_address(&env, 3);
-
-        client.initialize(&admin);
-        grant_role(&env, &contract_id, &verifier1, &Role::Verifier);
-        grant_role(&env, &contract_id, &verifier2, &Role::Verifier);
-
-        // Report a vulnerability
-        let contract_id_bytes = BytesN::from_array(&env, &[2; 32]);
-        let report_id = client.report_vulnerability(
-            &test_address(&env, 10),
-            &contract_id_bytes,
-            &String::from_str(&env, "overflow"),
-            &String::from_str(&env, "critical"),
-            &String::from_str(&env, "Test overflow"),
-            &String::from_str(&env, "function abc"),
+        
+        let admin = Address::generate(&env);
+        let verifier1 = Address::generate(&env);
+        let verifier2 = Address::generate(&env);
+        
+        // Initialize contract
+        SecurityScannerContract::initialize(env.clone(), admin.clone()).unwrap();
+        
+        // Grant Verifier roles
+        for verifier in [&verifier1, &verifier2] {
+            let proposal_id = SecurityScannerContract::propose_role_grant(
+                env.clone(),
+                admin.clone(),
+                verifier.clone(),
+                Role::Verifier,
+                2,
+                0,
+            ).unwrap();
+            
+            SecurityScannerContract::approve_role_grant(env.clone(), admin.clone(), proposal_id).unwrap();
+            SecurityScannerContract::execute_role_grant(env.clone(), admin.clone(), proposal_id).unwrap();
+        }
+        
+        // Create a vulnerability report
+        let contract_id = BytesN::from_array(&env, &[2; 32]);
+        let report_id = SecurityScannerContract::report_vulnerability(
+            env.clone(),
+            Address::generate(&env),
+            contract_id,
+            String::from_str(&env, "overflow"),
+            String::from_str(&env, "critical"),
+            String::from_str(&env, "Test overflow"),
+            String::from_str(&env, "function abc"),
+        ).unwrap();
+        
+        // High bounty should require multi-sig
+        let result = SecurityScannerContract::verify_vulnerability(
+            env.clone(),
+            verifier1.clone(),
+            report_id,
+            2000000, // High bounty (> 1M)
         );
-
-        // High bounty (> 1M) requires multi-sig
-        assert_eq!(
-            client.try_verify_vulnerability(&verifier1, &report_id, &2000000i128),
-            Err(Ok(ContractError::MultiSigRequired))
-        );
-
-        // Create multi-sig proposal
-        let proposal_id =
-            client.propose_high_bounty_verification(&verifier1, &report_id, &2000000i128, &2, &0);
-
-        // First approval
-        client.approve_bounty_verification(&verifier1, &proposal_id);
-        let can_execute = client.can_execute_proposal_check(&proposal_id);
-        assert!(!can_execute);
-
-        // Second approval reaches quorum
-        client.approve_bounty_verification(&verifier2, &proposal_id);
-        let can_execute = client.can_execute_proposal_check(&proposal_id);
-        assert!(can_execute);
-
-        // Execute and verify
-        client.execute_high_bounty_verification(&verifier1, &proposal_id);
-        let report = client.get_vulnerability(&report_id);
+        assert_eq!(result, Err(ContractError::MultiSigRequired));
+        
+        // Create multi-sig proposal for high bounty
+        let proposal_id = SecurityScannerContract::propose_high_bounty_verification(
+            env.clone(),
+            verifier1.clone(),
+            report_id,
+            2000000,
+            2, // required approvals
+            0,  // no delay for test
+        ).unwrap();
+        
+        // Single approval should not be enough
+        SecurityScannerContract::approve_bounty_verification(env.clone(), verifier1.clone(), proposal_id).unwrap();
+        
+        let can_execute = SecurityScannerContract::can_execute_proposal_check(env.clone(), proposal_id).unwrap();
+        assert!(!can_execute); // Should not be executable yet
+        
+        // Second approval should make it executable
+        SecurityScannerContract::approve_bounty_verification(env.clone(), verifier2.clone(), proposal_id).unwrap();
+        
+        let can_execute = SecurityScannerContract::can_execute_proposal_check(env.clone(), proposal_id).unwrap();
+        assert!(can_execute); // Should be executable now
+        
+        // Execute the high bounty verification
+        SecurityScannerContract::execute_high_bounty_verification(env.clone(), verifier1.clone(), proposal_id).unwrap();
+        
+        // Verify vulnerability was actually verified
+        let report = SecurityScannerContract::get_vulnerability(env.clone(), report_id).unwrap();
         assert_eq!(report.status, String::from_str(&env, "verified"));
         assert_eq!(report.bounty_amount, 2000000);
     }
@@ -126,154 +153,233 @@ mod security {
     fn test_emergency_verification_multi_sig() {
         let env = Env::default();
         env.mock_all_auths();
-        let contract_id = env.register_contract(None, SecurityScannerContract);
-        let client = SecurityScannerContractClient::new(&env, &contract_id);
-
-        let admin = test_address(&env, 1);
-        let verifier1 = test_address(&env, 2);
-        let verifier2 = test_address(&env, 3);
-        let verifier3 = test_address(&env, 4);
-
-        client.initialize(&admin);
-        grant_role(&env, &contract_id, &verifier1, &Role::Verifier);
-        grant_role(&env, &contract_id, &verifier2, &Role::Verifier);
-        grant_role(&env, &contract_id, &verifier3, &Role::Verifier);
-
-        // Report emergency vulnerability
-        let contract_id_bytes = BytesN::from_array(&env, &[3; 32]);
-        let alert_id = client.report_emergency_vulnerability(
-            &test_address(&env, 10),
-            &contract_id_bytes,
-            &String::from_str(&env, "critical_vuln"),
-            &String::from_str(&env, "emergency"),
-            &String::from_str(&env, "Critical emergency vulnerability"),
-            &String::from_str(&env, "core contract"),
-        );
-
-        // Emergency verification requires multi-sig
-        assert_eq!(
-            client.try_verify_emergency_vulnerability(&verifier1, &alert_id, &true),
-            Err(Ok(ContractError::MultiSigRequired))
-        );
-
-        // Create multi-sig proposal for emergency verification
-        let proposal_id =
-            client.propose_emergency_verification(&verifier1, &alert_id, &true, &3, &3600);
-
-        let proposal = client.get_proposal(&proposal_id);
-        assert_eq!(proposal.required_approvals, 3);
-        assert_eq!(proposal.execution_delay, 3600);
-
-        // All three verifiers approve
+        
+        let admin = Address::generate(&env);
+        let verifier1 = Address::generate(&env);
+        let verifier2 = Address::generate(&env);
+        let verifier3 = Address::generate(&env);
+        
+        // Initialize contract
+        SecurityScannerContract::initialize(env.clone(), admin.clone()).unwrap();
+        
+        // Grant Verifier roles
         for verifier in [&verifier1, &verifier2, &verifier3] {
-            client.approve_emergency_verification(verifier, &proposal_id);
+            let proposal_id = SecurityScannerContract::propose_role_grant(
+                env.clone(),
+                admin.clone(),
+                verifier.clone(),
+                Role::Verifier,
+                2,
+                0,
+            ).unwrap();
+            
+            SecurityScannerContract::approve_role_grant(env.clone(), admin.clone(), proposal_id).unwrap();
+            SecurityScannerContract::execute_role_grant(env.clone(), admin.clone(), proposal_id).unwrap();
         }
-
-        // Cannot execute yet (delay not passed)
-        let can_execute = client.can_execute_proposal_check(&proposal_id);
+        
+        // Report emergency vulnerability
+        let contract_id = BytesN::from_array(&env, &[3; 32]);
+        let alert_id = SecurityScannerContract::report_emergency_vulnerability(
+            env.clone(),
+            Address::generate(&env),
+            contract_id,
+            String::from_str(&env, "critical_vuln"),
+            String::from_str(&env, "emergency"),
+            String::from_str(&env, "Critical emergency vulnerability"),
+            String::from_str(&env, "core contract"),
+        ).unwrap();
+        
+        // Emergency verification should always require multi-sig
+        let result = SecurityScannerContract::verify_emergency_vulnerability(
+            env.clone(),
+            verifier1.clone(),
+            alert_id,
+            true,
+        );
+        assert_eq!(result, Err(ContractError::MultiSigRequired));
+        
+        // Create emergency verification proposal
+        let proposal_id = SecurityScannerContract::propose_emergency_verification(
+            env.clone(),
+            verifier1.clone(),
+            alert_id,
+            true,
+            3, // minimum 3 approvals for emergency
+            3600, // minimum 1 hour delay
+        ).unwrap();
+        
+        // Get proposal details to verify requirements
+        let proposal = SecurityScannerContract::get_proposal(env.clone(), proposal_id).unwrap();
+        assert_eq!(proposal.required_approvals, 3); // Should enforce minimum
+        assert_eq!(proposal.execution_delay, 3600); // Should enforce minimum
+        
+        // Approve with all 3 verifiers
+        for verifier in [&verifier1, &verifier2, &verifier3] {
+            SecurityScannerContract::approve_emergency_verification(env.clone(), verifier.clone(), proposal_id).unwrap();
+        }
+        
+        // Should not be executable yet due to time delay
+        let can_execute = SecurityScannerContract::can_execute_proposal_check(env.clone(), proposal_id).unwrap();
         assert!(!can_execute);
-
-        // Alert still pending
-        let alert = client.get_emergency_alert(&alert_id);
-        assert_eq!(alert.status, String::from_str(&env, "pending"));
-        assert_eq!(alert.emergency_reward, 10000000);
+        
+        // Fast forward time
+        env.ledger().set_timestamp(env.ledger().timestamp() + 3600 + 1);
+        
+        // Now should be executable
+        let can_execute = SecurityScannerContract::can_execute_proposal_check(env.clone(), proposal_id).unwrap();
+        assert!(can_execute);
+        
+        // Execute emergency verification
+        SecurityScannerContract::execute_emergency_verification(env.clone(), verifier1.clone(), proposal_id).unwrap();
+        
+        // Verify emergency alert was verified
+        let alert = SecurityScannerContract::get_emergency_alert(env.clone(), alert_id).unwrap();
+        assert_eq!(alert.status, String::from_str(&env, "verified"));
+        assert_eq!(alert.emergency_reward, 10000000); // Emergency reward
     }
 
     #[test]
     fn test_escrow_manager_role() {
         let env = Env::default();
         env.mock_all_auths();
-        let contract_id = env.register_contract(None, SecurityScannerContract);
-        let client = SecurityScannerContractClient::new(&env, &contract_id);
-
-        let admin = test_address(&env, 1);
-        let escrow_manager = test_address(&env, 2);
-        let unauthorized_user = test_address(&env, 3);
-
-        client.initialize(&admin);
-
-        grant_role(&env, &contract_id, &escrow_manager, &Role::EscrowManager);
-
+        
+        let admin = Address::generate(&env);
+        let escrow_manager = Address::generate(&env);
+        let unauthorized_user = Address::generate(&env);
+        
+        // Initialize contract
+        SecurityScannerContract::initialize(env.clone(), admin.clone()).unwrap();
+        
+        // Grant EscrowManager role
+        let proposal_id = SecurityScannerContract::propose_role_grant(
+            env.clone(),
+            admin.clone(),
+            escrow_manager.clone(),
+            Role::EscrowManager,
+            2,
+            0,
+        ).unwrap();
+        
+        SecurityScannerContract::approve_role_grant(env.clone(), admin.clone(), proposal_id).unwrap();
+        SecurityScannerContract::execute_role_grant(env.clone(), admin.clone(), proposal_id).unwrap();
+        
         // Create escrow
-        let escrow_id = client.create_escrow(
-            &test_address(&env, 10),
-            &test_address(&env, 11),
-            &1_000_000i128,
-            &String::from_str(&env, "bounty"),
-            &86400,
+        let escrow_id = SecurityScannerContract::create_escrow(
+            env.clone(),
+            Address::generate(&env),
+            Address::generate(&env),
+            1000000,
+            String::from_str(&env, "bounty"),
+            86400, // 1 day lock
+        ).unwrap();
+        
+        // Escrow manager should be able to mark conditions as met
+        let result = SecurityScannerContract::mark_escrow_conditions_met(
+            env.clone(),
+            escrow_id,
+            escrow_manager.clone(),
         );
-
-        // Escrow manager can mark conditions met
-        client.mark_escrow_conditions_met(&escrow_id, &escrow_manager);
-
-        // Unauthorized user cannot
-        assert_eq!(
-            client.try_mark_escrow_conditions_met(&escrow_id, &unauthorized_user),
-            Err(Ok(ContractError::InsufficientPermissions))
+        assert!(result.is_ok());
+        
+        // Unauthorized user should not be able to mark conditions as met
+        let result = SecurityScannerContract::mark_escrow_conditions_met(
+            env.clone(),
+            escrow_id,
+            unauthorized_user.clone(),
         );
+        assert_eq!(result, Err(ContractError::InsufficientPermissions));
     }
 
     #[test]
     fn test_treasury_manager_role() {
         let env = Env::default();
         env.mock_all_auths();
-        let contract_id = env.register_contract(None, SecurityScannerContract);
-        let client = SecurityScannerContractClient::new(&env, &contract_id);
-
-        let admin = test_address(&env, 1);
-        let treasury_manager = test_address(&env, 2);
-        let unauthorized_user = test_address(&env, 3);
-
-        client.initialize(&admin);
-
-        grant_role(
-            &env,
-            &contract_id,
-            &treasury_manager,
-            &Role::TreasuryManager,
+        
+        let admin = Address::generate(&env);
+        let treasury_manager = Address::generate(&env);
+        let unauthorized_user = Address::generate(&env);
+        
+        // Initialize contract
+        SecurityScannerContract::initialize(env.clone(), admin.clone()).unwrap();
+        
+        // Grant TreasuryManager role
+        let proposal_id = SecurityScannerContract::propose_role_grant(
+            env.clone(),
+            admin.clone(),
+            treasury_manager.clone(),
+            Role::TreasuryManager,
+            2,
+            0,
+        ).unwrap();
+        
+        SecurityScannerContract::approve_role_grant(env.clone(), admin.clone(), proposal_id).unwrap();
+        SecurityScannerContract::execute_role_grant(env.clone(), admin.clone(), proposal_id).unwrap();
+        
+        // Treasury manager should be able to fund emergency pool
+        let result = SecurityScannerContract::fund_emergency_pool(
+            env.clone(),
+            treasury_manager.clone(),
+            5000000,
         );
-
-        // Treasury manager can fund emergency pool
-        client.fund_emergency_pool(&treasury_manager, &5_000_000i128);
-        let pool_balance = client.get_emergency_pool_balance();
+        assert!(result.is_ok());
+        
+        // Verify pool was funded
+        let pool_balance = SecurityScannerContract::get_emergency_pool_balance(env.clone());
         assert_eq!(pool_balance, 5000000);
-
-        // Unauthorized user cannot
-        assert_eq!(
-            client.try_fund_emergency_pool(&unauthorized_user, &1_000_000i128),
-            Err(Ok(ContractError::InsufficientPermissions))
+        
+        // Unauthorized user should not be able to fund emergency pool
+        let result = SecurityScannerContract::fund_emergency_pool(
+            env.clone(),
+            unauthorized_user.clone(),
+            1000000,
         );
+        assert_eq!(result, Err(ContractError::InsufficientPermissions));
     }
 
     #[test]
     fn test_role_management_security() {
         let env = Env::default();
         env.mock_all_auths();
-        let contract_id = env.register_contract(None, SecurityScannerContract);
-        let client = SecurityScannerContractClient::new(&env, &contract_id);
-
-        let admin = test_address(&env, 1);
-        let unauthorized_user = test_address(&env, 2);
-        let new_user = test_address(&env, 3);
-
-        client.initialize(&admin);
-
-        // Direct grant always requires multi-sig
-        assert_eq!(
-            client.try_grant_role(&admin, &new_user, &Role::Verifier),
-            Err(Ok(ContractError::MultiSigRequired))
+        
+        let admin = Address::generate(&env);
+        let unauthorized_user = Address::generate(&env);
+        let new_user = Address::generate(&env);
+        
+        // Initialize contract
+        SecurityScannerContract::initialize(env.clone(), admin.clone()).unwrap();
+        
+        // Direct role grant should require multi-sig
+        let result = SecurityScannerContract::grant_role(
+            env.clone(),
+            admin.clone(),
+            new_user.clone(),
+            Role::Verifier,
         );
-
-        // Unauthorized user cannot propose role grants
-        assert_eq!(
-            client.try_propose_role_grant(&unauthorized_user, &new_user, &Role::Verifier, &2, &0),
-            Err(Ok(ContractError::InsufficientPermissions))
+        assert_eq!(result, Err(ContractError::MultiSigRequired));
+        
+        // Unauthorized user should not be able to propose role grants
+        let result = SecurityScannerContract::propose_role_grant(
+            env.clone(),
+            unauthorized_user.clone(),
+            new_user.clone(),
+            Role::Verifier,
+            2,
+            0,
         );
-
-        // Propose with low values gets upgraded to minimums
-        let proposal_id = client.propose_role_grant(&admin, &new_user, &Role::Verifier, &1, &100);
-        let proposal = client.get_proposal(&proposal_id);
-        assert_eq!(proposal.required_approvals, 2);
-        assert_eq!(proposal.execution_delay, 86400);
+        assert_eq!(result, Err(ContractError::InsufficientPermissions));
+        
+        // Role management should have minimum delay and approval requirements
+        let proposal_id = SecurityScannerContract::propose_role_grant(
+            env.clone(),
+            admin.clone(),
+            new_user.clone(),
+            Role::Verifier,
+            1, // below minimum
+            100, // below minimum
+        ).unwrap();
+        
+        let proposal = SecurityScannerContract::get_proposal(env.clone(), proposal_id).unwrap();
+        assert_eq!(proposal.required_approvals, 2); // Should enforce minimum
+        assert_eq!(proposal.execution_delay, 86400); // Should enforce minimum 24 hours
     }
 }
