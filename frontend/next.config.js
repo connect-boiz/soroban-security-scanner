@@ -3,10 +3,10 @@ const nextConfig = {
   // Enable React strict mode for better development warnings
   reactStrictMode: true,
   eslint: {
-    ignoreDuringBuilds: true,
+    ignoreDuringBuilds: false,
   },
   typescript: {
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
   images: {
     // Responsive image breakpoints used by next/image

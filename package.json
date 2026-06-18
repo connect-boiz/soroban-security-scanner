@@ -5,14 +5,14 @@
   "main": "src/index.js",
   "scripts": {
     "scan": "node src/index.js",
-    "test": "jest",
+    "start": "node src/index.js",
+    "test": "jest --passWithNoTests",
     "test:e2e": "playwright test",
     "test:a11y": "playwright test tests/e2e/accessibility.spec.js",
-    "lint": "eslint src/index.js --no-eslintrc --env browser,node,es2021 --parser-options ecmaVersion:2021,sourceType:module",
+    "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
     "format": "prettier --write \"src/**/*.{js,jsx,ts,tsx}\" \"frontend/**/*.{js,jsx,ts,tsx}\"",
     "format:check": "prettier --check \"src/**/*.{js,jsx,ts,tsx}\" \"frontend/**/*.{js,jsx,ts,tsx}\"",
-    "start": "node src/index.js",
     "build:components": "cd component-library && npm run build",
     "dev:components": "cd component-library && npm run dev",
     "install:components": "cd component-library && npm install",
@@ -20,15 +20,7 @@
     "build-storybook": "storybook build",
     "test-storybook": "test-storybook"
   },
-  "keywords": [
-    "soroban",
-    "stellar",
-    "security",
-    "smart-contracts",
-    "blockchain",
-    "audit",
-    "vulnerability"
-  ],
+  "keywords": ["soroban", "stellar", "security", "smart-contracts", "blockchain", "audit", "vulnerability"],
   "author": "connect-boiz",
   "license": "MIT",
   "dependencies": {

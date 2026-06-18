@@ -1,0 +1,25 @@
+[package]
+name = "security-scanner-contract"
+version = "1.0.0"
+edition = "2021"
+authors = ["connect-boiz"]
+description = "Soroban smart contract for Security Scanner"
+license = "MIT"
+repository = "https://github.com/gbengaeben/soroban-security-scanner"
+
+[lib]
+crate-type = ["cdylib"]
+doctest = false
+
+[dependencies]
+soroban-sdk = "21.0.0"
+
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+lto = true
+debug = 0
+codegen-units = 1
+
+[features]
+testutils = ["soroban-sdk/testutils"]
