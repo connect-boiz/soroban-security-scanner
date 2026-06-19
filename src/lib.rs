@@ -77,7 +77,6 @@ pub use validation::{
     sanitize_string, validate_address, validate_amount, validate_contract_id, validate_pagination,
     ErrorResponse, ValidatedAddress, ValidatedPagination, ValidationError,
 };
-pub use vulnerabilities::VulnerabilityType;
 pub use wallet::{
     CreateWalletRequest, ImportWalletRequest, InMemoryWalletStore, RestoreWalletRequest, Wallet,
     WalletBalance, WalletError, WalletExport, WalletService, WalletStatus, WalletStore,
@@ -87,8 +86,8 @@ pub use wallet::{
 #[derive(Debug, Clone)]
 pub struct ScanResult {
     pub file_path: String,
-    pub vulnerabilities: Vec<VulnerabilityType>,
-    pub invariant_violations: Vec<InvariantRule>,
+    pub vulnerabilities: Vec<String>,
+    pub invariant_violations: Vec<String>,
     pub recommendations: Vec<String>,
 }
 
