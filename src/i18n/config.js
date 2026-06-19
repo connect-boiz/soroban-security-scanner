@@ -17,6 +17,8 @@ const i18nConfig = {
   debug: process.env.NODE_ENV === 'development',
 
   // Resources loaded directly (no fs-backend needed)
+  ns: ['common'],
+  defaultNS: 'common',
   resources: {
     en: { common: enCommon },
     es: { common: esCommon },
