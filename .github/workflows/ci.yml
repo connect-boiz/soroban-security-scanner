@@ -19,11 +19,11 @@ jobs:
   detect-changes:
     runs-on: ubuntu-latest
     outputs:
-      backend: ${{ steps.changes.outputs.backend }}
-      frontend: ${{ steps.changes.outputs.frontend }}
-      contracts: ${{ steps.changes.outputs.contracts }}
-      component_library: ${{ steps.changes.outputs.component_library }}
-      root: ${{ steps.changes.outputs.root }}
+      backend: ${{ steps.changes.outputs.backend_any_changed }}
+      frontend: ${{ steps.changes.outputs.frontend_any_changed }}
+      contracts: ${{ steps.changes.outputs.contracts_any_changed }}
+      component_library: ${{ steps.changes.outputs.component_library_any_changed }}
+      root: ${{ steps.changes.outputs.root_any_changed }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -59,7 +59,7 @@ jobs:
     if: |
       needs.detect-changes.outputs.contracts == 'true' ||
       needs.detect-changes.outputs.root == 'true' ||
-      github.ref_name == 'main' || github.ref_name == 'master'
+      github.ref_name == 'main' || github.ref_name == 'master' || github.ref_name == 'develop'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -92,7 +92,7 @@ jobs:
     if: |
       needs.detect-changes.outputs.backend == 'true' ||
       needs.detect-changes.outputs.root == 'true' ||
-      github.ref_name == 'main' || github.ref_name == 'master'
+      github.ref_name == 'main' || github.ref_name == 'master' || github.ref_name == 'develop'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -120,7 +120,7 @@ jobs:
     if: |
       needs.detect-changes.outputs.backend == 'true' ||
       needs.detect-changes.outputs.root == 'true' ||
-      github.ref_name == 'main' || github.ref_name == 'master'
+      github.ref_name == 'main' || github.ref_name == 'master' || github.ref_name == 'develop'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -144,7 +144,7 @@ jobs:
       needs.detect-changes.outputs.frontend == 'true' ||
       needs.detect-changes.outputs.component_library == 'true' ||
       needs.detect-changes.outputs.root == 'true' ||
-      github.ref_name == 'main' || github.ref_name == 'master'
+      github.ref_name == 'main' || github.ref_name == 'master' || github.ref_name == 'develop'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -176,7 +176,7 @@ jobs:
     if: |
       needs.detect-changes.outputs.component_library == 'true' ||
       needs.detect-changes.outputs.root == 'true' ||
-      github.ref_name == 'main' || github.ref_name == 'master'
+      github.ref_name == 'main' || github.ref_name == 'master' || github.ref_name == 'develop'
     runs-on: ubuntu-latest
     defaults:
       run:
