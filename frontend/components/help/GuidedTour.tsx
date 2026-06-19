@@ -1,10 +1,9 @@
 import React, { useEffect } from 'react';
 import dynamic from 'next/dynamic';
-// @ts-ignore - react-joyride types may vary by version
 import { STATUS, Step } from 'react-joyride';
 import { useHelpStore } from '../../lib/store/helpStore';
 
-// @ts-ignore - react-joyride dynamic import type
+// @ts-ignore - react-joyride dynamic import type mismatch
 const Joyride = dynamic(() => import('react-joyride'), { ssr: false });
 import { SCAN_TOUR_STEPS } from '../../lib/tours/scan-tour';
 import { VULNERABILITY_TOUR_STEPS } from '../../lib/tours/vulnerability-tour';
@@ -68,7 +67,6 @@ const GuidedTour: React.FC<GuidedTourProps> = ({ tourId }) => {
       scrollToFirstStep
       disableScrolling={false}
       styles={{
-        // @ts-ignore - Joyride style props compatibility
         options: {
           primaryColor: '#2563eb',
           zIndex: 10000,

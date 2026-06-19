@@ -1,33 +1,40 @@
 import { useMemo } from 'react';
 import { useBountyStore } from './bountyStore';
+import { shallow } from 'zustand/shallow';
 
 // Optimized selectors using shallow comparison to prevent unnecessary re-renders
 export const useFilteredBounties = () => {
-  return useBountyStore(state => state.getFilteredBounties());
+  return (useBountyStore as any)((state: any) => state.getFilteredBounties(), shallow);
 };
 
 export const useBountyStats = () => {
-  return useBountyStore(state => state.getBountyStats());
+  return (useBountyStore as any)((state: any) => state.getBountyStats(), shallow);
 };
 
 export const useBountyFilters = () => {
-  return useBountyStore(state => ({
-    filters: state.filters,
-    searchTerm: state.searchTerm,
-    setFilters: state.setFilters,
-    setSearchTerm: state.setSearchTerm,
-  }));
+  return (useBountyStore as any)(
+    (state: any) => ({
+      filters: state.filters,
+      searchTerm: state.searchTerm,
+      setFilters: state.setFilters,
+      setSearchTerm: state.setSearchTerm,
+    }),
+    shallow
+  );
 };
 
 export const useBountyActions = () => {
-  return useBountyStore(state => ({
-    setBounties: state.setBounties,
-    setSelectedBounty: state.setSelectedBounty,
-    setLoading: state.setLoading,
-    setError: state.setError,
-    loading: state.loading,
-    error: state.error,
-  }));
+  return (useBountyStore as any)(
+    (state: any) => ({
+      setBounties: state.setBounties,
+      setSelectedBounty: state.setSelectedBounty,
+      setLoading: state.setLoading,
+      setError: state.setError,
+      loading: state.loading,
+      error: state.error,
+    }),
+    shallow
+  );
 };
 
 export const useBountyById = (id: string) => {

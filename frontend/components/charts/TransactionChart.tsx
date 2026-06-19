@@ -157,6 +157,7 @@ export const TransactionChart: React.FC<TransactionChartProps> = ({
     const distribution = filteredData.reduce((acc: any, tx) => {
       if (!acc[tx.type]) {
         acc[tx.type] = {
+          name: tx.type,
           type: tx.type,
           count: 0,
           totalAmount: 0,
