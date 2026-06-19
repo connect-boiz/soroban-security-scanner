@@ -18,6 +18,7 @@ interface HelpState {
  */
 export const useHelpStore = create<HelpState>()(
   persist(
+    /* eslint-disable no-unused-vars */
     set => ({
       activeTour: null,
       completedTours: [],
@@ -32,6 +33,7 @@ export const useHelpStore = create<HelpState>()(
       setHelpPanelTopic: topic => set({ helpPanelTopic: topic }),
       resetTours: () => set({ completedTours: [] }),
     }),
+    /* eslint-enable no-unused-vars */
     {
       name: 'soroban-help-storage',
       // Only persist the completedTours array

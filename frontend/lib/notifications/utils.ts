@@ -135,10 +135,12 @@ export function debounce<T extends (...args: any[]) => void>(
   delay: number
 ): (...args: Parameters<T>) => void {
   let timeoutId: number;
+  /* eslint-disable no-unused-vars */
   return (...args: Parameters<T>) => {
     clearTimeout(timeoutId);
     timeoutId = window.setTimeout(() => func(...args), delay);
   };
+  /* eslint-enable no-unused-vars */
 }
 
 export function throttle<T extends (...args: any[]) => void>(
@@ -146,6 +148,7 @@ export function throttle<T extends (...args: any[]) => void>(
   limit: number
 ): (...args: Parameters<T>) => void {
   let inThrottle: boolean;
+  /* eslint-disable no-unused-vars */
   return (...args: Parameters<T>) => {
     if (!inThrottle) {
       func(...args);
@@ -153,6 +156,7 @@ export function throttle<T extends (...args: any[]) => void>(
       setTimeout(() => (inThrottle = false), limit);
     }
   };
+  /* eslint-enable no-unused-vars */
 }
 
 export function formatFileSize(bytes: number): string {

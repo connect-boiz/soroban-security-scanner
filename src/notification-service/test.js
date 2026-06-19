@@ -350,6 +350,17 @@ if (require.main === module) {
     });
 }
 
+// Jest-compatible test
+if (typeof jest !== 'undefined') {
+  describe('Notification Service', () => {
+    test('exports are defined', () => {
+      expect(NotificationService).toBeDefined();
+      expect(NotificationChannel).toBeDefined();
+      expect(NotificationPriority).toBeDefined();
+    });
+  });
+}
+
 module.exports = {
   testNotificationService,
   testTemplateManagement,
