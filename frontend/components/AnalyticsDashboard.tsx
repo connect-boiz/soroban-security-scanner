@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { PortfolioChart, TransactionChart, PerformanceChart } from '@/components/charts';
 import { PortfolioData, TransactionData, PerformanceMetrics, ChartFilter } from '@/types/charts';
 import { LoadingOverlay, SkeletonCard, ProgressBar, LoadingSpinner } from './ui';
@@ -9,14 +9,9 @@ import {
   TrendingUp,
   PieChart,
   Activity,
-  Filter,
   Calendar,
   Download,
   RefreshCw,
-  Shield,
-  Zap,
-  Clock,
-  AlertTriangle,
 } from 'lucide-react';
 
 interface AnalyticsDashboardProps {

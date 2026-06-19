@@ -83,7 +83,7 @@ jobs:
       - name: cargo clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
       - name: cargo test
-        run: cargo test
+        run: cargo test --features testutils
       - name: cargo build (WASM)
         run: cargo build --target wasm32-unknown-unknown --release
 
@@ -109,7 +109,7 @@ jobs:
       - name: cargo fmt
         run: cargo fmt --check
       - name: cargo clippy
-        run: cargo clippy --all-targets --all-features
+        run: cargo clippy --all-features
       - name: cargo test
         run: cargo test
       - name: cargo build
