@@ -101,9 +101,11 @@ impl Default for VersionRegistry {
 impl VersionRegistry {
     /// Create a new registry with a custom deprecation policy
     pub fn with_policy(policy: DeprecationPolicy) -> Self {
-        let mut registry = Self::default();
-        registry.deprecation_policy = policy;
-        registry
+        let default = Self::default();
+        Self {
+            deprecation_policy: policy,
+            ..default
+        }
     }
 
     /// Register a new version

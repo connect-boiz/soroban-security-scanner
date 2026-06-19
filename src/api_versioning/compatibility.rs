@@ -129,23 +129,24 @@ impl<'a> CompatibilityTestSuite<'a> {
 
     /// Run every check and produce a report.
     pub fn run(&self) -> CompatibilityReport {
-        let mut results = Vec::new();
-        results.push(self.v1_endpoint_contract_preserved());
-        results.push(self.v1_media_type_still_served());
-        results.push(self.v1_changelog_audit_trail_complete());
-        results.push(self.new_version_does_not_evict_old_version());
-        results.push(self.deprecation_timeline_respects_min_notice());
-        results.push(self.sunset_raises_not_found_after_sunset());
-        results.push(self.promote_to_stable_demotes_previous_stable());
-        results.push(self.stable_rejects_breaking_changes_runtime());
-        results.push(self.change_log_markdown_is_non_empty());
-        results.push(self.change_log_json_roundtrip());
-        results.push(self.migration_summary_reflects_breaking_changes());
-        results.push(self.current_stable_is_queryable());
-        results.push(self.list_active_versions_excludes_sunset());
-        results.push(self.urgency_notification_thresholds_match_policy());
-        results.push(self.api_version_roundtrip_parse());
-        results.push(self.lifecycle_serving_table_matches_documentation());
+        let results = vec![
+            self.v1_endpoint_contract_preserved(),
+            self.v1_media_type_still_served(),
+            self.v1_changelog_audit_trail_complete(),
+            self.new_version_does_not_evict_old_version(),
+            self.deprecation_timeline_respects_min_notice(),
+            self.sunset_raises_not_found_after_sunset(),
+            self.promote_to_stable_demotes_previous_stable(),
+            self.stable_rejects_breaking_changes_runtime(),
+            self.change_log_markdown_is_non_empty(),
+            self.change_log_json_roundtrip(),
+            self.migration_summary_reflects_breaking_changes(),
+            self.current_stable_is_queryable(),
+            self.list_active_versions_excludes_sunset(),
+            self.urgency_notification_thresholds_match_policy(),
+            self.api_version_roundtrip_parse(),
+            self.lifecycle_serving_table_matches_documentation(),
+        ];
         CompatibilityReport {
             results,
             timestamp: Utc::now(),
@@ -434,12 +435,7 @@ impl<'a> CompatibilityTestSuite<'a> {
     fn urgency_notification_thresholds_match_policy(&self) -> CheckResult {
         let notes = self.registry.get_urgency_notifications();
         for n in &notes {
-            if !self
-                .policy
-                .urgency_notification_days
-                .iter()
-                .any(|t| *t == n.threshold)
-            {
+            if !self.policy.urgency_notification_days.contains(&n.threshold) {
                 return CheckResult::fail(
                     "urgency_notification_thresholds_match_policy",
                     format!("urgency threshold {} not in policy", n.threshold),
@@ -664,6 +660,6 @@ mod tests {
         assert!(report
             .results
             .iter()
-            .any(|r| !r.passed && r.name == "v1_endpoint_contract_preserved"));
+            .any(|r| r.name == "v1_endpoint_contract_preserved" && !r.passed));
     }
 }

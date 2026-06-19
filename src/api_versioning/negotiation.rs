@@ -197,25 +197,23 @@ pub async fn version_negotiation_middleware(
 
     // Check for ambiguity
     match (path_version, header_version) {
-        (Some(pv), Some(hv)) if pv != hv => {
-            return Err(VersionError::Ambiguous {
-                path_version: pv,
-                header_version: hv,
-            });
-        }
+        (Some(pv), Some(hv)) if pv != hv => Err(VersionError::Ambiguous {
+            path_version: pv,
+            header_version: hv,
+        }),
         (Some(pv), _) => {
             negotiator.validate_version(pv)?;
-            return Ok(pv);
+            Ok(pv)
         }
         (None, Some(hv)) => {
             negotiator.validate_version(hv)?;
-            return Ok(hv);
+            Ok(hv)
         }
         (None, None) => {
             // Default to current version
             let current = ApiVersion::current();
             negotiator.validate_version(current)?;
-            return Ok(current);
+            Ok(current)
         }
     }
 }
