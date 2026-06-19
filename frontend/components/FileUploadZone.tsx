@@ -2,7 +2,12 @@
 
 import { useRef } from 'react';
 import { ProgressBar } from './ui';
-import { useFileUpload, FileValidationOptions, UploadedFile, FileStatus } from '../hooks/useFileUpload';
+import {
+  useFileUpload,
+  FileValidationOptions,
+  UploadedFile,
+  FileStatus,
+} from '../hooks/useFileUpload';
 
 interface FileUploadZoneProps extends FileValidationOptions {
   onFilesReady?: (files: File[]) => void;
@@ -107,9 +112,7 @@ function FileRow({
 
         <p className="text-xs text-gray-400">{formatBytes(file.size)}</p>
 
-        {error && (
-          <p className="text-xs text-red-500">{error}</p>
-        )}
+        {error && <p className="text-xs text-red-500">{error}</p>}
 
         {status !== 'pending' && status !== 'error' && (
           <ProgressBar
@@ -150,15 +153,13 @@ export default function FileUploadZone({
     clearAll,
   } = useFileUpload({ maxSizeMB, allowedTypes, maxFiles });
 
-  const readyFiles = files.filter((f) => f.status === 'complete').map((f) => f.file);
+  const readyFiles = files.filter(f => f.status === 'complete').map(f => f.file);
 
   const handleSubmit = () => {
     if (allComplete && onFilesReady) onFilesReady(readyFiles);
   };
 
-  const acceptAttr = allowedTypes
-    .map((t) => (t.startsWith('.') ? t : `.${t}`))
-    .join(',');
+  const acceptAttr = allowedTypes.map(t => (t.startsWith('.') ? t : `.${t}`)).join(',');
 
   return (
     <div className={`space-y-4 ${className}`}>
@@ -172,7 +173,7 @@ export default function FileUploadZone({
         onDragLeave={onDragLeave}
         onDrop={onDrop}
         onClick={() => canAddMore && inputRef.current?.click()}
-        onKeyDown={(e) => {
+        onKeyDown={e => {
           if ((e.key === 'Enter' || e.key === ' ') && canAddMore) {
             inputRef.current?.click();
           }
@@ -182,8 +183,8 @@ export default function FileUploadZone({
           isDragActive
             ? 'border-blue-500 bg-blue-50 scale-[1.01]'
             : canAddMore
-            ? 'border-gray-300 bg-gray-50 hover:border-blue-400 hover:bg-blue-50/40'
-            : 'border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed',
+              ? 'border-gray-300 bg-gray-50 hover:border-blue-400 hover:bg-blue-50/40'
+              : 'border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed',
         ].join(' ')}
       >
         <input
@@ -217,9 +218,7 @@ export default function FileUploadZone({
               </p>
             </>
           ) : (
-            <p className="text-sm font-medium text-gray-500">
-              Maximum of {maxFiles} files reached
-            </p>
+            <p className="text-sm font-medium text-gray-500">Maximum of {maxFiles} files reached</p>
           )}
         </div>
       </div>
@@ -240,20 +239,15 @@ export default function FileUploadZone({
           </div>
 
           <ul className="space-y-2" role="list" aria-label="Uploaded files">
-            {files.map((entry) => (
-              <FileRow
-                key={entry.id}
-                entry={entry}
-                onRemove={removeFile}
-                onRetry={retryFile}
-              />
+            {files.map(entry => (
+              <FileRow key={entry.id} entry={entry} onRemove={removeFile} onRetry={retryFile} />
             ))}
           </ul>
 
           {/* Summary + action */}
           <div className="flex items-center justify-between pt-1">
             <p className="text-xs text-gray-400">
-              {files.filter((f) => f.status === 'complete').length} of {files.length} ready
+              {files.filter(f => f.status === 'complete').length} of {files.length} ready
             </p>
             {onFilesReady && (
               <button

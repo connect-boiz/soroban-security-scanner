@@ -4,26 +4,20 @@ import { shallow } from 'zustand/shallow';
 
 // Optimized selectors using shallow comparison to prevent unnecessary re-renders
 export const useFilteredBounties = () => {
-  return useBountyStore(
-    (state) => state.getFilteredBounties(),
-    shallow
-  );
+  return useBountyStore(state => state.getFilteredBounties(), shallow);
 };
 
 export const useBountyStats = () => {
-  return useBountyStore(
-    (state) => state.getBountyStats(),
-    shallow
-  );
+  return useBountyStore(state => state.getBountyStats(), shallow);
 };
 
 export const useBountyFilters = () => {
   return useBountyStore(
-    (state) => ({
+    state => ({
       filters: state.filters,
       searchTerm: state.searchTerm,
       setFilters: state.setFilters,
-      setSearchTerm: state.setSearchTerm
+      setSearchTerm: state.setSearchTerm,
     }),
     shallow
   );
@@ -31,13 +25,13 @@ export const useBountyFilters = () => {
 
 export const useBountyActions = () => {
   return useBountyStore(
-    (state) => ({
+    state => ({
       setBounties: state.setBounties,
       setSelectedBounty: state.setSelectedBounty,
       setLoading: state.setLoading,
       setError: state.setError,
       loading: state.loading,
-      error: state.error
+      error: state.error,
     }),
     shallow
   );

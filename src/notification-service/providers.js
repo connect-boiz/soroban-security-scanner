@@ -1,12 +1,7 @@
 //! Notification providers for different channels
 
 const nodemailer = require('nodemailer');
-const {
-  NotificationChannel,
-  DeliveryStatus,
-  DeliveryTracking,
-  ProviderStats
-} = require('./types');
+const { NotificationChannel, DeliveryStatus, DeliveryTracking, ProviderStats } = require('./types');
 
 class ProviderError extends Error {
   constructor(message, code) {
@@ -26,7 +21,7 @@ class NotificationProvider {
       channel: config.providerType,
       totalSent: 0,
       totalFailed: 0,
-      averageDeliveryTimeMs: 0
+      averageDeliveryTimeMs: 0,
     });
   }
 
@@ -66,7 +61,8 @@ class NotificationProvider {
       this.stats.totalSent++;
       if (deliveryTime > 0) {
         // Update average delivery time
-        const totalTime = this.stats.averageDeliveryTimeMs * (this.stats.totalSent - 1) + deliveryTime;
+        const totalTime =
+          this.stats.averageDeliveryTimeMs * (this.stats.totalSent - 1) + deliveryTime;
         this.stats.averageDeliveryTimeMs = Math.round(totalTime / this.stats.totalSent);
       }
       this.stats.lastSuccess = new Date();
@@ -107,8 +103,8 @@ class EmailProvider extends NotificationProvider {
       secure: smtpConfig.secure === 'true',
       auth: {
         user: smtpConfig.username,
-        pass: smtpConfig.password
-      }
+        pass: smtpConfig.password,
+      },
     });
   }
 
@@ -136,7 +132,7 @@ class EmailProvider extends NotificationProvider {
         to: recipient.email,
         subject: message.subject || 'Notification',
         text: message.body,
-        html: this.formatAsHtml(message.body)
+        html: this.formatAsHtml(message.body),
       };
 
       const result = await this.transporter.sendMail(mailOptions);
@@ -152,7 +148,7 @@ class EmailProvider extends NotificationProvider {
         attempts: 1,
         lastAttempt: new Date(),
         deliveredAt: new Date(),
-        externalId: result.messageId
+        externalId: result.messageId,
       });
     } catch (error) {
       const deliveryTime = Date.now() - startTime;
@@ -165,7 +161,7 @@ class EmailProvider extends NotificationProvider {
         status: DeliveryStatus.FAILED,
         attempts: 1,
         lastAttempt: new Date(),
-        errorMessage: error.message
+        errorMessage: error.message,
       });
     }
   }
@@ -219,7 +215,7 @@ class SMSProvider extends NotificationProvider {
     return {
       accountSid: this.config.config.account_sid,
       authToken: this.config.config.auth_token,
-      fromNumber: this.config.config.from_number
+      fromNumber: this.config.config.from_number,
     };
   }
 
@@ -244,13 +240,12 @@ class SMSProvider extends NotificationProvider {
 
     try {
       // Truncate message for SMS (160 characters typical limit)
-      const smsBody = message.body.length > 160 
-        ? message.body.substring(0, 157) + '...' 
-        : message.body;
+      const smsBody =
+        message.body.length > 160 ? message.body.substring(0, 157) + '...' : message.body;
 
       // Mock implementation - would use real SMS service
       console.log(`SMS sent to ${recipient.phone}: ${smsBody}`);
-      
+
       const deliveryTime = Date.now() - startTime;
       this.updateStats(true, deliveryTime);
 
@@ -262,7 +257,7 @@ class SMSProvider extends NotificationProvider {
         attempts: 1,
         lastAttempt: new Date(),
         deliveredAt: new Date(),
-        externalId: trackingId
+        externalId: trackingId,
       });
     } catch (error) {
       const deliveryTime = Date.now() - startTime;
@@ -275,7 +270,7 @@ class SMSProvider extends NotificationProvider {
         status: DeliveryStatus.FAILED,
         attempts: 1,
         lastAttempt: new Date(),
-        errorMessage: error.message
+        errorMessage: error.message,
       });
     }
   }
@@ -308,7 +303,7 @@ class PushProvider extends NotificationProvider {
 
     // In a real implementation, would initialize Firebase Cloud Messaging
     return {
-      serverKey: this.config.config.fcm_server_key
+      serverKey: this.config.config.fcm_server_key,
     };
   }
 
@@ -323,7 +318,7 @@ class PushProvider extends NotificationProvider {
     // In a real implementation, would initialize Apple Push Notification Service
     return {
       keyId: this.config.config.apns_key_id,
-      teamId: this.config.config.apns_team_id
+      teamId: this.config.config.apns_team_id,
     };
   }
 
@@ -369,7 +364,7 @@ class PushProvider extends NotificationProvider {
       lastAttempt: new Date(),
       deliveredAt: overallSuccess ? new Date() : null,
       errorMessage: errors.length > 0 ? errors.join(', ') : null,
-      externalId: overallSuccess ? trackingId : null
+      externalId: overallSuccess ? trackingId : null,
     });
   }
 
@@ -411,7 +406,7 @@ class InAppProvider extends NotificationProvider {
         priority: message.priority,
         read: false,
         createdAt: new Date(),
-        expiresAt: message.scheduledFor
+        expiresAt: message.scheduledFor,
       };
 
       // Store in-app notification (in real implementation, would use database)
@@ -430,7 +425,7 @@ class InAppProvider extends NotificationProvider {
         attempts: 1,
         lastAttempt: new Date(),
         deliveredAt: new Date(),
-        externalId: trackingId
+        externalId: trackingId,
       });
     } catch (error) {
       const deliveryTime = Date.now() - startTime;
@@ -443,7 +438,7 @@ class InAppProvider extends NotificationProvider {
         status: DeliveryStatus.FAILED,
         attempts: 1,
         lastAttempt: new Date(),
-        errorMessage: error.message
+        errorMessage: error.message,
       });
     }
   }
@@ -506,23 +501,23 @@ class ProviderFactory {
       [NotificationChannel.EMAIL]: {
         providerType: NotificationChannel.EMAIL,
         config: {},
-        enabled: false
+        enabled: false,
       },
       [NotificationChannel.SMS]: {
         providerType: NotificationChannel.SMS,
         config: {},
-        enabled: false
+        enabled: false,
       },
       [NotificationChannel.PUSH]: {
         providerType: NotificationChannel.PUSH,
         config: {},
-        enabled: false
+        enabled: false,
       },
       [NotificationChannel.IN_APP]: {
         providerType: NotificationChannel.IN_APP,
         config: {},
-        enabled: true
-      }
+        enabled: true,
+      },
     };
   }
 }
@@ -534,5 +529,5 @@ module.exports = {
   PushProvider,
   InAppProvider,
   ProviderFactory,
-  ProviderError
+  ProviderError,
 };

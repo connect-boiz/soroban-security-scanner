@@ -55,7 +55,7 @@ const generateMockTokenBalances = (): TokenBalance[] => [
     name: 'USD Coin',
     balance: '500.00',
     decimals: 6,
-    usdValue: 500.00,
+    usdValue: 500.0,
     change24h: 0.1,
     contractAddress: 'CCVAKHYSKXQD57MZPYE4NPE5W5KXKRNWQ3LCXK4JGFQ2VJ5PO2B5W7Q',
   },
@@ -64,7 +64,7 @@ const generateMockTokenBalances = (): TokenBalance[] => [
     name: 'Ethereum',
     balance: '0.75',
     decimals: 18,
-    usdValue: 1500.00,
+    usdValue: 1500.0,
     change24h: -1.2,
     contractAddress: 'CA3D5KRYM6CB7OWQ6TWYRR3Z4T7VN6LARJ7K36QKUQ5Q5Y6R7H5W7Q',
   },
@@ -73,7 +73,7 @@ const generateMockTokenBalances = (): TokenBalance[] => [
     name: 'Yield Lumens',
     balance: '2500.00',
     decimals: 7,
-    usdValue: 375.00,
+    usdValue: 375.0,
     change24h: 5.8,
     contractAddress: 'CBVN5L2LQKZQ6K7V2N5Q4R2M7K3L9N8P5Q2R7T6W3X2Y1Z4A5B6C7',
   },
@@ -83,7 +83,7 @@ const generateMockHistoricalData = (): HistoricalData[] => {
   const data: HistoricalData[] = [];
   const now = Date.now();
   for (let i = 30; i >= 0; i--) {
-    const timestamp = now - (i * 24 * 60 * 60 * 1000);
+    const timestamp = now - i * 24 * 60 * 60 * 1000;
     const baseValue = 1000 + Math.random() * 500;
     data.push({
       timestamp,
@@ -96,8 +96,8 @@ const generateMockHistoricalData = (): HistoricalData[] => {
 
 const generateMockConversionRates = (): ConversionRate[] => [
   { from: 'XLM', to: 'USD', rate: 0.15, timestamp: Date.now() },
-  { from: 'USDC', to: 'USD', rate: 1.00, timestamp: Date.now() },
-  { from: 'ETH', to: 'USD', rate: 2000.00, timestamp: Date.now() },
+  { from: 'USDC', to: 'USD', rate: 1.0, timestamp: Date.now() },
+  { from: 'ETH', to: 'USD', rate: 2000.0, timestamp: Date.now() },
   { from: 'YXLM', to: 'USD', rate: 0.15, timestamp: Date.now() },
 ];
 
@@ -105,31 +105,34 @@ const generateMockConversionRates = (): ConversionRate[] => [
 const formatDate = (timestamp: number, format: string): string => {
   const date = new Date(timestamp);
   if (format === 'MMM dd, yyyy HH:mm:ss') {
-    return date.toLocaleDateString('en-US', { 
-      month: 'short', 
-      day: 'numeric', 
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
       year: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
-      second: '2-digit'
+      second: '2-digit',
     });
   }
   if (format === 'MMM dd') {
-    return date.toLocaleDateString('en-US', { 
-      month: 'short', 
-      day: 'numeric'
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
     });
   }
   return date.toLocaleDateString();
 };
 
 // Balance Card Component
-const BalanceCard: React.FC<{ token: TokenBalance; onClick?: () => void }> = ({ token, onClick }) => {
+const BalanceCard: React.FC<{ token: TokenBalance; onClick?: () => void }> = ({
+  token,
+  onClick,
+}) => {
   const changeColor = token.change24h >= 0 ? 'text-green-600' : 'text-red-600';
   const changeIcon = token.change24h >= 0 ? '↗' : '↘';
 
   return (
-    <div 
+    <div
       className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow cursor-pointer border border-gray-200"
       onClick={onClick}
     >
@@ -148,7 +151,7 @@ const BalanceCard: React.FC<{ token: TokenBalance; onClick?: () => void }> = ({ 
           <span className="text-sm font-medium">{Math.abs(token.change24h)}%</span>
         </div>
       </div>
-      
+
       <div className="space-y-2">
         <div>
           <p className="text-sm text-gray-500">Balance</p>
@@ -159,11 +162,15 @@ const BalanceCard: React.FC<{ token: TokenBalance; onClick?: () => void }> = ({ 
         <div>
           <p className="text-sm text-gray-500">USD Value</p>
           <p className="text-lg font-semibold text-gray-900">
-            ${token.usdValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            $
+            {token.usdValue.toLocaleString(undefined, {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })}
           </p>
         </div>
       </div>
-      
+
       <div className="mt-4 pt-4 border-t border-gray-100">
         <p className="text-xs text-gray-400 truncate">
           {token.contractAddress.slice(0, 10)}...{token.contractAddress.slice(-10)}
@@ -197,8 +204,8 @@ const MiniChart: React.FC<{ data: HistoricalData[] }> = ({ data }) => {
 };
 
 // Conversion Panel Component
-const ConversionPanel: React.FC<{ 
-  tokens: TokenBalance[]; 
+const ConversionPanel: React.FC<{
+  tokens: TokenBalance[];
   conversionRates: ConversionRate[];
 }> = ({ tokens, conversionRates }) => {
   const [fromToken, setFromToken] = useState(tokens[0]?.symbol || '');
@@ -223,40 +230,48 @@ const ConversionPanel: React.FC<{
             <input
               type="number"
               value={amount}
-              onChange={(e) => setAmount(e.target.value)}
+              onChange={e => setAmount(e.target.value)}
               className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Amount"
             />
             <select
               value={fromToken}
-              onChange={(e) => setFromToken(e.target.value)}
+              onChange={e => setFromToken(e.target.value)}
               className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               {tokens.map(token => (
-                <option key={token.symbol} value={token.symbol}>{token.symbol}</option>
+                <option key={token.symbol} value={token.symbol}>
+                  {token.symbol}
+                </option>
               ))}
             </select>
           </div>
         </div>
-        
+
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">To</label>
           <select
             value={toToken}
-            onChange={(e) => setToToken(e.target.value)}
+            onChange={e => setToToken(e.target.value)}
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="USD">USD</option>
             {tokens.map(token => (
-              <option key={token.symbol} value={token.symbol}>{token.symbol}</option>
+              <option key={token.symbol} value={token.symbol}>
+                {token.symbol}
+              </option>
             ))}
           </select>
         </div>
-        
+
         <div className="pt-4 border-t border-gray-200">
           <p className="text-sm text-gray-500">Result</p>
           <p className="text-2xl font-bold text-gray-900">
-            {convertedAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })} {toToken}
+            {convertedAmount.toLocaleString(undefined, {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 6,
+            })}{' '}
+            {toToken}
           </p>
           <p className="text-xs text-gray-400 mt-1">
             Rate: 1 {fromToken} = {getConversionRate(fromToken, toToken).toFixed(6)} {toToken}
@@ -277,7 +292,9 @@ export const BalanceDisplay: React.FC<BalanceDisplayProps> = ({
   realTimeUpdates = true,
   className = '',
 }) => {
-  const [tokens, setTokens] = useState<TokenBalance[]>(initialTokens || generateMockTokenBalances());
+  const [tokens, setTokens] = useState<TokenBalance[]>(
+    initialTokens || generateMockTokenBalances()
+  );
   const [historicalData, setHistoricalData] = useState<HistoricalData[]>(
     initialHistoricalData || generateMockHistoricalData()
   );
@@ -294,7 +311,7 @@ export const BalanceDisplay: React.FC<BalanceDisplayProps> = ({
   const totalValue = tokens.reduce((sum, token) => sum + token.usdValue, 0);
   const totalChange24h = tokens.reduce((sum, token) => {
     const tokenValue = parseFloat(token.balance) * (token.usdValue / parseFloat(token.balance));
-    return sum + (tokenValue * token.change24h / 100);
+    return sum + (tokenValue * token.change24h) / 100;
   }, 0);
   const totalChangePercentage = totalValue > 0 ? (totalChange24h / totalValue) * 100 : 0;
 
@@ -303,23 +320,23 @@ export const BalanceDisplay: React.FC<BalanceDisplayProps> = ({
     const loadInitialData = async () => {
       setIsInitialLoading(true);
       setRefreshProgress(0);
-      
+
       const stages = [
         { progress: 25, delay: 400 },
         { progress: 50, delay: 300 },
         { progress: 75, delay: 500 },
-        { progress: 100, delay: 300 }
+        { progress: 100, delay: 300 },
       ];
-      
+
       for (const stage of stages) {
         await new Promise(resolve => setTimeout(resolve, stage.delay));
         setRefreshProgress(stage.progress);
       }
-      
+
       setIsInitialLoading(false);
       setRefreshProgress(0);
     };
-    
+
     loadInitialData();
   }, []);
 
@@ -345,19 +362,19 @@ export const BalanceDisplay: React.FC<BalanceDisplayProps> = ({
   const handleRefresh = useCallback(async () => {
     setIsRefreshingData(true);
     setRefreshProgress(0);
-    
+
     const stages = [
       { progress: 30, delay: 300 },
       { progress: 60, delay: 400 },
       { progress: 90, delay: 200 },
-      { progress: 100, delay: 100 }
+      { progress: 100, delay: 100 },
     ];
-    
+
     for (const stage of stages) {
       await new Promise(resolve => setTimeout(resolve, stage.delay));
       setRefreshProgress(stage.progress);
     }
-    
+
     setTokens(generateMockTokenBalances());
     setLastUpdated(new Date());
     setIsRefreshingData(false);
@@ -377,8 +394,8 @@ export const BalanceDisplay: React.FC<BalanceDisplayProps> = ({
               </span>
               <span className="text-sm text-gray-600">{refreshProgress}%</span>
             </div>
-            <ProgressBar 
-              value={refreshProgress} 
+            <ProgressBar
+              value={refreshProgress}
               color="blue"
               showLabel={false}
               className="w-full"
@@ -403,19 +420,32 @@ export const BalanceDisplay: React.FC<BalanceDisplayProps> = ({
               {isRefreshingData ? 'Refreshing...' : 'Refresh'}
             </button>
           </div>
-          
+
           <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <p className="text-sm text-gray-500">Total Value</p>
               <p className="text-3xl font-bold text-gray-900">
-                ${totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                $
+                {totalValue.toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
               </p>
             </div>
             <div>
               <p className="text-sm text-gray-500">24h Change</p>
-              <p className={`text-2xl font-bold ${totalChange24h >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {totalChange24h >= 0 ? '+' : ''}{totalChange24h.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                <span className="text-sm ml-2">({totalChangePercentage >= 0 ? '+' : ''}{totalChangePercentage.toFixed(2)}%)</span>
+              <p
+                className={`text-2xl font-bold ${totalChange24h >= 0 ? 'text-green-600' : 'text-red-600'}`}
+              >
+                {totalChange24h >= 0 ? '+' : ''}
+                {totalChange24h.toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
+                <span className="text-sm ml-2">
+                  ({totalChangePercentage >= 0 ? '+' : ''}
+                  {totalChangePercentage.toFixed(2)}%)
+                </span>
               </p>
             </div>
             <div>
@@ -439,7 +469,7 @@ export const BalanceDisplay: React.FC<BalanceDisplayProps> = ({
                   <SkeletonCard lines={4} avatar={true} button={false} height="h-32" />
                 </>
               ) : (
-                tokens.map((token) => (
+                tokens.map(token => (
                   <BalanceCard
                     key={token.contractAddress}
                     token={token}
@@ -465,16 +495,12 @@ export const BalanceDisplay: React.FC<BalanceDisplayProps> = ({
             )}
 
             {/* Conversion Calculator */}
-            {showConversion && (
-              isRefreshingData ? (
+            {showConversion &&
+              (isRefreshingData ? (
                 <SkeletonCard lines={8} avatar={false} button={true} height="h-64" />
               ) : (
-                <ConversionPanel
-                  tokens={tokens}
-                  conversionRates={conversionRates}
-                />
-              )
-            )}
+                <ConversionPanel tokens={tokens} conversionRates={conversionRates} />
+              ))}
           </div>
         </div>
 
@@ -494,7 +520,9 @@ export const BalanceDisplay: React.FC<BalanceDisplayProps> = ({
               <div className="space-y-4">
                 <div>
                   <p className="text-sm text-gray-500">Contract Address</p>
-                  <p className="font-mono text-xs bg-gray-100 p-2 rounded break-all">{selectedToken.contractAddress}</p>
+                  <p className="font-mono text-xs bg-gray-100 p-2 rounded break-all">
+                    {selectedToken.contractAddress}
+                  </p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Decimals</p>
@@ -502,8 +530,11 @@ export const BalanceDisplay: React.FC<BalanceDisplayProps> = ({
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">24h Change</p>
-                  <p className={`font-semibold ${selectedToken.change24h >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {selectedToken.change24h >= 0 ? '+' : ''}{selectedToken.change24h}%
+                  <p
+                    className={`font-semibold ${selectedToken.change24h >= 0 ? 'text-green-600' : 'text-red-600'}`}
+                  >
+                    {selectedToken.change24h >= 0 ? '+' : ''}
+                    {selectedToken.change24h}%
                   </p>
                 </div>
               </div>

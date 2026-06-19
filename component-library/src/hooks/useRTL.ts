@@ -60,14 +60,14 @@ export function useRTLStyles() {
     return rtl.isRTL ? rtlValue : ltrValue;
   };
 
-  const getMarginStyle = (start: number, end: number) => {
+  const getMarginStyle = (start: string | number, end: string | number) => {
     return {
       [rtl.marginStart]: start,
       [rtl.marginEnd]: end
     };
   };
 
-  const getPaddingStyle = (start: number, end: number) => {
+  const getPaddingStyle = (start: string | number, end: string | number) => {
     return {
       [rtl.paddingStart]: start,
       [rtl.paddingEnd]: end

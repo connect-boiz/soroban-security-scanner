@@ -6,7 +6,7 @@ const {
   NotificationPriority,
   Recipient,
   NotificationMessage,
-  NotificationResult
+  NotificationResult,
 } = require('./types');
 
 const { TemplateManager } = require('./template-manager');
@@ -37,10 +37,10 @@ class RateLimiter {
    */
   checkLimit() {
     const now = Date.now();
-    
+
     // Clean old requests
-    this.requests = this.requests.filter(timestamp => 
-      now - timestamp < 3600000 // 1 hour
+    this.requests = this.requests.filter(
+      timestamp => now - timestamp < 3600000 // 1 hour
     );
 
     // Check limits
@@ -48,9 +48,11 @@ class RateLimiter {
     const requestsLastMinute = this.requests.filter(timestamp => now - timestamp < 60000).length;
     const requestsLastHour = this.requests.length;
 
-    if (requestsLastSecond >= this.maxRequestsPerSecond ||
-        requestsLastMinute >= this.maxRequestsPerMinute ||
-        requestsLastHour >= this.maxRequestsPerHour) {
+    if (
+      requestsLastSecond >= this.maxRequestsPerSecond ||
+      requestsLastMinute >= this.maxRequestsPerMinute ||
+      requestsLastHour >= this.maxRequestsPerHour
+    ) {
       return false;
     }
 
@@ -68,7 +70,7 @@ class NotificationService {
     this.deliveryTracker = new DeliveryTracker();
     this.providers = new Map();
     this.rateLimiters = new Map();
-    
+
     this.initializeDefaultProviders();
     this.templateManager.createDefaultTemplates();
   }
@@ -78,7 +80,7 @@ class NotificationService {
    */
   initializeDefaultProviders() {
     const defaultConfigs = ProviderFactory.getDefaultConfigs();
-    
+
     for (const [channel, config] of Object.entries(defaultConfigs)) {
       try {
         const provider = ProviderFactory.createProvider(channel, config);
@@ -112,7 +114,7 @@ class NotificationService {
         success: false,
         deliveredChannels: [],
         failedChannels: [[NotificationChannel.EMAIL, 'Notification deferred due to quiet hours']],
-        trackingIds: []
+        trackingIds: [],
       });
     }
 
@@ -141,10 +143,10 @@ class NotificationService {
 
         // Send notification
         const tracking = await provider.sendNotification(message, recipient);
-        
+
         // Record delivery
         await this.deliveryTracker.recordDelivery(tracking);
-        
+
         deliveredChannels.push(channel);
         trackingIds.push(`${channel}:${tracking.recipientId}`);
       } catch (error) {
@@ -159,7 +161,7 @@ class NotificationService {
       success,
       deliveredChannels,
       failedChannels,
-      trackingIds
+      trackingIds,
     });
   }
 
@@ -173,7 +175,7 @@ class NotificationService {
 
     // Render template
     const rendered = this.templateManager.renderTemplate(templateId, context);
-    
+
     const message = new NotificationMessage({
       id: uuidv4(),
       templateId,
@@ -182,7 +184,7 @@ class NotificationService {
       data: context,
       priority,
       channels,
-      createdAt: new Date()
+      createdAt: new Date(),
     });
 
     return this.sendNotification(message, recipient);
@@ -201,10 +203,10 @@ class NotificationService {
 
     // In a real implementation, this would store in a database and use a job scheduler
     const jobId = uuidv4();
-    
+
     // Mock implementation - just return the job ID
     console.log(`Notification scheduled for ${scheduledFor} with job ID: ${jobId}`);
-    
+
     return jobId;
   }
 
@@ -251,19 +253,25 @@ class NotificationService {
     try {
       const provider = ProviderFactory.createProvider(channel, config);
       this.providers.set(channel, provider);
-      
+
       // Update rate limiter if specified
       if (config.rateLimit) {
-        this.rateLimiters.set(channel, new RateLimiter(
-          config.rateLimit.maxRequestsPerSecond,
-          config.rateLimit.maxRequestsPerMinute,
-          config.rateLimit.maxRequestsPerHour
-        ));
+        this.rateLimiters.set(
+          channel,
+          new RateLimiter(
+            config.rateLimit.maxRequestsPerSecond,
+            config.rateLimit.maxRequestsPerMinute,
+            config.rateLimit.maxRequestsPerHour
+          )
+        );
       }
-      
+
       return true;
     } catch (error) {
-      throw new ServiceError(`Provider configuration error: ${error.message}`, 'CONFIGURATION_ERROR');
+      throw new ServiceError(
+        `Provider configuration error: ${error.message}`,
+        'CONFIGURATION_ERROR'
+      );
     }
   }
 
@@ -294,7 +302,7 @@ class NotificationService {
    */
   async healthCheck() {
     const healthStatus = {};
-    
+
     for (const [channel, provider] of this.providers) {
       try {
         const health = await provider.healthCheck();
@@ -303,7 +311,7 @@ class NotificationService {
         healthStatus[channel] = false;
       }
     }
-    
+
     return healthStatus;
   }
 
@@ -312,7 +320,7 @@ class NotificationService {
    */
   async getProviderStats() {
     const stats = {};
-    
+
     for (const [channel, provider] of this.providers) {
       try {
         const providerStats = await provider.getStats();
@@ -321,7 +329,7 @@ class NotificationService {
         console.error(`Failed to get stats for ${channel}:`, error.message);
       }
     }
-    
+
     return stats;
   }
 
@@ -338,9 +346,9 @@ class NotificationService {
     if (recipient.preferences.quietHours) {
       const now = new Date();
       const currentHour = now.getHours();
-      
+
       const { startHour, endHour } = recipient.preferences.quietHours;
-      
+
       let inQuietHours;
       if (startHour <= endHour) {
         inQuietHours = currentHour >= startHour && currentHour < endHour;
@@ -400,5 +408,5 @@ class NotificationService {
 module.exports = {
   NotificationService,
   ServiceError,
-  RateLimiter
+  RateLimiter,
 };

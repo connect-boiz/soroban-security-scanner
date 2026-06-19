@@ -19,35 +19,41 @@ import {
   PolarAngleAxis,
   PolarRadiusAxis,
   Radar,
-  ComposedChart
+  ComposedChart,
 } from 'recharts';
 import { PerformanceMetrics, ChartConfig } from '@/types/charts';
-import { 
-  TrendingUp, 
-  TrendingDown, 
-  Trophy, 
+import {
+  TrendingUp,
+  TrendingDown,
+  Trophy,
   Target,
   Clock,
   DollarSign,
   Award,
   Activity,
-  Zap
+  Zap,
 } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface PerformanceChartProps {
   data: PerformanceMetrics[];
   config?: Partial<ChartConfig>;
-  metrics?: ('reputation' | 'completedBounties' | 'totalEarned' | 'successRate' | 'avgCompletionTime')[];
+  metrics?: (
+    | 'reputation'
+    | 'completedBounties'
+    | 'totalEarned'
+    | 'successRate'
+    | 'avgCompletionTime'
+  )[];
   className?: string;
 }
 
 const METRIC_COLORS = {
-  reputation: '#3b82f6',      // blue
+  reputation: '#3b82f6', // blue
   completedBounties: '#10b981', // emerald
-  totalEarned: '#f59e0b',     // amber
-  successRate: '#8b5cf6',     // violet
-  avgCompletionTime: '#ef4444'  // red
+  totalEarned: '#f59e0b', // amber
+  successRate: '#8b5cf6', // violet
+  avgCompletionTime: '#ef4444', // red
 };
 
 const METRIC_LABELS = {
@@ -55,7 +61,7 @@ const METRIC_LABELS = {
   completedBounties: 'Completed Bounties',
   totalEarned: 'Total Earned ($)',
   successRate: 'Success Rate (%)',
-  avgCompletionTime: 'Avg Completion Time (hrs)'
+  avgCompletionTime: 'Avg Completion Time (hrs)',
 };
 
 const CustomTooltip = ({ active, payload, label }: any) => {
@@ -68,23 +74,19 @@ const CustomTooltip = ({ active, payload, label }: any) => {
         {payload.map((entry: any, index: number) => (
           <div key={index} className="flex items-center justify-between space-x-4 mb-1">
             <div className="flex items-center space-x-2">
-              <div 
-                className="w-3 h-3 rounded-full" 
-                style={{ backgroundColor: entry.color }}
-              />
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }} />
               <span className="text-sm text-gray-600">
                 {METRIC_LABELS[entry.dataKey as keyof typeof METRIC_LABELS]}
               </span>
             </div>
             <span className="text-sm font-medium text-gray-900">
-              {entry.dataKey === 'totalEarned' 
+              {entry.dataKey === 'totalEarned'
                 ? `$${entry.value.toLocaleString()}`
                 : entry.dataKey === 'successRate'
-                ? `${entry.value.toFixed(1)}%`
-                : entry.dataKey === 'avgCompletionTime'
-                ? `${entry.value.toFixed(1)}h`
-                : entry.value.toLocaleString()
-              }
+                  ? `${entry.value.toFixed(1)}%`
+                  : entry.dataKey === 'avgCompletionTime'
+                    ? `${entry.value.toFixed(1)}h`
+                    : entry.value.toLocaleString()}
             </span>
           </div>
         ))}
@@ -106,14 +108,13 @@ const RadarTooltip = ({ active, payload }: any) => {
           <div key={key} className="flex items-center justify-between space-x-4 mb-1">
             <span className="text-sm text-gray-600">{label}</span>
             <span className="text-sm font-medium text-gray-900">
-              {key === 'totalEarned' 
+              {key === 'totalEarned'
                 ? `$${data[key].toLocaleString()}`
                 : key === 'successRate'
-                ? `${data[key].toFixed(1)}%`
-                : key === 'avgCompletionTime'
-                ? `${data[key].toFixed(1)}h`
-                : data[key].toLocaleString()
-              }
+                  ? `${data[key].toFixed(1)}%`
+                  : key === 'avgCompletionTime'
+                    ? `${data[key].toFixed(1)}h`
+                    : data[key].toLocaleString()}
             </span>
           </div>
         ))}
@@ -127,7 +128,7 @@ export const PerformanceChart: React.FC<PerformanceChartProps> = ({
   data,
   config = {},
   metrics = ['reputation', 'completedBounties', 'totalEarned', 'successRate'],
-  className = ''
+  className = '',
 }) => {
   const {
     type = 'line',
@@ -135,7 +136,7 @@ export const PerformanceChart: React.FC<PerformanceChartProps> = ({
     showLegend = true,
     showGrid = true,
     height = 300,
-    responsive = true
+    responsive = true,
   } = config;
 
   // Normalize data for radar chart (scale all metrics to 0-100)
@@ -147,7 +148,7 @@ export const PerformanceChart: React.FC<PerformanceChartProps> = ({
       completedBounties: Math.max(...data.map(d => d.completedBounties)),
       totalEarned: Math.max(...data.map(d => d.totalEarned)),
       successRate: 100, // Already percentage
-      avgCompletionTime: Math.max(...data.map(d => d.avgCompletionTime))
+      avgCompletionTime: Math.max(...data.map(d => d.avgCompletionTime)),
     };
 
     return data.map(item => ({
@@ -156,7 +157,8 @@ export const PerformanceChart: React.FC<PerformanceChartProps> = ({
       completedBountiesNormalized: (item.completedBounties / maxValues.completedBounties) * 100,
       totalEarnedNormalized: (item.totalEarned / maxValues.totalEarned) * 100,
       successRateNormalized: item.successRate,
-      avgCompletionTimeNormalized: 100 - (item.avgCompletionTime / maxValues.avgCompletionTime) * 100 // Invert time (lower is better)
+      avgCompletionTimeNormalized:
+        100 - (item.avgCompletionTime / maxValues.avgCompletionTime) * 100, // Invert time (lower is better)
     }));
   };
 
@@ -175,27 +177,21 @@ export const PerformanceChart: React.FC<PerformanceChartProps> = ({
         <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
         <div className="flex items-center space-x-2">
           <Activity className="w-4 h-4 text-gray-600" />
-          <span className="text-sm font-medium text-gray-900">
-            {data.length} data points
-          </span>
+          <span className="text-sm font-medium text-gray-900">{data.length} data points</span>
         </div>
       </div>
-      
+
       <ResponsiveContainer width="100%" height={height}>
         <LineChart data={data}>
           {showGrid && <CartesianGrid strokeDasharray="3 3" className="opacity-30" />}
-          <XAxis 
+          <XAxis
             dataKey="date"
             tick={{ fontSize: 12 }}
             className="text-gray-600"
-            tickFormatter={(value) => format(new Date(value), 'MMM dd')}
+            tickFormatter={value => format(new Date(value), 'MMM dd')}
           />
-          <YAxis 
-            yAxisId="left"
-            tick={{ fontSize: 12 }}
-            className="text-gray-600"
-          />
-          <YAxis 
+          <YAxis yAxisId="left" tick={{ fontSize: 12 }} className="text-gray-600" />
+          <YAxis
             yAxisId="right"
             orientation="right"
             tick={{ fontSize: 12 }}
@@ -203,7 +199,7 @@ export const PerformanceChart: React.FC<PerformanceChartProps> = ({
           />
           <Tooltip content={<CustomTooltip />} />
           {showLegend && <Legend />}
-          
+
           {metrics.includes('reputation') && (
             <Line
               yAxisId="left"
@@ -215,7 +211,7 @@ export const PerformanceChart: React.FC<PerformanceChartProps> = ({
               name="Reputation"
             />
           )}
-          
+
           {metrics.includes('completedBounties') && (
             <Line
               yAxisId="left"
@@ -227,7 +223,7 @@ export const PerformanceChart: React.FC<PerformanceChartProps> = ({
               name="Completed"
             />
           )}
-          
+
           {metrics.includes('totalEarned') && (
             <Line
               yAxisId="right"
@@ -239,7 +235,7 @@ export const PerformanceChart: React.FC<PerformanceChartProps> = ({
               name="Earned ($)"
             />
           )}
-          
+
           {metrics.includes('successRate') && (
             <Line
               yAxisId="left"
@@ -262,28 +258,23 @@ export const PerformanceChart: React.FC<PerformanceChartProps> = ({
         <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
         <div className="flex items-center space-x-2">
           <TrendingUp className="w-4 h-4 text-gray-600" />
-          <span className="text-sm font-medium text-gray-900">
-            Growth Overview
-          </span>
+          <span className="text-sm font-medium text-gray-900">Growth Overview</span>
         </div>
       </div>
-      
+
       <ResponsiveContainer width="100%" height={height}>
         <AreaChart data={data}>
           {showGrid && <CartesianGrid strokeDasharray="3 3" className="opacity-30" />}
-          <XAxis 
+          <XAxis
             dataKey="date"
             tick={{ fontSize: 12 }}
             className="text-gray-600"
-            tickFormatter={(value) => format(new Date(value), 'MMM dd')}
+            tickFormatter={value => format(new Date(value), 'MMM dd')}
           />
-          <YAxis 
-            tick={{ fontSize: 12 }}
-            className="text-gray-600"
-          />
+          <YAxis tick={{ fontSize: 12 }} className="text-gray-600" />
           <Tooltip content={<CustomTooltip />} />
           {showLegend && <Legend />}
-          
+
           {metrics.includes('totalEarned') && (
             <Area
               type="monotone"
@@ -294,7 +285,7 @@ export const PerformanceChart: React.FC<PerformanceChartProps> = ({
               name="Total Earned"
             />
           )}
-          
+
           {metrics.includes('completedBounties') && (
             <Area
               type="monotone"
@@ -317,7 +308,7 @@ export const PerformanceChart: React.FC<PerformanceChartProps> = ({
     const radarData = metrics.map(metric => ({
       metric: METRIC_LABELS[metric].replace(/\s*\([^)]*\)/, ''), // Remove parentheses
       value: latestData ? latestData[`${metric}Normalized`] : 0,
-      fullMark: 100
+      fullMark: 100,
     }));
 
     return (
@@ -326,22 +317,16 @@ export const PerformanceChart: React.FC<PerformanceChartProps> = ({
           <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
           <div className="flex items-center space-x-2">
             <Target className="w-4 h-4 text-gray-600" />
-            <span className="text-sm font-medium text-gray-900">
-              Overall Performance
-            </span>
+            <span className="text-sm font-medium text-gray-900">Overall Performance</span>
           </div>
         </div>
-        
+
         <ResponsiveContainer width="100%" height={height}>
           <RadarChart data={radarData}>
             <PolarGrid strokeDasharray="3 3" className="opacity-30" />
-            <PolarAngleAxis 
-              dataKey="metric" 
-              tick={{ fontSize: 11 }}
-              className="text-gray-600"
-            />
-            <PolarRadiusAxis 
-              angle={90} 
+            <PolarAngleAxis dataKey="metric" tick={{ fontSize: 11 }} className="text-gray-600" />
+            <PolarRadiusAxis
+              angle={90}
               domain={[0, 100]}
               tick={{ fontSize: 10 }}
               className="text-gray-600"
@@ -367,32 +352,31 @@ export const PerformanceChart: React.FC<PerformanceChartProps> = ({
         <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
         <div className="flex items-center space-x-2">
           <Trophy className="w-4 h-4 text-gray-600" />
-          <span className="text-sm font-medium text-gray-900">
-            Monthly Comparison
-          </span>
+          <span className="text-sm font-medium text-gray-900">Monthly Comparison</span>
         </div>
       </div>
-      
+
       <ResponsiveContainer width="100%" height={height}>
         <BarChart data={data}>
           {showGrid && <CartesianGrid strokeDasharray="3 3" className="opacity-30" />}
-          <XAxis 
+          <XAxis
             dataKey="date"
             tick={{ fontSize: 12 }}
             className="text-gray-600"
-            tickFormatter={(value) => format(new Date(value), 'MMM dd')}
+            tickFormatter={value => format(new Date(value), 'MMM dd')}
           />
-          <YAxis 
-            tick={{ fontSize: 12 }}
-            className="text-gray-600"
-          />
+          <YAxis tick={{ fontSize: 12 }} className="text-gray-600" />
           <Tooltip content={<CustomTooltip />} />
           {showLegend && <Legend />}
-          
+
           {metrics.includes('completedBounties') && (
-            <Bar dataKey="completedBounties" fill={METRIC_COLORS.completedBounties} name="Completed" />
+            <Bar
+              dataKey="completedBounties"
+              fill={METRIC_COLORS.completedBounties}
+              name="Completed"
+            />
           )}
-          
+
           {metrics.includes('reputation') && (
             <Bar dataKey="reputation" fill={METRIC_COLORS.reputation} name="Reputation" />
           )}
@@ -407,7 +391,7 @@ export const PerformanceChart: React.FC<PerformanceChartProps> = ({
       {type === 'area' && renderAreaChart()}
       {type === 'radar' && renderRadarChart()}
       {type === 'bar' && renderBarChart()}
-      
+
       {currentMetrics && (
         <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="bg-gray-50 rounded-lg p-3">
@@ -417,17 +401,25 @@ export const PerformanceChart: React.FC<PerformanceChartProps> = ({
                 {currentMetrics.reputation.toLocaleString()}
               </p>
               {previousMetrics && (
-                <span className={`text-xs font-medium ${
-                  calculateChange(currentMetrics.reputation, previousMetrics.reputation) >= 0
-                    ? 'text-green-600' : 'text-red-600'
-                }`}>
-                  {calculateChange(currentMetrics.reputation, previousMetrics.reputation) >= 0 ? '+' : ''}
-                  {calculateChange(currentMetrics.reputation, previousMetrics.reputation).toFixed(1)}%
+                <span
+                  className={`text-xs font-medium ${
+                    calculateChange(currentMetrics.reputation, previousMetrics.reputation) >= 0
+                      ? 'text-green-600'
+                      : 'text-red-600'
+                  }`}
+                >
+                  {calculateChange(currentMetrics.reputation, previousMetrics.reputation) >= 0
+                    ? '+'
+                    : ''}
+                  {calculateChange(currentMetrics.reputation, previousMetrics.reputation).toFixed(
+                    1
+                  )}
+                  %
                 </span>
               )}
             </div>
           </div>
-          
+
           <div className="bg-gray-50 rounded-lg p-3">
             <p className="text-sm text-gray-600">Completed</p>
             <div className="flex items-center space-x-2">
@@ -435,17 +427,32 @@ export const PerformanceChart: React.FC<PerformanceChartProps> = ({
                 {currentMetrics.completedBounties}
               </p>
               {previousMetrics && (
-                <span className={`text-xs font-medium ${
-                  calculateChange(currentMetrics.completedBounties, previousMetrics.completedBounties) >= 0
-                    ? 'text-green-600' : 'text-red-600'
-                }`}>
-                  {calculateChange(currentMetrics.completedBounties, previousMetrics.completedBounties) >= 0 ? '+' : ''}
-                  {calculateChange(currentMetrics.completedBounties, previousMetrics.completedBounties).toFixed(1)}%
+                <span
+                  className={`text-xs font-medium ${
+                    calculateChange(
+                      currentMetrics.completedBounties,
+                      previousMetrics.completedBounties
+                    ) >= 0
+                      ? 'text-green-600'
+                      : 'text-red-600'
+                  }`}
+                >
+                  {calculateChange(
+                    currentMetrics.completedBounties,
+                    previousMetrics.completedBounties
+                  ) >= 0
+                    ? '+'
+                    : ''}
+                  {calculateChange(
+                    currentMetrics.completedBounties,
+                    previousMetrics.completedBounties
+                  ).toFixed(1)}
+                  %
                 </span>
               )}
             </div>
           </div>
-          
+
           <div className="bg-gray-50 rounded-lg p-3">
             <p className="text-sm text-gray-600">Total Earned</p>
             <div className="flex items-center space-x-2">
@@ -453,17 +460,25 @@ export const PerformanceChart: React.FC<PerformanceChartProps> = ({
                 ${currentMetrics.totalEarned.toLocaleString()}
               </p>
               {previousMetrics && (
-                <span className={`text-xs font-medium ${
-                  calculateChange(currentMetrics.totalEarned, previousMetrics.totalEarned) >= 0
-                    ? 'text-green-600' : 'text-red-600'
-                }`}>
-                  {calculateChange(currentMetrics.totalEarned, previousMetrics.totalEarned) >= 0 ? '+' : ''}
-                  {calculateChange(currentMetrics.totalEarned, previousMetrics.totalEarned).toFixed(1)}%
+                <span
+                  className={`text-xs font-medium ${
+                    calculateChange(currentMetrics.totalEarned, previousMetrics.totalEarned) >= 0
+                      ? 'text-green-600'
+                      : 'text-red-600'
+                  }`}
+                >
+                  {calculateChange(currentMetrics.totalEarned, previousMetrics.totalEarned) >= 0
+                    ? '+'
+                    : ''}
+                  {calculateChange(currentMetrics.totalEarned, previousMetrics.totalEarned).toFixed(
+                    1
+                  )}
+                  %
                 </span>
               )}
             </div>
           </div>
-          
+
           <div className="bg-gray-50 rounded-lg p-3">
             <p className="text-sm text-gray-600">Success Rate</p>
             <div className="flex items-center space-x-2">
@@ -471,12 +486,20 @@ export const PerformanceChart: React.FC<PerformanceChartProps> = ({
                 {currentMetrics.successRate.toFixed(1)}%
               </p>
               {previousMetrics && (
-                <span className={`text-xs font-medium ${
-                  calculateChange(currentMetrics.successRate, previousMetrics.successRate) >= 0
-                    ? 'text-green-600' : 'text-red-600'
-                }`}>
-                  {calculateChange(currentMetrics.successRate, previousMetrics.successRate) >= 0 ? '+' : ''}
-                  {calculateChange(currentMetrics.successRate, previousMetrics.successRate).toFixed(1)}%
+                <span
+                  className={`text-xs font-medium ${
+                    calculateChange(currentMetrics.successRate, previousMetrics.successRate) >= 0
+                      ? 'text-green-600'
+                      : 'text-red-600'
+                  }`}
+                >
+                  {calculateChange(currentMetrics.successRate, previousMetrics.successRate) >= 0
+                    ? '+'
+                    : ''}
+                  {calculateChange(currentMetrics.successRate, previousMetrics.successRate).toFixed(
+                    1
+                  )}
+                  %
                 </span>
               )}
             </div>

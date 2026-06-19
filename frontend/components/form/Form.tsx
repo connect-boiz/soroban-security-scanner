@@ -36,7 +36,7 @@ export function Form<T extends Record<string, any>>({
   children,
   options,
   className = '',
-  noValidate = false
+  noValidate = false,
 }: FormProps<T>) {
   const formValidation = useFormValidation<T>(config, options);
   const { handleSubmit } = formValidation;
@@ -44,11 +44,7 @@ export function Form<T extends Record<string, any>>({
   const onFormSubmit = handleSubmit(onSubmit);
 
   return (
-    <form
-      onSubmit={onFormSubmit}
-      noValidate={noValidate}
-      className={className}
-    >
+    <form onSubmit={onFormSubmit} noValidate={noValidate} className={className}>
       {children(formValidation)}
     </form>
   );

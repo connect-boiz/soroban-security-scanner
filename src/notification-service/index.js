@@ -1,8 +1,8 @@
 //! Notification Service for Soroban Security Scanner
-//! 
+//!
 //! This module provides a comprehensive notification system supporting:
 //! - Email notifications
-//! - SMS notifications  
+//! - SMS notifications
 //! - Push notifications
 //! - In-app alerts
 //! - Template management

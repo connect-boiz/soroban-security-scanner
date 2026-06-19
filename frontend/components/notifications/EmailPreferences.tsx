@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { 
-  NotificationPreferences, 
-  NotificationType, 
-  NotificationPriority, 
+import {
+  NotificationPreferences,
+  NotificationType,
+  NotificationPriority,
   QuietHours,
-  NotificationChannel 
+  NotificationChannel,
 } from '../../types/notifications';
 import { cn, getNotificationTypeLabel, getPriorityLabel } from '../../lib/notifications/utils';
 
@@ -24,7 +24,8 @@ export const EmailPreferencesPanel: React.FC<EmailPreferencesProps> = ({
   const handleChannelToggle = (channel: NotificationChannel) => {
     const updated = {
       ...localPreferences,
-      [`${channel}_enabled`]: !localPreferences[`${channel}_enabled` as keyof NotificationPreferences],
+      [`${channel}_enabled`]:
+        !localPreferences[`${channel}_enabled` as keyof NotificationPreferences],
     };
     setLocalPreferences(updated);
     onUpdate(updated);
@@ -74,7 +75,7 @@ export const EmailPreferencesPanel: React.FC<EmailPreferencesProps> = ({
 
   const handleQuietHoursTimeChange = (field: 'start_hour' | 'end_hour', value: number) => {
     if (!localPreferences.quiet_hours) return;
-    
+
     const updated = {
       ...localPreferences.quiet_hours,
       [field]: value,
@@ -123,7 +124,7 @@ export const EmailPreferencesPanel: React.FC<EmailPreferencesProps> = ({
       <div className="bg-white rounded-lg border border-gray-200 p-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Notification Types</h3>
         <div className="space-y-3">
-          {Object.values(NotificationType).map((type) => (
+          {Object.values(NotificationType).map(type => (
             <ChannelToggle
               key={type}
               label={getNotificationTypeLabel(type)}
@@ -148,11 +149,11 @@ export const EmailPreferencesPanel: React.FC<EmailPreferencesProps> = ({
           </p>
           <select
             value={localPreferences.max_priority}
-            onChange={(e) => handleMaxPriorityChange(e.target.value as NotificationPriority)}
+            onChange={e => handleMaxPriorityChange(e.target.value as NotificationPriority)}
             disabled={isLoading}
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           >
-            {Object.values(NotificationPriority).map((priority) => (
+            {Object.values(NotificationPriority).map(priority => (
               <option key={priority} value={priority}>
                 {getPriorityLabel(priority)}
               </option>
@@ -179,12 +180,10 @@ export const EmailPreferencesPanel: React.FC<EmailPreferencesProps> = ({
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Start Time
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Start Time</label>
                 <select
                   value={localPreferences.quiet_hours.start_hour}
-                  onChange={(e) => handleQuietHoursTimeChange('start_hour', parseInt(e.target.value))}
+                  onChange={e => handleQuietHoursTimeChange('start_hour', parseInt(e.target.value))}
                   disabled={isLoading}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
@@ -196,12 +195,10 @@ export const EmailPreferencesPanel: React.FC<EmailPreferencesProps> = ({
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  End Time
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">End Time</label>
                 <select
                   value={localPreferences.quiet_hours.end_hour}
-                  onChange={(e) => handleQuietHoursTimeChange('end_hour', parseInt(e.target.value))}
+                  onChange={e => handleQuietHoursTimeChange('end_hour', parseInt(e.target.value))}
                   disabled={isLoading}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
@@ -215,15 +212,15 @@ export const EmailPreferencesPanel: React.FC<EmailPreferencesProps> = ({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Timezone
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Timezone</label>
               <select
                 value={localPreferences.quiet_hours.timezone}
-                onChange={(e) => handleQuietHoursChange({
-                  ...localPreferences.quiet_hours,
-                  timezone: e.target.value,
-                })}
+                onChange={e =>
+                  handleQuietHoursChange({
+                    ...localPreferences.quiet_hours,
+                    timezone: e.target.value,
+                  })
+                }
                 disabled={isLoading}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
@@ -241,7 +238,8 @@ export const EmailPreferencesPanel: React.FC<EmailPreferencesProps> = ({
 
             <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
               <p className="text-sm text-blue-800">
-                <strong>Note:</strong> Critical priority notifications will always be delivered, even during quiet hours.
+                <strong>Note:</strong> Critical priority notifications will always be delivered,
+                even during quiet hours.
               </p>
             </div>
           </div>
@@ -277,20 +275,14 @@ const ChannelToggle: React.FC<ChannelToggleProps> = ({
   compact = false,
 }) => {
   return (
-    <div className={cn(
-      'flex items-center',
-      compact ? 'justify-between' : 'justify-between gap-3'
-    )}>
+    <div className={cn('flex items-center', compact ? 'justify-between' : 'justify-between gap-3')}>
       <div className={cn(compact ? 'flex-1' : 'flex-1')}>
-        <label className={cn(
-          'text-sm font-medium text-gray-900',
-          compact ? 'cursor-pointer' : 'block'
-        )}>
+        <label
+          className={cn('text-sm font-medium text-gray-900', compact ? 'cursor-pointer' : 'block')}
+        >
           {label}
         </label>
-        {description && !compact && (
-          <p className="text-sm text-gray-500 mt-1">{description}</p>
-        )}
+        {description && !compact && <p className="text-sm text-gray-500 mt-1">{description}</p>}
       </div>
       <button
         type="button"

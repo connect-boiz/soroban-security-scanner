@@ -36,7 +36,11 @@ export class StorePerformanceMonitor {
   }
 
   recordAction(actionName: string, duration: number): void {
-    const current = this.metrics.get(actionName) || { count: 0, totalTime: 0, lastUpdate: new Date() };
+    const current = this.metrics.get(actionName) || {
+      count: 0,
+      totalTime: 0,
+      lastUpdate: new Date(),
+    };
     this.metrics.set(actionName, {
       count: current.count + 1,
       totalTime: current.totalTime + duration,
@@ -46,7 +50,7 @@ export class StorePerformanceMonitor {
 
   getMetrics(): Record<string, { count: number; avgTime: number; totalTime: number }> {
     const result: Record<string, { count: number; avgTime: number; totalTime: number }> = {};
-    
+
     this.metrics.forEach((value, key) => {
       result[key] = {
         count: value.count,
@@ -54,7 +58,7 @@ export class StorePerformanceMonitor {
         totalTime: value.totalTime,
       };
     });
-    
+
     return result;
   }
 
@@ -85,9 +89,9 @@ export const withPerformanceTracking = <T extends (...args: any[]) => any>(
     const start = performance.now();
     const result = action(...args);
     const end = performance.now();
-    
+
     StorePerformanceMonitor.getInstance().recordAction(actionName, end - start);
-    
+
     return result;
   }) as T;
 };
@@ -99,7 +103,7 @@ export const createStoreDebugger = (storeName: string) => {
       console.group(`Store Change: ${storeName}`);
       console.log('Previous State:', prevState);
       console.log('Current State:', state);
-      
+
       // Highlight changed properties
       const changes: Record<string, { from: any; to: any }> = {};
       Object.keys(state).forEach(key => {
@@ -110,11 +114,11 @@ export const createStoreDebugger = (storeName: string) => {
           };
         }
       });
-      
+
       if (Object.keys(changes).length > 0) {
         console.log('Changes:', changes);
       }
-      
+
       console.groupEnd();
     }
   };
@@ -128,18 +132,18 @@ export const createStateValidator = <T extends Record<string, any>>(
   return (state: T): T => {
     if (process.env.NODE_ENV === 'development') {
       const errors: string[] = [];
-      
+
       Object.entries(schema).forEach(([key, validator]) => {
         if (validator && !validator(state[key as keyof T])) {
           errors.push(`Invalid value for ${key}: ${state[key as keyof T]}`);
         }
       });
-      
+
       if (errors.length > 0) {
         console.error(`State validation failed for ${storeName}:`, errors);
       }
     }
-    
+
     return state;
   };
 };

@@ -5,17 +5,17 @@ import { Bounty, BountySubmission } from '@/types/bounty';
 import { EncryptionService } from '@/utils/encryption';
 import { ValidationRules, FormConfig } from '@/utils/validation';
 import { Form, FormField, FormErrorSummary, FormProgress } from '@/components/form';
-import { 
-  FileText, 
-  Shield, 
-  Send, 
-  AlertCircle, 
-  CheckCircle, 
+import {
+  FileText,
+  Shield,
+  Send,
+  AlertCircle,
+  CheckCircle,
   Lock,
   Upload,
   Eye,
   EyeOff,
-  Loader2
+  Loader2,
 } from 'lucide-react';
 
 interface ReportSubmissionProps {
@@ -37,127 +37,134 @@ const formConfig: FormConfig = {
   findings: {
     rules: [
       ValidationRules.required('Security findings are required'),
-      ValidationRules.minLength(100, 'Findings must be at least 100 characters to provide sufficient detail'),
+      ValidationRules.minLength(
+        100,
+        'Findings must be at least 100 characters to provide sufficient detail'
+      ),
       ValidationRules.maxLength(5000, 'Findings must be less than 5000 characters'),
-      ValidationRules.custom(
-        (value) => {
-          if (!value || typeof value !== 'string') return true;
-          const hasRequiredSections = 
-            value.toLowerCase().includes('vulnerability') &&
-            value.toLowerCase().includes('impact') &&
-            value.toLowerCase().includes('mitigation');
-          return hasRequiredSections || 'Please include vulnerability details, impact assessment, and mitigation recommendations';
-        },
-        'Comprehensive analysis required'
-      )
+      ValidationRules.custom(value => {
+        if (!value || typeof value !== 'string') return true;
+        const hasRequiredSections =
+          value.toLowerCase().includes('vulnerability') &&
+          value.toLowerCase().includes('impact') &&
+          value.toLowerCase().includes('mitigation');
+        return (
+          hasRequiredSections ||
+          'Please include vulnerability details, impact assessment, and mitigation recommendations'
+        );
+      }, 'Comprehensive analysis required'),
     ],
     validateOnChange: true,
-    validateOnBlur: true
+    validateOnBlur: true,
   },
   severity: {
     rules: [
       ValidationRules.required('Severity level is required'),
       ValidationRules.custom(
-        (value) => ['Critical', 'High', 'Medium', 'Low'].includes(value),
+        value => ['Critical', 'High', 'Medium', 'Low'].includes(value),
         'Please select a valid severity level'
-      )
+      ),
     ],
-    validateOnChange: true
+    validateOnChange: true,
   },
   ownerPublicKey: {
     rules: [
       ValidationRules.required('Owner public key is required for encryption'),
-      ValidationRules.stellarPublicKey('Please enter a valid Stellar public key (starts with G, 56 characters)'),
-      ValidationRules.async(
-        async (value) => {
-          // Simulate async validation to check if key exists on network
-          await new Promise(resolve => setTimeout(resolve, 500));
-          return Math.random() > 0.1 || 'This public key appears to be invalid or not found on the network';
-        },
-        'Public key validation'
-      )
+      ValidationRules.stellarPublicKey(
+        'Please enter a valid Stellar public key (starts with G, 56 characters)'
+      ),
+      ValidationRules.async(async value => {
+        // Simulate async validation to check if key exists on network
+        await new Promise(resolve => setTimeout(resolve, 500));
+        return (
+          Math.random() > 0.1 || 'This public key appears to be invalid or not found on the network'
+        );
+      }, 'Public key validation'),
     ],
     validateOnChange: true,
-    validateOnBlur: true
+    validateOnBlur: true,
   },
   proofOfConcept: {
     rules: [
       ValidationRules.maxLength(2000, 'Proof of concept must be less than 2000 characters'),
-      ValidationRules.custom(
-        (value) => {
-          if (!value) return true; // Optional field
-          const hasCodeBlocks = value.includes('```') || value.includes('code');
-          return hasCodeBlocks || 'Please format your proof of concept with code blocks for clarity';
-        },
-        'Code formatting recommended'
-      )
+      ValidationRules.custom(value => {
+        if (!value) return true; // Optional field
+        const hasCodeBlocks = value.includes('```') || value.includes('code');
+        return hasCodeBlocks || 'Please format your proof of concept with code blocks for clarity';
+      }, 'Code formatting recommended'),
     ],
-    validateOnChange: true
+    validateOnChange: true,
   },
   affectedFiles: {
     rules: [
       ValidationRules.maxLength(1000, 'Affected files list must be less than 1000 characters'),
-      ValidationRules.custom(
-        (value) => {
-          if (!value) return true; // Optional field
-          const filePattern = /^[\w\-/.\\,\s]+$/;
-          return filePattern.test(value) || 'Please list valid file paths separated by commas';
-        },
-        'Valid file paths required'
-      )
+      ValidationRules.custom(value => {
+        if (!value) return true; // Optional field
+        const filePattern = /^[\w\-/.\\,\s]+$/;
+        return filePattern.test(value) || 'Please list valid file paths separated by commas';
+      }, 'Valid file paths required'),
     ],
-    validateOnChange: true
+    validateOnChange: true,
   },
   reproductionSteps: {
     rules: [
       ValidationRules.minLength(50, 'Reproduction steps must be at least 50 characters'),
       ValidationRules.maxLength(3000, 'Reproduction steps must be less than 3000 characters'),
-      ValidationRules.custom(
-        (value) => {
-          if (!value) return true; // Optional field
-          const hasSteps = /\d+\.|step\s*\d+/i.test(value);
-          return hasSteps || 'Please provide numbered steps for reproduction';
-        },
-        'Numbered steps required'
-      )
+      ValidationRules.custom(value => {
+        if (!value) return true; // Optional field
+        const hasSteps = /\d+\.|step\s*\d+/i.test(value);
+        return hasSteps || 'Please provide numbered steps for reproduction';
+      }, 'Numbered steps required'),
     ],
-    validateOnChange: true
-  }
+    validateOnChange: true,
+  },
 };
 
-export const EnhancedReportSubmission: React.FC<ReportSubmissionProps> = ({ 
-  bounty, 
-  onSubmit, 
-  onCancel 
+export const EnhancedReportSubmission: React.FC<ReportSubmissionProps> = ({
+  bounty,
+  onSubmit,
+  onCancel,
 }) => {
   const [showPreview, setShowPreview] = useState(false);
-  const [encryptedData, setEncryptedData] = useState<{ encrypted: string; salt: string } | null>(null);
+  const [encryptedData, setEncryptedData] = useState<{ encrypted: string; salt: string } | null>(
+    null
+  );
   const [currentStep, setCurrentStep] = useState(0);
 
   const formSteps = [
     { name: 'severity', title: 'Severity' },
     { name: 'findings', title: 'Findings' },
     { name: 'details', title: 'Details' },
-    { name: 'encryption', title: 'Encryption' }
+    { name: 'encryption', title: 'Encryption' },
   ];
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
-      case 'Critical': return 'text-red-600 bg-red-50 border-red-200';
-      case 'High': return 'text-orange-600 bg-orange-50 border-orange-200';
-      case 'Medium': return 'text-yellow-600 bg-yellow-50 border-yellow-200';
-      case 'Low': return 'text-green-600 bg-green-50 border-green-200';
-      default: return 'text-gray-600 bg-gray-50 border-gray-200';
+      case 'Critical':
+        return 'text-red-600 bg-red-50 border-red-200';
+      case 'High':
+        return 'text-orange-600 bg-orange-50 border-orange-200';
+      case 'Medium':
+        return 'text-yellow-600 bg-yellow-50 border-yellow-200';
+      case 'Low':
+        return 'text-green-600 bg-green-50 border-green-200';
+      default:
+        return 'text-gray-600 bg-gray-50 border-gray-200';
     }
   };
 
   const getRewardPercentage = (severity: string): number => {
     switch (severity) {
-      case 'Critical': return 100;
-      case 'High': return 100;
-      case 'Medium': return 60;
-      case 'Low': return 30;
-      default: return 0;
+      case 'Critical':
+        return 100;
+      case 'High':
+        return 100;
+      case 'Medium':
+        return 60;
+      case 'Low':
+        return 30;
+      default:
+        return 0;
     }
   };
 
@@ -185,7 +192,7 @@ export const EnhancedReportSubmission: React.FC<ReportSubmissionProps> = ({
       encryptedFindings: encryptedData.encrypted,
       severity: formData.severity,
       submittedAt: new Date(),
-      status: 'Pending'
+      status: 'Pending',
     };
 
     await onSubmit(submission);
@@ -197,7 +204,7 @@ export const EnhancedReportSubmission: React.FC<ReportSubmissionProps> = ({
     ownerPublicKey: '',
     proofOfConcept: '',
     affectedFiles: '',
-    reproductionSteps: ''
+    reproductionSteps: '',
   };
 
   return (
@@ -210,10 +217,7 @@ export const EnhancedReportSubmission: React.FC<ReportSubmissionProps> = ({
               <Shield className="h-6 w-6 mr-2 text-primary-600" />
               Submit Security Report
             </h2>
-            <button
-              onClick={onCancel}
-              className="text-gray-500 hover:text-gray-700"
-            >
+            <button onClick={onCancel} className="text-gray-500 hover:text-gray-700">
               ×
             </button>
           </div>
@@ -222,9 +226,19 @@ export const EnhancedReportSubmission: React.FC<ReportSubmissionProps> = ({
           <div className="bg-gray-50 rounded-lg p-4 mb-4">
             <h3 className="font-semibold text-gray-900 mb-2">{bounty.title}</h3>
             <div className="flex items-center space-x-4 text-sm text-gray-600">
-              <span>Reward: <span className="font-semibold text-green-600">{bounty.rewardAmount} XLM</span></span>
+              <span>
+                Reward:{' '}
+                <span className="font-semibold text-green-600">{bounty.rewardAmount} XLM</span>
+              </span>
               <span>â¢</span>
-              <span>Difficulty: <span className={`px-2 py-1 rounded-full text-xs border ${getSeverityColor(bounty.difficulty)}`}>{bounty.difficulty}</span></span>
+              <span>
+                Difficulty:{' '}
+                <span
+                  className={`px-2 py-1 rounded-full text-xs border ${getSeverityColor(bounty.difficulty)}`}
+                >
+                  {bounty.difficulty}
+                </span>
+              </span>
               {bounty.firstToFind && (
                 <>
                   <span>â¢</span>
@@ -235,11 +249,7 @@ export const EnhancedReportSubmission: React.FC<ReportSubmissionProps> = ({
           </div>
 
           {/* Progress */}
-          <FormProgress 
-            steps={formSteps} 
-            currentStep={currentStep}
-            className="mb-6"
-          />
+          <FormProgress steps={formSteps} currentStep={currentStep} className="mb-6" />
         </div>
 
         <Form
@@ -249,7 +259,7 @@ export const EnhancedReportSubmission: React.FC<ReportSubmissionProps> = ({
             validateOnChange: true,
             validateOnBlur: true,
             validateOnSubmit: true,
-            initialData
+            initialData,
           }}
         >
           {({
@@ -267,18 +277,16 @@ export const EnhancedReportSubmission: React.FC<ReportSubmissionProps> = ({
             isFieldValid,
             isFieldInvalid,
             isFieldTouched,
-            isFieldValidating
+            isFieldValidating,
           }) => {
-            const estimatedReward = Math.floor(bounty.rewardAmount * getRewardPercentage(formData.severity) / 100);
+            const estimatedReward = Math.floor(
+              (bounty.rewardAmount * getRewardPercentage(formData.severity)) / 100
+            );
 
             return (
               <div className="space-y-6">
                 {/* Error Summary */}
-                <FormErrorSummary
-                  errors={errors}
-                  touched={touched}
-                  showOnlyTouched={true}
-                />
+                <FormErrorSummary errors={errors} touched={touched} showOnlyTouched={true} />
 
                 {/* Step 1: Severity Selection */}
                 <div className="space-y-4">
@@ -287,7 +295,7 @@ export const EnhancedReportSubmission: React.FC<ReportSubmissionProps> = ({
                       Vulnerability Severity
                     </label>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      {(['Critical', 'High', 'Medium', 'Low'] as const).map((level) => (
+                      {(['Critical', 'High', 'Medium', 'Low'] as const).map(level => (
                         <button
                           key={level}
                           type="button"
@@ -302,14 +310,13 @@ export const EnhancedReportSubmission: React.FC<ReportSubmissionProps> = ({
                           }`}
                         >
                           <div className="font-medium">{level}</div>
-                          <div className="text-xs mt-1">
-                            {getRewardPercentage(level)}% reward
-                          </div>
+                          <div className="text-xs mt-1">{getRewardPercentage(level)}% reward</div>
                         </button>
                       ))}
                     </div>
                     <div className="mt-2 text-sm text-gray-600">
-                      Estimated reward: <span className="font-semibold text-green-600">{estimatedReward} XLM</span>
+                      Estimated reward:{' '}
+                      <span className="font-semibold text-green-600">{estimatedReward} XLM</span>
                     </div>
                   </div>
                 </div>
@@ -332,7 +339,7 @@ export const EnhancedReportSubmission: React.FC<ReportSubmissionProps> = ({
                     isInvalid={isFieldInvalid('findings')}
                     isValidating={isFieldValidating('findings')}
                     value={formData.findings}
-                    onChange={(value) => setFieldValue('findings', value)}
+                    onChange={value => setFieldValue('findings', value)}
                     onBlur={() => setFieldTouched('findings')}
                     helperText={`${formData.findings.length}/5000 characters (minimum: 100)`}
                   />
@@ -350,7 +357,7 @@ export const EnhancedReportSubmission: React.FC<ReportSubmissionProps> = ({
                     isValid={isFieldValid('proofOfConcept')}
                     isInvalid={isFieldInvalid('proofOfConcept')}
                     value={formData.proofOfConcept}
-                    onChange={(value) => setFieldValue('proofOfConcept', value)}
+                    onChange={value => setFieldValue('proofOfConcept', value)}
                     onBlur={() => setFieldTouched('proofOfConcept')}
                     helperText="Include code blocks for better readability"
                   />
@@ -364,7 +371,7 @@ export const EnhancedReportSubmission: React.FC<ReportSubmissionProps> = ({
                     isValid={isFieldValid('affectedFiles')}
                     isInvalid={isFieldInvalid('affectedFiles')}
                     value={formData.affectedFiles}
-                    onChange={(value) => setFieldValue('affectedFiles', value)}
+                    onChange={value => setFieldValue('affectedFiles', value)}
                     onBlur={() => setFieldTouched('affectedFiles')}
                     helperText="List file paths separated by commas"
                   />
@@ -381,7 +388,7 @@ export const EnhancedReportSubmission: React.FC<ReportSubmissionProps> = ({
                     isValid={isFieldValid('reproductionSteps')}
                     isInvalid={isFieldInvalid('reproductionSteps')}
                     value={formData.reproductionSteps}
-                    onChange={(value) => setFieldValue('reproductionSteps', value)}
+                    onChange={value => setFieldValue('reproductionSteps', value)}
                     onBlur={() => setFieldTouched('reproductionSteps')}
                     helperText="Provide numbered steps for clear reproduction"
                   />
@@ -400,7 +407,7 @@ export const EnhancedReportSubmission: React.FC<ReportSubmissionProps> = ({
                     isInvalid={isFieldInvalid('ownerPublicKey')}
                     isValidating={isFieldValidating('ownerPublicKey')}
                     value={formData.ownerPublicKey}
-                    onChange={(value) => {
+                    onChange={value => {
                       setFieldValue('ownerPublicKey', value);
                       setCurrentStep(3);
                     }}
@@ -414,7 +421,9 @@ export const EnhancedReportSubmission: React.FC<ReportSubmissionProps> = ({
                   <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                     <div className="flex items-center mb-2">
                       <CheckCircle className="h-5 w-5 text-green-600 mr-2" />
-                      <span className="font-medium text-green-800">Findings Encrypted Successfully</span>
+                      <span className="font-medium text-green-800">
+                        Findings Encrypted Successfully
+                      </span>
                     </div>
                     <div className="text-sm text-green-700">
                       <p>Your findings have been encrypted and are ready for submission.</p>
@@ -423,7 +432,11 @@ export const EnhancedReportSubmission: React.FC<ReportSubmissionProps> = ({
                         onClick={() => setShowPreview(!showPreview)}
                         className="mt-2 text-green-600 hover:text-green-800 flex items-center"
                       >
-                        {showPreview ? <EyeOff className="h-4 w-4 mr-1" /> : <Eye className="h-4 w-4 mr-1" />}
+                        {showPreview ? (
+                          <EyeOff className="h-4 w-4 mr-1" />
+                        ) : (
+                          <Eye className="h-4 w-4 mr-1" />
+                        )}
                         {showPreview ? 'Hide' : 'Show'} encrypted data
                       </button>
                       {showPreview && (
@@ -437,14 +450,10 @@ export const EnhancedReportSubmission: React.FC<ReportSubmissionProps> = ({
 
                 {/* Action Buttons */}
                 <div className="flex justify-between pt-6 border-t border-gray-200">
-                  <button
-                    onClick={onCancel}
-                    className="btn-secondary"
-                    disabled={isSubmitting}
-                  >
+                  <button onClick={onCancel} className="btn-secondary" disabled={isSubmitting}>
                     Cancel
                   </button>
-                  
+
                   <div className="space-x-3">
                     {!encryptedData ? (
                       <button

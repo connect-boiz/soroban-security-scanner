@@ -1,6 +1,16 @@
 import React, { useState } from 'react';
-import { InAppNotification, NotificationPriority, NotificationType } from '../../types/notifications';
-import { cn, getPriorityColor, formatTimestamp, getNotificationIcon, getNotificationTypeLabel } from '../../lib/notifications/utils';
+import {
+  InAppNotification,
+  NotificationPriority,
+  NotificationType,
+} from '../../types/notifications';
+import {
+  cn,
+  getPriorityColor,
+  formatTimestamp,
+  getNotificationIcon,
+  getNotificationTypeLabel,
+} from '../../lib/notifications/utils';
 
 interface InAppNotificationProps {
   notification: InAppNotification;
@@ -69,7 +79,7 @@ export const InAppNotificationItem: React.FC<InAppNotificationProps> = ({
                   </span>
                 )}
               </div>
-              
+
               <p className="text-sm text-gray-600 leading-relaxed">
                 {isExpanded ? notification.message : notification.message.substring(0, 100)}
                 {notification.message.length > 100 && !isExpanded && '...'}
@@ -77,7 +87,7 @@ export const InAppNotificationItem: React.FC<InAppNotificationProps> = ({
 
               {notification.message.length > 100 && (
                 <button
-                  onClick={(e) => {
+                  onClick={e => {
                     e.stopPropagation();
                     setIsExpanded(!isExpanded);
                   }}
@@ -92,13 +102,15 @@ export const InAppNotificationItem: React.FC<InAppNotificationProps> = ({
                 <span>•</span>
                 <span>{formatTimestamp(notification.created_at)}</span>
                 <span>•</span>
-                <span className={cn(
-                  'font-medium',
-                  notification.priority === NotificationPriority.CRITICAL && 'text-red-600',
-                  notification.priority === NotificationPriority.HIGH && 'text-orange-600',
-                  notification.priority === NotificationPriority.NORMAL && 'text-blue-600',
-                  notification.priority === NotificationPriority.LOW && 'text-gray-600'
-                )}>
+                <span
+                  className={cn(
+                    'font-medium',
+                    notification.priority === NotificationPriority.CRITICAL && 'text-red-600',
+                    notification.priority === NotificationPriority.HIGH && 'text-orange-600',
+                    notification.priority === NotificationPriority.NORMAL && 'text-blue-600',
+                    notification.priority === NotificationPriority.LOW && 'text-gray-600'
+                  )}
+                >
                   {notification.priority.toUpperCase()}
                 </span>
               </div>
@@ -108,7 +120,7 @@ export const InAppNotificationItem: React.FC<InAppNotificationProps> = ({
             <div className="flex items-center gap-1 flex-shrink-0">
               {notification.action && (
                 <button
-                  onClick={(e) => {
+                  onClick={e => {
                     e.stopPropagation();
                     handleAction();
                   }}
@@ -117,9 +129,9 @@ export const InAppNotificationItem: React.FC<InAppNotificationProps> = ({
                   {notification.action.label}
                 </button>
               )}
-              
+
               <button
-                onClick={(e) => {
+                onClick={e => {
                   e.stopPropagation();
                   onDelete(notification.id);
                 }}
@@ -127,7 +139,12 @@ export const InAppNotificationItem: React.FC<InAppNotificationProps> = ({
                 aria-label="Delete notification"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  />
                 </svg>
               </button>
             </div>
@@ -179,7 +196,7 @@ export const InAppNotificationList: React.FC<InAppNotificationListProps> = ({
             </span>
           )}
         </div>
-        
+
         <div className="flex items-center gap-2">
           {unreadCount > 0 && (
             <button
@@ -200,7 +217,7 @@ export const InAppNotificationList: React.FC<InAppNotificationListProps> = ({
 
       {/* Notification List */}
       <div className="space-y-3">
-        {notifications.map((notification) => (
+        {notifications.map(notification => (
           <InAppNotificationItem
             key={notification.id}
             notification={notification}
@@ -246,9 +263,14 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
         aria-label={`Notifications ${unreadCount > 0 ? `(${unreadCount} unread)` : ''}`}
       >
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+          />
         </svg>
-        
+
         {unreadCount > 0 && (
           <span className="absolute -top-1 -right-1 inline-flex items-center justify-center px-2 py-1 text-xs font-bold text-white bg-red-500 rounded-full min-w-[1.25rem] h-5">
             {unreadCount > 99 ? '99+' : unreadCount}
@@ -260,11 +282,8 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
       {isOpen && (
         <>
           {/* Backdrop */}
-          <div
-            className="fixed inset-0 z-40"
-            onClick={onToggle}
-          />
-          
+          <div className="fixed inset-0 z-40" onClick={onToggle} />
+
           {/* Dropdown Content */}
           <div className="absolute right-0 mt-2 w-96 bg-white rounded-lg shadow-lg border border-gray-200 z-50 max-h-96 overflow-hidden">
             <div className="p-4 max-h-96 overflow-y-auto">
@@ -277,7 +296,7 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
                 onAction={onAction}
               />
             </div>
-            
+
             {notifications.length > 10 && (
               <div className="p-3 border-t bg-gray-50">
                 <button className="w-full text-sm text-blue-600 hover:text-blue-800 font-medium text-center">

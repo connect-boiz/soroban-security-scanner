@@ -13,7 +13,7 @@ import {
   SkeletonModal,
   EnhancedProgressBar,
   MultiStepProgress,
-  CircularProgress as EnhancedCircularProgress
+  CircularProgress as EnhancedCircularProgress,
 } from './ui';
 import { useLoadingStates, useAsyncOperation, useStagedLoading } from '../hooks/useLoadingStates';
 
@@ -28,14 +28,14 @@ export default function LoadingStatesDemo() {
     progress: hookProgress,
     stage: hookStage,
     startLoading: startHookLoading,
-    resetLoading: resetHookLoading
+    resetLoading: resetHookLoading,
   } = useLoadingStates({
     stages: [
       { name: 'Initializing...', duration: 800, progress: 20 },
       { name: 'Processing data...', duration: 1000, progress: 50 },
       { name: 'Analyzing results...', duration: 700, progress: 80 },
-      { name: 'Finalizing...', duration: 500, progress: 100 }
-    ]
+      { name: 'Finalizing...', duration: 500, progress: 100 },
+    ],
   });
 
   // Demo async operation hook
@@ -43,7 +43,7 @@ export default function LoadingStatesDemo() {
     isLoading: isAsyncLoading,
     data: asyncData,
     error: asyncError,
-    execute: executeAsync
+    execute: executeAsync,
   } = useAsyncOperation<string>();
 
   // Demo staged loading hook
@@ -52,30 +52,30 @@ export default function LoadingStatesDemo() {
     currentStage: stagedStage,
     progress: stagedProgress,
     completedStages,
-    execute: executeStaged
+    execute: executeStaged,
   } = useStagedLoading({
     stages: [
       {
         name: 'Data Validation',
         action: async () => await new Promise(resolve => setTimeout(resolve, 1000)),
-        progressWeight: 25
+        progressWeight: 25,
       },
       {
         name: 'Security Analysis',
         action: async () => await new Promise(resolve => setTimeout(resolve, 1500)),
-        progressWeight: 35
+        progressWeight: 35,
       },
       {
         name: 'Report Generation',
         action: async () => await new Promise(resolve => setTimeout(resolve, 800)),
-        progressWeight: 25
+        progressWeight: 25,
       },
       {
         name: 'Final Review',
         action: async () => await new Promise(resolve => setTimeout(resolve, 500)),
-        progressWeight: 15
-      }
-    ]
+        progressWeight: 15,
+      },
+    ],
   });
 
   const simulateProgress = () => {
@@ -92,7 +92,7 @@ export default function LoadingStatesDemo() {
   };
 
   const nextStep = () => {
-    setCurrentStep((prev) => (prev + 1) % 5);
+    setCurrentStep(prev => (prev + 1) % 5);
   };
 
   const handleAsyncOperation = () => {
@@ -101,8 +101,8 @@ export default function LoadingStatesDemo() {
         await new Promise(resolve => setTimeout(resolve, 2000));
         return 'Operation completed successfully!';
       },
-      onSuccess: (result) => console.log('Success:', result),
-      onError: (error) => console.error('Error:', error)
+      onSuccess: result => console.log('Success:', result),
+      onError: error => console.error('Error:', error),
     });
   };
 
@@ -182,7 +182,7 @@ export default function LoadingStatesDemo() {
                   { name: 'Stage 1', value: 25, completed: progressValue >= 25 },
                   { name: 'Stage 2', value: 50, completed: progressValue >= 50 },
                   { name: 'Stage 3', value: 75, completed: progressValue >= 75 },
-                  { name: 'Complete', value: 100, completed: progressValue >= 100 }
+                  { name: 'Complete', value: 100, completed: progressValue >= 100 },
                 ]}
               />
             </div>
@@ -201,7 +201,7 @@ export default function LoadingStatesDemo() {
                   { name: 'Step 2', completed: currentStep > 1, current: currentStep === 1 },
                   { name: 'Step 3', completed: currentStep > 2, current: currentStep === 2 },
                   { name: 'Step 4', completed: currentStep > 3, current: currentStep === 3 },
-                  { name: 'Step 5', completed: currentStep > 4, current: currentStep === 4 }
+                  { name: 'Step 5', completed: currentStep > 4, current: currentStep === 4 },
                 ]}
               />
             </div>

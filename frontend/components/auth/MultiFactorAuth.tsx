@@ -1,7 +1,16 @@
 'use client';
 
 import React, { useState, FormEvent, useEffect } from 'react';
-import { Shield, ArrowLeft, AlertCircle, CheckCircle, Smartphone, Mail, Key, Clock } from 'lucide-react';
+import {
+  Shield,
+  ArrowLeft,
+  AlertCircle,
+  CheckCircle,
+  Smartphone,
+  Mail,
+  Key,
+  Clock,
+} from 'lucide-react';
 
 type MfaMethod = 'totp' | 'sms' | 'email';
 
@@ -26,7 +35,7 @@ export default function MultiFactorAuth({
   selectedMethod = 'totp',
   isLoading = false,
   userEmail = '',
-  userPhone = ''
+  userPhone = '',
 }: MultiFactorAuthProps) {
   const [method, setMethod] = useState<MfaMethod>(selectedMethod);
   const [code, setCode] = useState('');
@@ -51,7 +60,7 @@ export default function MultiFactorAuth({
     const minLength = method === 'totp' ? 6 : 4;
     const maxLength = method === 'totp' ? 6 : 8;
     const regex = method === 'totp' ? /^\d{6}$/ : /^\d{4,8}$/;
-    
+
     return code.length >= minLength && code.length <= maxLength && regex.test(code);
   };
 
@@ -61,9 +70,10 @@ export default function MultiFactorAuth({
     if (!code) {
       newErrors.code = 'Verification code is required';
     } else if (!validateCode(code)) {
-      newErrors.code = method === 'totp' 
-        ? 'Please enter a valid 6-digit code'
-        : 'Please enter a valid verification code';
+      newErrors.code =
+        method === 'totp'
+          ? 'Please enter a valid 6-digit code'
+          : 'Please enter a valid verification code';
     }
 
     setErrors(newErrors);
@@ -74,7 +84,7 @@ export default function MultiFactorAuth({
     // Only allow digits
     const digitsOnly = value.replace(/\D/g, '');
     setCode(digitsOnly);
-    
+
     // Clear error when user starts typing
     if (errors.code) {
       setErrors({});
@@ -83,20 +93,21 @@ export default function MultiFactorAuth({
 
   const handleCodeBlur = () => {
     setTouched(true);
-    
+
     // Validate code on blur
     if (code && !validateCode(code)) {
-      setErrors({ 
-        code: method === 'totp' 
-          ? 'Please enter a valid 6-digit code'
-          : 'Please enter a valid verification code'
+      setErrors({
+        code:
+          method === 'totp'
+            ? 'Please enter a valid 6-digit code'
+            : 'Please enter a valid verification code',
       });
     }
   };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    
+
     if (!validateForm()) {
       return;
     }
@@ -135,28 +146,40 @@ export default function MultiFactorAuth({
 
   const formatMethodText = (method: MfaMethod): string => {
     switch (method) {
-      case 'totp': return 'Authenticator App';
-      case 'sms': return 'SMS';
-      case 'email': return 'Email';
-      default: return 'Authentication';
+      case 'totp':
+        return 'Authenticator App';
+      case 'sms':
+        return 'SMS';
+      case 'email':
+        return 'Email';
+      default:
+        return 'Authentication';
     }
   };
 
   const getMethodIcon = (method: MfaMethod) => {
     switch (method) {
-      case 'totp': return <Key className="h-5 w-5" />;
-      case 'sms': return <Smartphone className="h-5 w-5" />;
-      case 'email': return <Mail className="h-5 w-5" />;
-      default: return <Shield className="h-5 w-5" />;
+      case 'totp':
+        return <Key className="h-5 w-5" />;
+      case 'sms':
+        return <Smartphone className="h-5 w-5" />;
+      case 'email':
+        return <Mail className="h-5 w-5" />;
+      default:
+        return <Shield className="h-5 w-5" />;
     }
   };
 
   const getMethodDescription = (method: MfaMethod): string => {
     switch (method) {
-      case 'totp': return 'Enter the 6-digit code from your authenticator app';
-      case 'sms': return `Enter the code sent to ${userPhone || 'your phone'}`;
-      case 'email': return `Enter the code sent to ${userEmail || 'your email'}`;
-      default: return 'Enter your verification code';
+      case 'totp':
+        return 'Enter the 6-digit code from your authenticator app';
+      case 'sms':
+        return `Enter the code sent to ${userPhone || 'your phone'}`;
+      case 'email':
+        return `Enter the code sent to ${userEmail || 'your email'}`;
+      default:
+        return 'Enter your verification code';
     }
   };
 
@@ -189,7 +212,7 @@ export default function MultiFactorAuth({
             Verification Method
           </label>
           <div className="grid grid-cols-3 gap-2">
-            {(['totp', 'sms', 'email'] as MfaMethod[]).map((m) => (
+            {(['totp', 'sms', 'email'] as MfaMethod[]).map(m => (
               <button
                 key={m}
                 type="button"
@@ -227,14 +250,14 @@ export default function MultiFactorAuth({
                 id="code"
                 type="text"
                 value={code}
-                onChange={(e) => handleCodeChange(e.target.value)}
+                onChange={e => handleCodeChange(e.target.value)}
                 onBlur={handleCodeBlur}
                 className={`block w-full px-4 py-3 border rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-center text-lg font-mono tracking-widest transition-optimized ${
                   errors.code && touched
                     ? 'border-red-300 bg-red-50'
                     : touched && !errors.code
-                    ? 'border-green-300 bg-green-50'
-                    : 'border-gray-300'
+                      ? 'border-green-300 bg-green-50'
+                      : 'border-gray-300'
                 }`}
                 placeholder={method === 'totp' ? '000000' : '0000'}
                 maxLength={method === 'totp' ? 6 : 8}
@@ -252,9 +275,7 @@ export default function MultiFactorAuth({
                 </div>
               )}
             </div>
-            {errors.code && touched && (
-              <p className="mt-1 text-sm text-red-600">{errors.code}</p>
-            )}
+            {errors.code && touched && <p className="mt-1 text-sm text-red-600">{errors.code}</p>}
           </div>
 
           {/* Resend Code */}
@@ -302,9 +323,7 @@ export default function MultiFactorAuth({
               className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
               disabled={isLoading}
             />
-            <span className="ml-2 block text-sm text-gray-700">
-              Trust this device for 30 days
-            </span>
+            <span className="ml-2 block text-sm text-gray-700">Trust this device for 30 days</span>
           </label>
         </div>
 

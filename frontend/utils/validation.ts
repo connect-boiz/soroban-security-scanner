@@ -31,7 +31,7 @@ export interface ValidationState {
 export const ValidationRules = {
   required: (message?: string): ValidationRule => ({
     name: 'required',
-    validator: (value) => {
+    validator: value => {
       if (typeof value === 'string') {
         return value.trim().length > 0;
       }
@@ -40,34 +40,34 @@ export const ValidationRules = {
       }
       return value !== null && value !== undefined;
     },
-    message: message || 'This field is required'
+    message: message || 'This field is required',
   }),
 
   minLength: (min: number, message?: string): ValidationRule => ({
     name: 'minLength',
-    validator: (value) => !value || typeof value !== 'string' || value.length >= min,
-    message: message || `Must be at least ${min} characters`
+    validator: value => !value || typeof value !== 'string' || value.length >= min,
+    message: message || `Must be at least ${min} characters`,
   }),
 
   maxLength: (max: number, message?: string): ValidationRule => ({
     name: 'maxLength',
-    validator: (value) => !value || typeof value !== 'string' || value.length <= max,
-    message: message || `Must be no more than ${max} characters`
+    validator: value => !value || typeof value !== 'string' || value.length <= max,
+    message: message || `Must be no more than ${max} characters`,
   }),
 
   email: (message?: string): ValidationRule => ({
     name: 'email',
-    validator: (value) => {
+    validator: value => {
       if (!value || typeof value !== 'string') return true;
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       return emailRegex.test(value);
     },
-    message: message || 'Please enter a valid email address'
+    message: message || 'Please enter a valid email address',
   }),
 
   url: (message?: string): ValidationRule => ({
     name: 'url',
-    validator: (value) => {
+    validator: value => {
       if (!value || typeof value !== 'string') return true;
       try {
         new URL(value);
@@ -76,60 +76,64 @@ export const ValidationRules = {
         return false;
       }
     },
-    message: message || 'Please enter a valid URL'
+    message: message || 'Please enter a valid URL',
   }),
 
   numeric: (message?: string): ValidationRule => ({
     name: 'numeric',
-    validator: (value) => {
+    validator: value => {
       if (!value) return true;
       return !isNaN(Number(value)) && Number(value) >= 0;
     },
-    message: message || 'Please enter a valid number'
+    message: message || 'Please enter a valid number',
   }),
 
   min: (min: number, message?: string): ValidationRule => ({
     name: 'min',
-    validator: (value) => !value || Number(value) >= min,
-    message: message || `Must be at least ${min}`
+    validator: value => !value || Number(value) >= min,
+    message: message || `Must be at least ${min}`,
   }),
 
   max: (max: number, message?: string): ValidationRule => ({
     name: 'max',
-    validator: (value) => !value || Number(value) <= max,
-    message: message || `Must be no more than ${max}`
+    validator: value => !value || Number(value) <= max,
+    message: message || `Must be no more than ${max}`,
   }),
 
   pattern: (regex: RegExp, message?: string): ValidationRule => ({
     name: 'pattern',
-    validator: (value) => !value || typeof value !== 'string' || regex.test(value),
-    message: message || 'Invalid format'
+    validator: value => !value || typeof value !== 'string' || regex.test(value),
+    message: message || 'Invalid format',
   }),
 
   stellarPublicKey: (message?: string): ValidationRule => ({
     name: 'stellarPublicKey',
-    validator: (value) => {
+    validator: value => {
       if (!value || typeof value !== 'string') return true;
       // Stellar public keys are 56 characters starting with 'G'
       return /^[G][A-Za-z0-9]{55}$/.test(value);
     },
-    message: message || 'Please enter a valid Stellar public key (starts with G, 56 characters)'
+    message: message || 'Please enter a valid Stellar public key (starts with G, 56 characters)',
   }),
 
   xlmAmount: (message?: string): ValidationRule => ({
     name: 'xlmAmount',
-    validator: (value) => {
+    validator: value => {
       if (!value) return true;
       const num = Number(value);
       return !isNaN(num) && num >= 0.0000001 && num <= 1000000;
     },
-    message: message || 'XLM amount must be between 0.0000001 and 1,000,000'
+    message: message || 'XLM amount must be between 0.0000001 and 1,000,000',
   }),
 
-  custom: (validator: (value: any, formData?: Record<string, any>) => boolean | string, message: string, name?: string): ValidationRule => ({
+  custom: (
+    validator: (value: any, formData?: Record<string, any>) => boolean | string,
+    message: string,
+    name?: string
+  ): ValidationRule => ({
     name: name || 'custom',
     validator,
-    message
+    message,
   }),
 
   async: (
@@ -140,8 +144,8 @@ export const ValidationRules = {
     name: name || 'async',
     validator: validator as any,
     message,
-    debounceMs: 500
-  })
+    debounceMs: 500,
+  }),
 };
 
 export class FormValidator {
@@ -161,7 +165,7 @@ export class FormValidator {
     if (!fieldConfig) return [];
 
     const errors: string[] = [];
-    
+
     for (const rule of fieldConfig.rules) {
       try {
         const result = await rule.validator(value, formData);
@@ -192,7 +196,7 @@ export class FormValidator {
     return {
       isValid: Object.keys(errors).length === 0,
       errors,
-      fieldErrors
+      fieldErrors,
     };
   }
 

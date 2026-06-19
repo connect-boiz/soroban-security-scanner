@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[allow(clippy::module_inception)]
 mod dispute_tests {
     use crate::{
         ContractError, DisputeStatus, Reputation, Role, SecurityScannerContract,
@@ -309,7 +310,7 @@ mod dispute_tests {
         let client = SecurityScannerContractClient::new(&env, &contract_id);
 
         let disputant = test_address(&env, 100);
-        let (admin, _researcher, report_id) = setup_dispute_env(&env, &client);
+        let (_admin, _researcher, report_id) = setup_dispute_env(&env, &client);
         let evidence: soroban_sdk::Vec<BytesN<32>> = soroban_sdk::Vec::new(&env);
         let dispute_id = client.file_dispute(
             &disputant,
@@ -357,7 +358,7 @@ mod dispute_tests {
         let client = SecurityScannerContractClient::new(&env, &contract_id);
 
         let disputant = test_address(&env, 100);
-        let (admin, _researcher, report_id) = setup_dispute_env(&env, &client);
+        let (_admin, _researcher, report_id) = setup_dispute_env(&env, &client);
         let evidence: soroban_sdk::Vec<BytesN<32>> = soroban_sdk::Vec::new(&env);
         let dispute_id = client.file_dispute(
             &disputant,
@@ -383,7 +384,7 @@ mod dispute_tests {
         let client = SecurityScannerContractClient::new(&env, &contract_id);
 
         let disputant = test_address(&env, 100);
-        let (admin, _researcher, report_id) = setup_dispute_env(&env, &client);
+        let (_admin, _researcher, report_id) = setup_dispute_env(&env, &client);
         let evidence: soroban_sdk::Vec<BytesN<32>> = soroban_sdk::Vec::new(&env);
         let dispute_id = client.file_dispute(
             &disputant,
@@ -414,7 +415,7 @@ mod dispute_tests {
         let client = SecurityScannerContractClient::new(&env, &contract_id);
 
         let disputant = test_address(&env, 100);
-        let (admin, _researcher, report_id) = setup_dispute_env(&env, &client);
+        let (_admin, _researcher, report_id) = setup_dispute_env(&env, &client);
         let initial_bounty_pool = client.get_bounty_pool();
         let evidence: soroban_sdk::Vec<BytesN<32>> = soroban_sdk::Vec::new(&env);
         let dispute_id = client.file_dispute(
@@ -452,7 +453,7 @@ mod dispute_tests {
         let client = SecurityScannerContractClient::new(&env, &contract_id);
 
         let disputant = test_address(&env, 100);
-        let (admin, _researcher, report_id) = setup_dispute_env(&env, &client);
+        let (_admin, _researcher, report_id) = setup_dispute_env(&env, &client);
         let initial_bounty_pool = client.get_bounty_pool();
         let evidence: soroban_sdk::Vec<BytesN<32>> = soroban_sdk::Vec::new(&env);
         let dispute_id = client.file_dispute(
@@ -485,7 +486,7 @@ mod dispute_tests {
         let client = SecurityScannerContractClient::new(&env, &contract_id);
 
         let disputant = test_address(&env, 100);
-        let (admin, _researcher, report_id) = setup_dispute_env(&env, &client);
+        let (_admin, _researcher, report_id) = setup_dispute_env(&env, &client);
         let evidence: soroban_sdk::Vec<BytesN<32>> = soroban_sdk::Vec::new(&env);
         let dispute_id = client.file_dispute(
             &disputant,
@@ -538,7 +539,7 @@ mod dispute_tests {
         let client = SecurityScannerContractClient::new(&env, &contract_id);
 
         let disputant = test_address(&env, 100);
-        let (admin, _researcher, report_id) = setup_dispute_env(&env, &client);
+        let (_admin, _researcher, report_id) = setup_dispute_env(&env, &client);
         let evidence: soroban_sdk::Vec<BytesN<32>> = soroban_sdk::Vec::new(&env);
         let dispute_id = client.file_dispute(
             &disputant,

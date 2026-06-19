@@ -16,17 +16,17 @@ import {
   ResponsiveContainer,
   PieChart,
   Pie,
-  Cell
+  Cell,
 } from 'recharts';
 import { TransactionData, ChartConfig } from '@/types/charts';
-import { 
-  TrendingUp, 
-  TrendingDown, 
-  ArrowUpRight, 
-  ArrowDownRight, 
+import {
+  TrendingUp,
+  TrendingDown,
+  ArrowUpRight,
+  ArrowDownRight,
   Activity,
   DollarSign,
-  Clock
+  Clock,
 } from 'lucide-react';
 import { format, subDays, isAfter, isBefore } from 'date-fns';
 
@@ -38,16 +38,16 @@ interface TransactionChartProps {
 }
 
 const DEFAULT_COLORS = {
-  deposit: '#10b981',    // emerald
-  withdrawal: '#ef4444',  // red
-  reward: '#3b82f6',     // blue
-  penalty: '#f59e0b'     // amber
+  deposit: '#10b981', // emerald
+  withdrawal: '#ef4444', // red
+  reward: '#3b82f6', // blue
+  penalty: '#f59e0b', // amber
 };
 
 const STATUS_COLORS = {
   completed: '#10b981',
   pending: '#f59e0b',
-  failed: '#ef4444'
+  failed: '#ef4444',
 };
 
 const CustomTooltip = ({ active, payload, label }: any) => {
@@ -60,13 +60,8 @@ const CustomTooltip = ({ active, payload, label }: any) => {
         {payload.map((entry: any, index: number) => (
           <div key={index} className="flex items-center justify-between space-x-4">
             <div className="flex items-center space-x-2">
-              <div 
-                className="w-3 h-3 rounded-full" 
-                style={{ backgroundColor: entry.color }}
-              />
-              <span className="text-sm text-gray-600 capitalize">
-                {entry.dataKey}
-              </span>
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }} />
+              <span className="text-sm text-gray-600 capitalize">{entry.dataKey}</span>
             </div>
             <span className="text-sm font-medium text-gray-900">
               ${entry.value.toLocaleString()}
@@ -98,7 +93,7 @@ export const TransactionChart: React.FC<TransactionChartProps> = ({
   data,
   config = {},
   timeRange = '30d',
-  className = ''
+  className = '',
 }) => {
   const {
     type = 'line',
@@ -106,19 +101,19 @@ export const TransactionChart: React.FC<TransactionChartProps> = ({
     showLegend = true,
     showGrid = true,
     height = 300,
-    responsive = true
+    responsive = true,
   } = config;
 
   // Filter data based on time range
   const getFilteredData = () => {
     if (timeRange === 'all') return data;
-    
+
     const now = new Date();
     const daysAgo = {
       '24h': 1,
       '7d': 7,
       '30d': 30,
-      '90d': 90
+      '90d': 90,
     }[timeRange];
 
     const cutoffDate = subDays(now, daysAgo!);
@@ -140,19 +135,19 @@ export const TransactionChart: React.FC<TransactionChartProps> = ({
           withdrawal: 0,
           reward: 0,
           penalty: 0,
-          count: 0
+          count: 0,
         };
       }
-      
+
       acc[dateKey][tx.type] += tx.amount;
       acc[dateKey].total += tx.amount;
       acc[dateKey].count += 1;
-      
+
       return acc;
     }, {});
 
-    return Object.values(groupedByDate).sort((a: any, b: any) => 
-      new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    return Object.values(groupedByDate).sort(
+      (a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
     );
   };
 
@@ -162,7 +157,7 @@ export const TransactionChart: React.FC<TransactionChartProps> = ({
         acc[tx.type] = {
           type: tx.type,
           count: 0,
-          totalAmount: 0
+          totalAmount: 0,
         };
       }
       acc[tx.type].count += 1;
@@ -179,7 +174,7 @@ export const TransactionChart: React.FC<TransactionChartProps> = ({
         acc[tx.status] = {
           status: tx.status,
           count: 0,
-          totalAmount: 0
+          totalAmount: 0,
         };
       }
       acc[tx.status].count += 1;
@@ -199,7 +194,8 @@ export const TransactionChart: React.FC<TransactionChartProps> = ({
   const totalTransactions = filteredData.length;
   const avgTransactionSize = totalTransactions > 0 ? totalVolume / totalTransactions : 0;
   const successfulTransactions = filteredData.filter(tx => tx.status === 'completed').length;
-  const successRate = totalTransactions > 0 ? (successfulTransactions / totalTransactions) * 100 : 0;
+  const successRate =
+    totalTransactions > 0 ? (successfulTransactions / totalTransactions) * 100 : 0;
 
   const renderLineChart = () => (
     <div className="space-y-4">
@@ -212,43 +208,43 @@ export const TransactionChart: React.FC<TransactionChartProps> = ({
           </span>
         </div>
       </div>
-      
+
       <ResponsiveContainer width="100%" height={height}>
         <LineChart data={timeSeriesData}>
           {showGrid && <CartesianGrid strokeDasharray="3 3" className="opacity-30" />}
-          <XAxis 
+          <XAxis
             dataKey="date"
             tick={{ fontSize: 12 }}
             className="text-gray-600"
-            tickFormatter={(value) => format(new Date(value), 'MMM dd')}
+            tickFormatter={value => format(new Date(value), 'MMM dd')}
           />
-          <YAxis 
+          <YAxis
             tick={{ fontSize: 12 }}
             className="text-gray-600"
-            tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
+            tickFormatter={value => `$${(value / 1000).toFixed(0)}k`}
           />
           <Tooltip content={<CustomTooltip />} />
           {showLegend && <Legend />}
-          <Line 
-            type="monotone" 
-            dataKey="total" 
-            stroke="#3b82f6" 
+          <Line
+            type="monotone"
+            dataKey="total"
+            stroke="#3b82f6"
             strokeWidth={2}
             dot={{ r: 4 }}
             name="Total Volume"
           />
-          <Line 
-            type="monotone" 
-            dataKey="deposit" 
-            stroke="#10b981" 
+          <Line
+            type="monotone"
+            dataKey="deposit"
+            stroke="#10b981"
             strokeWidth={2}
             dot={{ r: 3 }}
             name="Deposits"
           />
-          <Line 
-            type="monotone" 
-            dataKey="reward" 
-            stroke="#3b82f6" 
+          <Line
+            type="monotone"
+            dataKey="reward"
+            stroke="#3b82f6"
             strokeWidth={2}
             dot={{ r: 3 }}
             name="Rewards"
@@ -269,46 +265,46 @@ export const TransactionChart: React.FC<TransactionChartProps> = ({
           </span>
         </div>
       </div>
-      
+
       <ResponsiveContainer width="100%" height={height}>
         <AreaChart data={timeSeriesData}>
           {showGrid && <CartesianGrid strokeDasharray="3 3" className="opacity-30" />}
-          <XAxis 
+          <XAxis
             dataKey="date"
             tick={{ fontSize: 12 }}
             className="text-gray-600"
-            tickFormatter={(value) => format(new Date(value), 'MMM dd')}
+            tickFormatter={value => format(new Date(value), 'MMM dd')}
           />
-          <YAxis 
+          <YAxis
             tick={{ fontSize: 12 }}
             className="text-gray-600"
-            tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
+            tickFormatter={value => `$${(value / 1000).toFixed(0)}k`}
           />
           <Tooltip content={<CustomTooltip />} />
           {showLegend && <Legend />}
-          <Area 
-            type="monotone" 
-            dataKey="deposit" 
+          <Area
+            type="monotone"
+            dataKey="deposit"
             stackId="1"
-            stroke={DEFAULT_COLORS.deposit} 
+            stroke={DEFAULT_COLORS.deposit}
             fill={DEFAULT_COLORS.deposit}
             fillOpacity={0.6}
             name="Deposits"
           />
-          <Area 
-            type="monotone" 
-            dataKey="reward" 
+          <Area
+            type="monotone"
+            dataKey="reward"
             stackId="1"
-            stroke={DEFAULT_COLORS.reward} 
+            stroke={DEFAULT_COLORS.reward}
             fill={DEFAULT_COLORS.reward}
             fillOpacity={0.6}
             name="Rewards"
           />
-          <Area 
-            type="monotone" 
-            dataKey="withdrawal" 
+          <Area
+            type="monotone"
+            dataKey="withdrawal"
             stackId="1"
-            stroke={DEFAULT_COLORS.withdrawal} 
+            stroke={DEFAULT_COLORS.withdrawal}
             fill={DEFAULT_COLORS.withdrawal}
             fillOpacity={0.6}
             name="Withdrawals"
@@ -324,12 +320,10 @@ export const TransactionChart: React.FC<TransactionChartProps> = ({
         <h3 className="text-lg font-semibold text-gray-900">Transaction Types</h3>
         <div className="flex items-center space-x-2">
           <DollarSign className="w-4 h-4 text-gray-600" />
-          <span className="text-sm font-medium text-gray-900">
-            ${totalVolume.toLocaleString()}
-          </span>
+          <span className="text-sm font-medium text-gray-900">${totalVolume.toLocaleString()}</span>
         </div>
       </div>
-      
+
       <ResponsiveContainer width="100%" height={height}>
         <PieChart>
           <Pie
@@ -343,16 +337,16 @@ export const TransactionChart: React.FC<TransactionChartProps> = ({
             dataKey="totalAmount"
           >
             {typeDistribution.map((entry: any, index: number) => (
-              <Cell 
-                key={`cell-${index}`} 
-                fill={DEFAULT_COLORS[entry.type as keyof typeof DEFAULT_COLORS]} 
+              <Cell
+                key={`cell-${index}`}
+                fill={DEFAULT_COLORS[entry.type as keyof typeof DEFAULT_COLORS]}
               />
             ))}
           </Pie>
           <Tooltip content={<TransactionTypeTooltip />} />
           {showLegend && (
-            <Legend 
-              verticalAlign="bottom" 
+            <Legend
+              verticalAlign="bottom"
               height={36}
               formatter={(value, entry: any) => (
                 <span className="text-sm text-gray-700 capitalize">
@@ -377,21 +371,18 @@ export const TransactionChart: React.FC<TransactionChartProps> = ({
           </span>
         </div>
       </div>
-      
+
       <ResponsiveContainer width="100%" height={height}>
         <BarChart data={statusDistribution}>
           {showGrid && <CartesianGrid strokeDasharray="3 3" className="opacity-30" />}
-          <XAxis 
+          <XAxis
             dataKey="status"
             tick={{ fontSize: 12 }}
             className="text-gray-600"
-            tickFormatter={(value) => value.charAt(0).toUpperCase() + value.slice(1)}
+            tickFormatter={value => value.charAt(0).toUpperCase() + value.slice(1)}
           />
-          <YAxis 
-            tick={{ fontSize: 12 }}
-            className="text-gray-600"
-          />
-          <Tooltip 
+          <YAxis tick={{ fontSize: 12 }} className="text-gray-600" />
+          <Tooltip
             content={({ active, payload }: any) => {
               if (active && payload && payload.length) {
                 const data = payload[0].payload;
@@ -399,7 +390,9 @@ export const TransactionChart: React.FC<TransactionChartProps> = ({
                   <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
                     <p className="font-semibold text-gray-900 capitalize">{data.status}</p>
                     <p className="text-sm text-gray-600">Count: {data.count}</p>
-                    <p className="text-sm text-gray-600">Amount: ${data.totalAmount.toLocaleString()}</p>
+                    <p className="text-sm text-gray-600">
+                      Amount: ${data.totalAmount.toLocaleString()}
+                    </p>
                   </div>
                 );
               }
@@ -408,9 +401,9 @@ export const TransactionChart: React.FC<TransactionChartProps> = ({
           />
           <Bar dataKey="count" radius={[8, 8, 0, 0]}>
             {statusDistribution.map((entry: any, index: number) => (
-              <Cell 
-                key={`cell-${index}`} 
-                fill={STATUS_COLORS[entry.status as keyof typeof STATUS_COLORS]} 
+              <Cell
+                key={`cell-${index}`}
+                fill={STATUS_COLORS[entry.status as keyof typeof STATUS_COLORS]}
               />
             ))}
           </Bar>
@@ -425,31 +418,23 @@ export const TransactionChart: React.FC<TransactionChartProps> = ({
       {type === 'area' && renderAreaChart()}
       {type === 'pie' && renderPieChart()}
       {type === 'bar' && renderBarChart()}
-      
+
       <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-gray-50 rounded-lg p-3">
           <p className="text-sm text-gray-600">Total Volume</p>
-          <p className="text-lg font-semibold text-gray-900">
-            ${totalVolume.toLocaleString()}
-          </p>
+          <p className="text-lg font-semibold text-gray-900">${totalVolume.toLocaleString()}</p>
         </div>
         <div className="bg-gray-50 rounded-lg p-3">
           <p className="text-sm text-gray-600">Transactions</p>
-          <p className="text-lg font-semibold text-gray-900">
-            {totalTransactions}
-          </p>
+          <p className="text-lg font-semibold text-gray-900">{totalTransactions}</p>
         </div>
         <div className="bg-gray-50 rounded-lg p-3">
           <p className="text-sm text-gray-600">Avg Size</p>
-          <p className="text-lg font-semibold text-gray-900">
-            ${avgTransactionSize.toFixed(2)}
-          </p>
+          <p className="text-lg font-semibold text-gray-900">${avgTransactionSize.toFixed(2)}</p>
         </div>
         <div className="bg-gray-50 rounded-lg p-3">
           <p className="text-sm text-gray-600">Success Rate</p>
-          <p className="text-lg font-semibold text-green-600">
-            {successRate.toFixed(1)}%
-          </p>
+          <p className="text-lg font-semibold text-green-600">{successRate.toFixed(1)}%</p>
         </div>
       </div>
     </div>

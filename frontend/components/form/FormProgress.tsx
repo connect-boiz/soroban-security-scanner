@@ -30,11 +30,17 @@ export function FormProgress({ steps, currentStep, className = '' }: FormProgres
               <div
                 className={`
                   flex items-center justify-center w-8 h-8 rounded-full border-2 transition-colors
-                  ${isCompleted ? 'bg-green-500 border-green-500' : 
-                    isCurrent ? 'bg-primary-500 border-primary-500' :
-                    isInvalid ? 'bg-red-500 border-red-500' :
-                    isValid ? 'bg-green-500 border-green-500' :
-                    'bg-white border-gray-300'}
+                  ${
+                    isCompleted
+                      ? 'bg-green-500 border-green-500'
+                      : isCurrent
+                        ? 'bg-primary-500 border-primary-500'
+                        : isInvalid
+                          ? 'bg-red-500 border-red-500'
+                          : isValid
+                            ? 'bg-green-500 border-green-500'
+                            : 'bg-white border-gray-300'
+                  }
                 `}
               >
                 {isCompleted || isValid ? (
@@ -46,10 +52,15 @@ export function FormProgress({ steps, currentStep, className = '' }: FormProgres
               <span
                 className={`
                   ml-2 text-sm font-medium
-                  ${isCurrent ? 'text-primary-600' : 
-                    isCompleted || isValid ? 'text-green-600' :
-                    isInvalid ? 'text-red-600' :
-                    'text-gray-500'}
+                  ${
+                    isCurrent
+                      ? 'text-primary-600'
+                      : isCompleted || isValid
+                        ? 'text-green-600'
+                        : isInvalid
+                          ? 'text-red-600'
+                          : 'text-gray-500'
+                  }
                 `}
               >
                 {step.title}

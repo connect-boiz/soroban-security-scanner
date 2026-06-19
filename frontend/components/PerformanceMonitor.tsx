@@ -20,7 +20,7 @@ const PerformanceMonitor: React.FC = () => {
     // Only show in development
     if (process.env.NODE_ENV === 'development') {
       setIsVisible(true);
-      
+
       const interval = setInterval(() => {
         const monitor = StorePerformanceMonitor.getInstance();
         setMetrics(monitor.getMetrics());
@@ -42,9 +42,11 @@ const PerformanceMonitor: React.FC = () => {
   };
 
   const totalActions = Object.values(metrics).reduce((sum, stat) => sum + stat.count, 0);
-  const avgActionTime = totalActions > 0 
-    ? Object.values(metrics).reduce((sum, stat) => sum + stat.avgTime, 0) / Object.keys(metrics).length
-    : 0;
+  const avgActionTime =
+    totalActions > 0
+      ? Object.values(metrics).reduce((sum, stat) => sum + stat.avgTime, 0) /
+        Object.keys(metrics).length
+      : 0;
 
   return (
     <div className="fixed bottom-4 right-4 bg-gray-900 text-white p-4 rounded-lg shadow-xl max-w-sm max-h-96 overflow-y-auto z-50">
@@ -93,11 +95,13 @@ const PerformanceMonitor: React.FC = () => {
             </div>
             {/* Performance indicator */}
             <div className="mt-1 h-1 bg-gray-700 rounded-full overflow-hidden">
-              <div 
+              <div
                 className={`h-full ${
-                  stats.avgTime < 1 ? 'bg-green-500' : 
-                  stats.avgTime < 5 ? 'bg-yellow-500' : 
-                  'bg-red-500'
+                  stats.avgTime < 1
+                    ? 'bg-green-500'
+                    : stats.avgTime < 5
+                      ? 'bg-yellow-500'
+                      : 'bg-red-500'
                 }`}
                 style={{ width: `${Math.min(stats.avgTime * 10, 100)}%` }}
               />

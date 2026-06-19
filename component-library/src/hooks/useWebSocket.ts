@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 
 type Status = 'connecting' | 'open' | 'closed' | 'error';
 
-interface UseWebSocketOptions {
+export interface UseWebSocketOptions {
   onMessage?: (data: unknown) => void;
   onOpen?: () => void;
   onClose?: () => void;

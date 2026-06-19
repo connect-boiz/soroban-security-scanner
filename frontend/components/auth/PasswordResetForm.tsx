@@ -13,7 +13,11 @@ interface PasswordResetFormProps {
   isLoading?: boolean;
 }
 
-export default function PasswordResetForm({ onResetPassword, onBackToLogin, isLoading = false }: PasswordResetFormProps) {
+export default function PasswordResetForm({
+  onResetPassword,
+  onBackToLogin,
+  isLoading = false,
+}: PasswordResetFormProps) {
   const [email, setEmail] = useState('');
   const [errors, setErrors] = useState<{ email?: string }>({});
   const [touched, setTouched] = useState(false);
@@ -39,7 +43,7 @@ export default function PasswordResetForm({ onResetPassword, onBackToLogin, isLo
 
   const handleEmailChange = (value: string) => {
     setEmail(value);
-    
+
     // Clear error when user starts typing
     if (errors.email) {
       setErrors({});
@@ -48,7 +52,7 @@ export default function PasswordResetForm({ onResetPassword, onBackToLogin, isLo
 
   const handleEmailBlur = () => {
     setTouched(true);
-    
+
     // Validate email on blur
     if (email && !validateEmail(email)) {
       setErrors({ email: 'Please enter a valid email address' });
@@ -57,7 +61,7 @@ export default function PasswordResetForm({ onResetPassword, onBackToLogin, isLo
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    
+
     if (!validateForm()) {
       return;
     }
@@ -88,8 +92,8 @@ export default function PasswordResetForm({ onResetPassword, onBackToLogin, isLo
             </div>
             <h2 className="text-2xl font-bold text-gray-900 mb-2">Reset Link Sent</h2>
             <p className="text-gray-600 mb-6">
-              We've sent a password reset link to your email address. 
-              Please check your inbox and follow the instructions.
+              We've sent a password reset link to your email address. Please check your inbox and
+              follow the instructions.
             </p>
             <div className="space-y-3">
               <p className="text-sm text-gray-500">
@@ -149,14 +153,14 @@ export default function PasswordResetForm({ onResetPassword, onBackToLogin, isLo
                 id="email"
                 type="email"
                 value={email}
-                onChange={(e) => handleEmailChange(e.target.value)}
+                onChange={e => handleEmailChange(e.target.value)}
                 onBlur={handleEmailBlur}
                 className={`block w-full pl-10 pr-3 py-3 border rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-optimized ${
                   errors.email && touched
                     ? 'border-red-300 bg-red-50'
                     : touched && !errors.email
-                    ? 'border-green-300 bg-green-50'
-                    : 'border-gray-300'
+                      ? 'border-green-300 bg-green-50'
+                      : 'border-gray-300'
                 }`}
                 placeholder="Enter your email"
                 disabled={isLoading}
@@ -172,9 +176,7 @@ export default function PasswordResetForm({ onResetPassword, onBackToLogin, isLo
                 </div>
               )}
             </div>
-            {errors.email && touched && (
-              <p className="mt-1 text-sm text-red-600">{errors.email}</p>
-            )}
+            {errors.email && touched && <p className="mt-1 text-sm text-red-600">{errors.email}</p>}
           </div>
 
           {/* Submit Button */}

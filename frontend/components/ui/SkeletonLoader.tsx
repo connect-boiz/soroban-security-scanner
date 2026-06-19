@@ -21,25 +21,24 @@ export const SkeletonLoader: React.FC<SkeletonLoaderProps> = ({
   height = 'h-4',
   width = 'w-full',
   className = '',
-  animated = true
+  animated = true,
 }) => {
   const skeletonClass = animated ? 'animate-pulse' : '';
   const baseClass = `bg-gray-200 rounded ${skeletonClass}`;
 
   const renderCardSkeleton = () => (
     <div className={`p-4 border border-gray-200 rounded-lg ${className}`}>
-      {avatar && (
-        <div className={`w-12 h-12 ${baseClass} rounded-full mb-4`} />
-      )}
+      {avatar && <div className={`w-12 h-12 ${baseClass} rounded-full mb-4`} />}
       <div className="space-y-3">
         <div className={`h-6 ${baseClass} w-3/4`} />
         {Array.from({ length: lines - 1 }, (_, i) => (
-          <div key={i} className={`h-4 ${baseClass} w-${i % 3 === 0 ? 'full' : i % 3 === 1 ? '5/6' : '4/6'}`} />
+          <div
+            key={i}
+            className={`h-4 ${baseClass} w-${i % 3 === 0 ? 'full' : i % 3 === 1 ? '5/6' : '4/6'}`}
+          />
         ))}
       </div>
-      {button && (
-        <div className={`h-10 ${baseClass} w-1/3 mt-4`} />
-      )}
+      {button && <div className={`h-10 ${baseClass} w-1/3 mt-4`} />}
     </div>
   );
 
@@ -68,9 +67,7 @@ export const SkeletonLoader: React.FC<SkeletonLoaderProps> = ({
     <div className={`space-y-3 ${className}`}>
       {Array.from({ length: lines }, (_, i) => (
         <div key={i} className="flex items-center space-x-3 p-3 border border-gray-200 rounded-lg">
-          {avatar && (
-            <div className="w-8 h-8 bg-gray-200 rounded-full animate-pulse" />
-          )}
+          {avatar && <div className="w-8 h-8 bg-gray-200 rounded-full animate-pulse" />}
           <div className="flex-1 space-y-2">
             <div className="h-4 bg-gray-200 rounded animate-pulse w-3/4" />
             <div className="h-3 bg-gray-200 rounded animate-pulse w-1/2" />
@@ -145,27 +142,27 @@ export const SkeletonLoader: React.FC<SkeletonLoaderProps> = ({
 };
 
 // Enhanced skeleton components for specific use cases
-export const SkeletonCard: React.FC<Omit<SkeletonLoaderProps, 'type'>> = (props) => (
+export const SkeletonCard: React.FC<Omit<SkeletonLoaderProps, 'type'>> = props => (
   <SkeletonLoader {...props} type="card" />
 );
 
-export const SkeletonTable: React.FC<Omit<SkeletonLoaderProps, 'type'>> = (props) => (
+export const SkeletonTable: React.FC<Omit<SkeletonLoaderProps, 'type'>> = props => (
   <SkeletonLoader {...props} type="table" />
 );
 
-export const SkeletonList: React.FC<Omit<SkeletonLoaderProps, 'type'>> = (props) => (
+export const SkeletonList: React.FC<Omit<SkeletonLoaderProps, 'type'>> = props => (
   <SkeletonLoader {...props} type="list" />
 );
 
-export const SkeletonChart: React.FC<Omit<SkeletonLoaderProps, 'type'>> = (props) => (
+export const SkeletonChart: React.FC<Omit<SkeletonLoaderProps, 'type'>> = props => (
   <SkeletonLoader {...props} type="chart" />
 );
 
-export const SkeletonForm: React.FC<Omit<SkeletonLoaderProps, 'type'>> = (props) => (
+export const SkeletonForm: React.FC<Omit<SkeletonLoaderProps, 'type'>> = props => (
   <SkeletonLoader {...props} type="form" />
 );
 
-export const SkeletonModal: React.FC<Omit<SkeletonLoaderProps, 'type'>> = (props) => (
+export const SkeletonModal: React.FC<Omit<SkeletonLoaderProps, 'type'>> = props => (
   <SkeletonLoader {...props} type="modal" />
 );
 

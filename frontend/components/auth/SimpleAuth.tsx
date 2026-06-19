@@ -25,7 +25,12 @@ export interface AuthProps {
   isLoading?: boolean;
 }
 
-export default function SimpleAuth({ onLogin, onSignUp, onResetPassword, isLoading = false }: AuthProps) {
+export default function SimpleAuth({
+  onLogin,
+  onSignUp,
+  onResetPassword,
+  isLoading = false,
+}: AuthProps) {
   // State management
   const [currentView, setCurrentView] = useState<'login' | 'signup' | 'reset'>('login');
   const [formData, setFormData] = useState<LoginData | SignUpData>({
@@ -35,7 +40,7 @@ export default function SimpleAuth({ onLogin, onSignUp, onResetPassword, isLoadi
     firstName: '',
     lastName: '',
     confirmPassword: '',
-    agreeToTerms: false
+    agreeToTerms: false,
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -160,7 +165,7 @@ export default function SimpleAuth({ onLogin, onSignUp, onResetPassword, isLoadi
       firstName: '',
       lastName: '',
       confirmPassword: '',
-      agreeToTerms: false
+      agreeToTerms: false,
     });
     setErrors({});
     setMessage(null);
@@ -174,10 +179,13 @@ export default function SimpleAuth({ onLogin, onSignUp, onResetPassword, isLoadi
   // Render methods
   const renderMessage = () => {
     if (!message) return null;
-    
-    const bgColor = message.type === 'success' ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800';
+
+    const bgColor =
+      message.type === 'success'
+        ? 'bg-green-50 border-green-200 text-green-800'
+        : 'bg-red-50 border-red-200 text-red-800';
     const icon = message.type === 'success' ? '✓' : '✕';
-    
+
     return (
       <div className={`p-4 rounded-lg border ${bgColor} mb-4 flex items-center`}>
         <span className="mr-2 font-bold">{icon}</span>
@@ -193,7 +201,7 @@ export default function SimpleAuth({ onLogin, onSignUp, onResetPassword, isLoadi
         <input
           type="email"
           value={(formData as LoginData).email}
-          onChange={(e) => handleInputChange('email', e.target.value)}
+          onChange={e => handleInputChange('email', e.target.value)}
           className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
             errors.email ? 'border-red-300' : 'border-gray-300'
           }`}
@@ -208,7 +216,7 @@ export default function SimpleAuth({ onLogin, onSignUp, onResetPassword, isLoadi
         <input
           type="password"
           value={(formData as LoginData).password}
-          onChange={(e) => handleInputChange('password', e.target.value)}
+          onChange={e => handleInputChange('password', e.target.value)}
           className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
             errors.password ? 'border-red-300' : 'border-gray-300'
           }`}
@@ -223,7 +231,7 @@ export default function SimpleAuth({ onLogin, onSignUp, onResetPassword, isLoadi
           <input
             type="checkbox"
             checked={(formData as LoginData).rememberMe}
-            onChange={(e) => handleInputChange('rememberMe', e.target.checked)}
+            onChange={e => handleInputChange('rememberMe', e.target.checked)}
             className="mr-2"
             disabled={isLoading}
           />
@@ -271,7 +279,7 @@ export default function SimpleAuth({ onLogin, onSignUp, onResetPassword, isLoadi
           <input
             type="text"
             value={(formData as SignUpData).firstName}
-            onChange={(e) => handleInputChange('firstName', e.target.value)}
+            onChange={e => handleInputChange('firstName', e.target.value)}
             className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
               errors.firstName ? 'border-red-300' : 'border-gray-300'
             }`}
@@ -286,7 +294,7 @@ export default function SimpleAuth({ onLogin, onSignUp, onResetPassword, isLoadi
           <input
             type="text"
             value={(formData as SignUpData).lastName}
-            onChange={(e) => handleInputChange('lastName', e.target.value)}
+            onChange={e => handleInputChange('lastName', e.target.value)}
             className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
               errors.lastName ? 'border-red-300' : 'border-gray-300'
             }`}
@@ -302,7 +310,7 @@ export default function SimpleAuth({ onLogin, onSignUp, onResetPassword, isLoadi
         <input
           type="email"
           value={(formData as SignUpData).email}
-          onChange={(e) => handleInputChange('email', e.target.value)}
+          onChange={e => handleInputChange('email', e.target.value)}
           className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
             errors.email ? 'border-red-300' : 'border-gray-300'
           }`}
@@ -317,7 +325,7 @@ export default function SimpleAuth({ onLogin, onSignUp, onResetPassword, isLoadi
         <input
           type="password"
           value={(formData as SignUpData).password}
-          onChange={(e) => handleInputChange('password', e.target.value)}
+          onChange={e => handleInputChange('password', e.target.value)}
           className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
             errors.password ? 'border-red-300' : 'border-gray-300'
           }`}
@@ -332,14 +340,16 @@ export default function SimpleAuth({ onLogin, onSignUp, onResetPassword, isLoadi
         <input
           type="password"
           value={(formData as SignUpData).confirmPassword}
-          onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
+          onChange={e => handleInputChange('confirmPassword', e.target.value)}
           className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
             errors.confirmPassword ? 'border-red-300' : 'border-gray-300'
           }`}
           placeholder="Confirm your password"
           disabled={isLoading}
         />
-        {errors.confirmPassword && <p className="text-red-600 text-sm mt-1">{errors.confirmPassword}</p>}
+        {errors.confirmPassword && (
+          <p className="text-red-600 text-sm mt-1">{errors.confirmPassword}</p>
+        )}
       </div>
 
       <div>
@@ -347,7 +357,7 @@ export default function SimpleAuth({ onLogin, onSignUp, onResetPassword, isLoadi
           <input
             type="checkbox"
             checked={(formData as SignUpData).agreeToTerms}
-            onChange={(e) => handleInputChange('agreeToTerms', e.target.checked)}
+            onChange={e => handleInputChange('agreeToTerms', e.target.checked)}
             className="mr-2"
             disabled={isLoading}
           />
@@ -389,7 +399,7 @@ export default function SimpleAuth({ onLogin, onSignUp, onResetPassword, isLoadi
         <input
           type="email"
           value={(formData as LoginData).email}
-          onChange={(e) => handleInputChange('email', e.target.value)}
+          onChange={e => handleInputChange('email', e.target.value)}
           className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
             errors.email ? 'border-red-300' : 'border-gray-300'
           }`}
@@ -425,13 +435,18 @@ export default function SimpleAuth({ onLogin, onSignUp, onResetPassword, isLoadi
       <div className="bg-white rounded-lg shadow-md p-6 w-full max-w-md">
         <div className="text-center mb-6">
           <h1 className="text-2xl font-bold text-gray-900 mb-2">
-            {currentView === 'login' ? 'Welcome Back' : 
-             currentView === 'signup' ? 'Create Account' : 'Reset Password'}
+            {currentView === 'login'
+              ? 'Welcome Back'
+              : currentView === 'signup'
+                ? 'Create Account'
+                : 'Reset Password'}
           </h1>
           <p className="text-gray-600 text-sm">
-            {currentView === 'login' ? 'Sign in to your account' :
-             currentView === 'signup' ? 'Join Soroban Security Scanner' :
-             'Enter your email to reset your password'}
+            {currentView === 'login'
+              ? 'Sign in to your account'
+              : currentView === 'signup'
+                ? 'Join Soroban Security Scanner'
+                : 'Enter your email to reset your password'}
           </p>
         </div>
 

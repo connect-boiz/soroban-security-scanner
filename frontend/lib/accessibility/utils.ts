@@ -9,13 +9,12 @@
  * Convert any CSS hex colour to relative luminance (WCAG formula).
  */
 function hexToRelativeLuminance(hex: string): number {
-  const clean = hex.replace("#", "");
+  const clean = hex.replace('#', '');
   const r = parseInt(clean.slice(0, 2), 16) / 255;
   const g = parseInt(clean.slice(2, 4), 16) / 255;
   const b = parseInt(clean.slice(4, 6), 16) / 255;
 
-  const linearize = (c: number) =>
-    c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  const linearize = (c: number) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
 
   return 0.2126 * linearize(r) + 0.7152 * linearize(g) + 0.0722 * linearize(b);
 }
@@ -32,37 +31,33 @@ export function getContrastRatio(hex1: string, hex2: string): number {
   return (lighter + 0.05) / (darker + 0.05);
 }
 
-export type ContrastLevel = "AA" | "AA-large" | "AAA" | "fail";
+export type ContrastLevel = 'AA' | 'AA-large' | 'AAA' | 'fail';
 
-export function checkContrastLevel(
-  fg: string,
-  bg: string,
-  isLargeText = false
-): ContrastLevel {
+export function checkContrastLevel(fg: string, bg: string, isLargeText = false): ContrastLevel {
   const ratio = getContrastRatio(fg, bg);
-  if (ratio >= 7) return "AAA";
-  if (ratio >= 4.5) return "AA";
-  if (ratio >= 3 && isLargeText) return "AA-large";
-  return "fail";
+  if (ratio >= 7) return 'AAA';
+  if (ratio >= 4.5) return 'AA';
+  if (ratio >= 3 && isLargeText) return 'AA-large';
+  return 'fail';
 }
 
 // ── Brand colour tokens (verified WCAG AA on #0f1117 background) ─────────────
 // Update these to match your Tailwind config / design tokens.
 export const A11Y_COLORS = {
   // Primary action — #22d3ee on #0f1117 → ratio 8.4 ✓ AAA
-  primaryText: "#22d3ee",
+  primaryText: '#22d3ee',
   // Body text — #e2e8f0 on #0f1117 → ratio 14.1 ✓ AAA
-  bodyText: "#e2e8f0",
+  bodyText: '#e2e8f0',
   // Muted — #94a3b8 on #0f1117 → ratio 5.1 ✓ AA
-  mutedText: "#94a3b8",
+  mutedText: '#94a3b8',
   // Error — #f87171 on #0f1117 → ratio 5.6 ✓ AA
-  errorText: "#f87171",
+  errorText: '#f87171',
   // Warning — #fbbf24 on #0f1117 → ratio 8.0 ✓ AAA
-  warningText: "#fbbf24",
+  warningText: '#fbbf24',
   // Success — #4ade80 on #0f1117 → ratio 8.8 ✓ AAA
-  successText: "#4ade80",
+  successText: '#4ade80',
   // Focus ring visible against both light and dark backgrounds
-  focusRing: "#22d3ee",
+  focusRing: '#22d3ee',
 } as const;
 
 // ── Focus management ──────────────────────────────────────────────────────────
@@ -103,7 +98,7 @@ export const FOCUSABLE_SELECTOR =
  */
 export function getFocusableElements(container: HTMLElement): HTMLElement[] {
   return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
-    (el) => !el.closest("[hidden]") && !el.closest("[aria-hidden='true']")
+    el => !el.closest('[hidden]') && !el.closest("[aria-hidden='true']")
   );
 }
 
@@ -115,7 +110,7 @@ export function getFocusableElements(container: HTMLElement): HTMLElement[] {
  */
 export function trapFocus(container: HTMLElement): () => void {
   const handler = (e: KeyboardEvent) => {
-    if (e.key !== "Tab") return;
+    if (e.key !== 'Tab') return;
 
     const focusable = getFocusableElements(container);
     if (focusable.length === 0) return;
@@ -136,8 +131,8 @@ export function trapFocus(container: HTMLElement): () => void {
     }
   };
 
-  container.addEventListener("keydown", handler);
-  return () => container.removeEventListener("keydown", handler);
+  container.addEventListener('keydown', handler);
+  return () => container.removeEventListener('keydown', handler);
 }
 
 // ── ARIA helpers ──────────────────────────────────────────────────────────────
@@ -146,7 +141,7 @@ export function trapFocus(container: HTMLElement): () => void {
  * Generate a stable, unique ID for use in `aria-labelledby` / `aria-describedby`.
  */
 let _idCounter = 0;
-export function generateAriaId(prefix = "aria"): string {
+export function generateAriaId(prefix = 'aria'): string {
   return `${prefix}-${++_idCounter}`;
 }
 
@@ -159,7 +154,7 @@ export function toggleAriaLabel(base: string, isActive: boolean): string {
 
 // ── Live region announcements (WCAG 4.1.3) ───────────────────────────────────
 
-type LiveRegionPoliteness = "polite" | "assertive";
+type LiveRegionPoliteness = 'polite' | 'assertive';
 
 class LiveRegionManager {
   private regions: Map<LiveRegionPoliteness, HTMLElement> = new Map();
@@ -167,20 +162,20 @@ class LiveRegionManager {
   private ensureRegion(politeness: LiveRegionPoliteness): HTMLElement {
     if (this.regions.has(politeness)) return this.regions.get(politeness)!;
 
-    const el = document.createElement("div");
-    el.setAttribute("role", politeness === "assertive" ? "alert" : "status");
-    el.setAttribute("aria-live", politeness);
-    el.setAttribute("aria-atomic", "true");
+    const el = document.createElement('div');
+    el.setAttribute('role', politeness === 'assertive' ? 'alert' : 'status');
+    el.setAttribute('aria-live', politeness);
+    el.setAttribute('aria-atomic', 'true');
     // Visually hidden but accessible to screen readers
     Object.assign(el.style, {
-      position: "absolute",
-      width: "1px",
-      height: "1px",
-      padding: "0",
-      overflow: "hidden",
-      clip: "rect(0,0,0,0)",
-      whiteSpace: "nowrap",
-      border: "0",
+      position: 'absolute',
+      width: '1px',
+      height: '1px',
+      padding: '0',
+      overflow: 'hidden',
+      clip: 'rect(0,0,0,0)',
+      whiteSpace: 'nowrap',
+      border: '0',
     });
 
     document.body.appendChild(el);
@@ -188,11 +183,11 @@ class LiveRegionManager {
     return el;
   }
 
-  announce(message: string, politeness: LiveRegionPoliteness = "polite"): void {
-    if (typeof document === "undefined") return;
+  announce(message: string, politeness: LiveRegionPoliteness = 'polite'): void {
+    if (typeof document === 'undefined') return;
     const region = this.ensureRegion(politeness);
     // Clear → repopulate forces screen readers to re-read identical messages
-    region.textContent = "";
+    region.textContent = '';
     requestAnimationFrame(() => {
       region.textContent = message;
     });
@@ -201,9 +196,9 @@ class LiveRegionManager {
   clear(politeness?: LiveRegionPoliteness): void {
     if (politeness) {
       const region = this.regions.get(politeness);
-      if (region) region.textContent = "";
+      if (region) region.textContent = '';
     } else {
-      this.regions.forEach((r) => (r.textContent = ""));
+      this.regions.forEach(r => (r.textContent = ''));
     }
   }
 }
@@ -213,8 +208,8 @@ export const liveRegion = new LiveRegionManager();
 // ── Reduced motion ────────────────────────────────────────────────────────────
 
 export function prefersReducedMotion(): boolean {
-  if (typeof window === "undefined") return false;
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (typeof window === 'undefined') return false;
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
 // ── Skip-link helper ─────────────────────────────────────────────────────────
@@ -227,10 +222,10 @@ export function skipToContent(targetId: string): void {
   const target = document.getElementById(targetId);
   if (!target) return;
   // Temporarily make non-interactive elements focusable
-  const hadTabIndex = target.hasAttribute("tabindex");
-  if (!hadTabIndex) target.setAttribute("tabindex", "-1");
+  const hadTabIndex = target.hasAttribute('tabindex');
+  if (!hadTabIndex) target.setAttribute('tabindex', '-1');
   target.focus();
   if (!hadTabIndex) {
-    target.addEventListener("blur", () => target.removeAttribute("tabindex"), { once: true });
+    target.addEventListener('blur', () => target.removeAttribute('tabindex'), { once: true });
   }
 }

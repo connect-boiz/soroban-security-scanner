@@ -46,7 +46,7 @@ export function reportError(
     console.groupEnd();
   }
 
-  handlers.forEach((handler) => {
+  handlers.forEach(handler => {
     try {
       handler(report);
     } catch {

@@ -13,7 +13,7 @@ describe('HelpIcon', () => {
   it('shows tooltip on hover', async () => {
     render(<HelpIcon content="Help content" />);
     const button = screen.getByRole('button');
-    
+
     fireEvent.mouseEnter(button);
 
     await waitFor(() => {

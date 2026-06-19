@@ -17,7 +17,6 @@ export interface DialogProps extends Omit<ModalProps, 'size' | 'children'> {
 }
 
 const Dialog: React.FC<DialogProps> = ({
-  _title,
   message,
   confirmText = 'Confirm',
   cancelText = 'Cancel',

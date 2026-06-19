@@ -17,16 +17,11 @@ interface GuidedTourProps {
  * Automatically starts the tour if it hasn't been completed before.
  */
 const GuidedTour: React.FC<GuidedTourProps> = ({ tourId }) => {
-  const { 
-    activeTour, 
-    completedTours, 
-    setActiveTour, 
-    markTourComplete 
-  } = useHelpStore();
+  const { activeTour, completedTours, setActiveTour, markTourComplete } = useHelpStore();
 
   const tourSteps: Record<string, Step[]> = {
-    'scan': SCAN_TOUR_STEPS,
-    'vulnerability': VULNERABILITY_TOUR_STEPS,
+    scan: SCAN_TOUR_STEPS,
+    vulnerability: VULNERABILITY_TOUR_STEPS,
     'time-travel': TIME_TRAVEL_TOUR_STEPS,
   };
 
@@ -92,7 +87,7 @@ const GuidedTour: React.FC<GuidedTourProps> = ({ tourId }) => {
         },
         buttonSkip: {
           color: '#64748b',
-        }
+        },
       }}
     />
   );

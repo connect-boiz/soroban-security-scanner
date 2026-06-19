@@ -4,17 +4,11 @@ import { shallow } from 'zustand/shallow';
 
 // Optimized selectors using shallow comparison to prevent unnecessary re-renders
 export const useCurrentProject = () => {
-  return useInvariantStore(
-    (state) => state.getCurrentProject(),
-    shallow
-  );
+  return useInvariantStore(state => state.getCurrentProject(), shallow);
 };
 
 export const useAllProjects = () => {
-  return useInvariantStore(
-    (state) => state.getAllProjects(),
-    shallow
-  );
+  return useInvariantStore(state => state.getAllProjects(), shallow);
 };
 
 export const useProjectById = (id: string) => {
@@ -24,29 +18,20 @@ export const useProjectById = (id: string) => {
 };
 
 export const useProjectRules = (projectId: string) => {
-  return useInvariantStore(
-    (state) => state.getProjectRules(projectId),
-    shallow
-  );
+  return useInvariantStore(state => state.getProjectRules(projectId), shallow);
 };
 
 export const useActiveRules = (projectId: string) => {
-  return useInvariantStore(
-    (state) => state.getActiveRules(projectId),
-    shallow
-  );
+  return useInvariantStore(state => state.getActiveRules(projectId), shallow);
 };
 
 export const useBuilderState = () => {
-  return useInvariantStore(
-    (state) => state.builderState,
-    shallow
-  );
+  return useInvariantStore(state => state.builderState, shallow);
 };
 
 export const useProjectActions = () => {
   return useInvariantStore(
-    (state) => ({
+    state => ({
       setCurrentProject: state.setCurrentProject,
       createProject: state.createProject,
       updateProject: state.updateProject,
@@ -58,7 +43,7 @@ export const useProjectActions = () => {
 
 export const useRuleActions = () => {
   return useInvariantStore(
-    (state) => ({
+    state => ({
       addRule: state.addRule,
       updateRule: state.updateRule,
       deleteRule: state.deleteRule,
@@ -70,7 +55,7 @@ export const useRuleActions = () => {
 
 export const useBuilderActions = () => {
   return useInvariantStore(
-    (state) => ({
+    state => ({
       addCondition: state.addCondition,
       updateCondition: state.updateCondition,
       removeCondition: state.removeCondition,
@@ -84,7 +69,7 @@ export const useBuilderActions = () => {
 
 export const useValidationState = () => {
   return useInvariantStore(
-    (state) => ({
+    state => ({
       validationResult: state.validationResult,
       isValidating: state.isValidating,
       validateRule: state.validateRule,

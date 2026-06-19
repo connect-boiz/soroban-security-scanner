@@ -8,7 +8,7 @@ const {
   NotificationPreferences,
   NotificationTemplate,
   TemplateVariable,
-  VariableType
+  VariableType,
 } = require('./index');
 
 /**
@@ -74,46 +74,46 @@ Report: {{report_url}}`,
         name: 'user_name',
         description: 'User name',
         required: true,
-        variableType: VariableType.STRING
+        variableType: VariableType.STRING,
       }),
       new TemplateVariable({
         name: 'severity',
         description: 'Severity level',
         required: true,
-        variableType: VariableType.STRING
+        variableType: VariableType.STRING,
       }),
       new TemplateVariable({
         name: 'contract_name',
         description: 'Contract name',
         required: true,
-        variableType: VariableType.STRING
+        variableType: VariableType.STRING,
       }),
       new TemplateVariable({
         name: 'description',
         description: 'Vulnerability description',
         required: true,
-        variableType: VariableType.STRING
+        variableType: VariableType.STRING,
       }),
       new TemplateVariable({
         name: 'risk_score',
         description: 'Risk score',
         required: true,
-        variableType: VariableType.NUMBER
+        variableType: VariableType.NUMBER,
       }),
       new TemplateVariable({
         name: 'critical',
         description: 'Is critical',
         required: false,
         defaultValue: false,
-        variableType: VariableType.BOOLEAN
+        variableType: VariableType.BOOLEAN,
       }),
       new TemplateVariable({
         name: 'report_url',
         description: 'Report URL',
         required: true,
-        variableType: VariableType.URL
-      })
-    ]
+        variableType: VariableType.URL,
+      }),
+    ],
   });
 
   // Add template
@@ -156,8 +156,8 @@ async function testNotificationSending(service) {
       pushEnabled: true,
       inAppEnabled: true,
       quietHours: null,
-      maxPriority: NotificationPriority.NORMAL
-    })
+      maxPriority: NotificationPriority.NORMAL,
+    }),
   });
 
   // Test templated notification
@@ -168,7 +168,7 @@ async function testNotificationSending(service) {
     description: 'Reentrancy vulnerability detected',
     risk_score: 85,
     critical: true,
-    report_url: 'https://scanner.example.com/report/123'
+    report_url: 'https://scanner.example.com/report/123',
   };
 
   const result = await service.sendTemplatedNotification(
@@ -186,13 +186,16 @@ async function testNotificationSending(service) {
   }
 
   // Test direct notification
-  const directResult = await service.sendNotification({
-    id: 'direct_test_123',
-    subject: 'Test Direct Notification',
-    body: 'This is a test notification sent directly',
-    priority: NotificationPriority.NORMAL,
-    channels: [NotificationChannel.IN_APP]
-  }, recipient);
+  const directResult = await service.sendNotification(
+    {
+      id: 'direct_test_123',
+      subject: 'Test Direct Notification',
+      body: 'This is a test notification sent directly',
+      priority: NotificationPriority.NORMAL,
+      channels: [NotificationChannel.IN_APP],
+    },
+    recipient
+  );
 
   if (directResult.success) {
     console.log('✅ Direct notification sent successfully');
@@ -210,7 +213,7 @@ async function testDeliveryTracking(service) {
   // Get delivery stats
   const now = new Date();
   const oneHourAgo = new Date(now.getTime() - 3600000);
-  
+
   const stats = await service.getDeliveryStats(oneHourAgo, now);
   console.log(`✅ Delivery stats retrieved: ${stats.totalNotifications} notifications`);
 
@@ -246,12 +249,12 @@ async function testSecurityScannerIntegration() {
   console.log('🔍 Testing security scanner integration...');
 
   const service = new NotificationService();
-  
+
   // Mock scan result
   const scanResult = {
     filePath: '/contracts/token.wasm',
     hasIssues: () => true,
-    severityCount: () => (1, 2, 1) // critical, high, medium
+    severityCount: () => (1, 2, 1), // critical, high, medium
   };
 
   // Create recipients
@@ -262,15 +265,15 @@ async function testSecurityScannerIntegration() {
       userId: 'developer_123',
       preferences: new NotificationPreferences({
         emailEnabled: true,
-        inAppEnabled: true
-      })
-    })
+        inAppEnabled: true,
+      }),
+    }),
   ];
 
   // Send vulnerability notifications
   if (scanResult.hasIssues()) {
     const [critical, high, medium] = scanResult.severityCount();
-    
+
     const context = {
       user_name: 'Developer',
       file_path: scanResult.filePath,
@@ -279,12 +282,15 @@ async function testSecurityScannerIntegration() {
       medium_count: medium,
       total_issues: critical + high + medium,
       has_issues: true,
-      report_url: 'https://scanner.example.com/report/scan_123'
+      report_url: 'https://scanner.example.com/report/scan_123',
     };
 
-    const priority = critical > 0 ? NotificationPriority.CRITICAL : 
-                    high > 0 ? NotificationPriority.HIGH : 
-                    NotificationPriority.NORMAL;
+    const priority =
+      critical > 0
+        ? NotificationPriority.CRITICAL
+        : high > 0
+          ? NotificationPriority.HIGH
+          : NotificationPriority.NORMAL;
 
     for (const recipient of recipients) {
       const result = await service.sendTemplatedNotification(
@@ -309,37 +315,39 @@ async function testSecurityScannerIntegration() {
  */
 async function runAllTests() {
   console.log('🚀 Starting Notification Service Tests\n');
-  
+
   const results = [];
-  
+
   // Core functionality tests
   results.push(await testNotificationService());
-  
+
   // Integration tests
   results.push(await testSecurityScannerIntegration());
-  
+
   const passed = results.filter(r => r).length;
   const total = results.length;
-  
+
   console.log(`\n📊 Test Results: ${passed}/${total} passed`);
-  
+
   if (passed === total) {
     console.log('🎉 All tests completed successfully!');
   } else {
     console.log('❌ Some tests failed');
   }
-  
+
   return passed === total;
 }
 
 // Run tests if this file is executed directly
 if (require.main === module) {
-  runAllTests().then(success => {
-    process.exit(success ? 0 : 1);
-  }).catch(error => {
-    console.error('Test execution failed:', error);
-    process.exit(1);
-  });
+  runAllTests()
+    .then(success => {
+      process.exit(success ? 0 : 1);
+    })
+    .catch(error => {
+      console.error('Test execution failed:', error);
+      process.exit(1);
+    });
 }
 
 module.exports = {
@@ -349,5 +357,5 @@ module.exports = {
   testDeliveryTracking,
   testHealthChecks,
   testSecurityScannerIntegration,
-  runAllTests
+  runAllTests,
 };

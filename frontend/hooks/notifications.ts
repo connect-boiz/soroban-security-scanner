@@ -1,15 +1,15 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
-import { 
-  NotificationContextType, 
-  ToastNotification, 
-  InAppNotification, 
+import {
+  NotificationContextType,
+  ToastNotification,
+  InAppNotification,
   NotificationPreferences,
   NotificationMessage,
   NotificationResult,
   NotificationType,
   NotificationPriority,
   NotificationChannel,
-  Recipient
+  Recipient,
 } from '../types/notifications';
 import { generateId, getToastDuration } from '../lib/notifications/utils';
 
@@ -57,7 +57,10 @@ type NotificationAction =
   | { type: 'SET_LOADING'; payload: boolean };
 
 // Reducer
-function notificationReducer(state: NotificationState, action: NotificationAction): NotificationState {
+function notificationReducer(
+  state: NotificationState,
+  action: NotificationAction
+): NotificationState {
   switch (action.type) {
     case 'ADD_TOAST': {
       const toast: ToastNotification = {
@@ -74,7 +77,7 @@ function notificationReducer(state: NotificationState, action: NotificationActio
     case 'REMOVE_TOAST':
       return {
         ...state,
-        toasts: state.toasts.filter((toast) => toast.id !== action.payload),
+        toasts: state.toasts.filter(toast => toast.id !== action.payload),
       };
 
     case 'CLEAR_TOASTS':
@@ -96,14 +99,12 @@ function notificationReducer(state: NotificationState, action: NotificationActio
     }
 
     case 'MARK_AS_READ': {
-      const updatedNotifications = state.notifications.map((notif) =>
-        notif.id === action.payload
-          ? { ...notif, read_at: new Date().toISOString() }
-          : notif
+      const updatedNotifications = state.notifications.map(notif =>
+        notif.id === action.payload ? { ...notif, read_at: new Date().toISOString() } : notif
       );
-      const readNotifications = updatedNotifications.filter((notif) => notif.read_at);
-      const unreadNotifications = updatedNotifications.filter((notif) => !notif.read_at);
-      
+      const readNotifications = updatedNotifications.filter(notif => notif.read_at);
+      const unreadNotifications = updatedNotifications.filter(notif => !notif.read_at);
+
       return {
         ...state,
         notifications: updatedNotifications,
@@ -113,11 +114,11 @@ function notificationReducer(state: NotificationState, action: NotificationActio
 
     case 'MARK_ALL_AS_READ': {
       const now = new Date().toISOString();
-      const updatedNotifications = state.notifications.map((notif) => ({
+      const updatedNotifications = state.notifications.map(notif => ({
         ...notif,
         read_at: notif.read_at || now,
       }));
-      
+
       return {
         ...state,
         notifications: updatedNotifications,
@@ -126,11 +127,9 @@ function notificationReducer(state: NotificationState, action: NotificationActio
     }
 
     case 'DELETE_NOTIFICATION':
-      const updatedNotifications = state.notifications.filter(
-        (notif) => notif.id !== action.payload
-      );
-      const unreadNotifications = updatedNotifications.filter((notif) => !notif.read_at);
-      
+      const updatedNotifications = state.notifications.filter(notif => notif.id !== action.payload);
+      const unreadNotifications = updatedNotifications.filter(notif => !notif.read_at);
+
       return {
         ...state,
         notifications: updatedNotifications,
@@ -249,65 +248,76 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   }, []);
 
   // Send notification action
-  const sendNotification = useCallback(async (
-    message: Omit<NotificationMessage, 'id' | 'created_at'>,
-    recipient?: Recipient
-  ): Promise<NotificationResult> => {
-    dispatch({ type: 'SET_LOADING', payload: true });
+  const sendNotification = useCallback(
+    async (
+      message: Omit<NotificationMessage, 'id' | 'created_at'>,
+      recipient?: Recipient
+    ): Promise<NotificationResult> => {
+      dispatch({ type: 'SET_LOADING', payload: true });
 
-    try {
-      const notificationMessage: NotificationMessage = {
-        id: generateId(),
-        created_at: new Date().toISOString(),
-        ...message,
-      };
+      try {
+        const notificationMessage: NotificationMessage = {
+          id: generateId(),
+          created_at: new Date().toISOString(),
+          ...message,
+        };
 
-      // Create toast for immediate feedback
-      if (state.preferences.in_app_enabled) {
-        addToast({
-          title: message.subject || 'Notification',
-          message: message.body.length > 100 ? message.body.substring(0, 100) + '...' : message.body,
-          type: message.type,
-          priority: message.priority,
-          action: message.data?.actionUrl ? {
-            label: 'View Details',
-            onClick: () => window.open(message.data?.actionUrl, '_blank'),
-          } : undefined,
-        });
+        // Create toast for immediate feedback
+        if (state.preferences.in_app_enabled) {
+          addToast({
+            title: message.subject || 'Notification',
+            message:
+              message.body.length > 100 ? message.body.substring(0, 100) + '...' : message.body,
+            type: message.type,
+            priority: message.priority,
+            action: message.data?.actionUrl
+              ? {
+                  label: 'View Details',
+                  onClick: () => window.open(message.data?.actionUrl, '_blank'),
+                }
+              : undefined,
+          });
+        }
+
+        // Add to in-app notifications
+        if (
+          state.preferences.in_app_enabled &&
+          state.preferences.notification_types[message.type]
+        ) {
+          addNotification({
+            title: message.subject || 'Notification',
+            message: message.body,
+            type: message.type,
+            priority: message.priority,
+            created_at: notificationMessage.created_at,
+            action: message.data?.actionUrl
+              ? {
+                  label: 'View Details',
+                  url: message.data.actionUrl,
+                }
+              : undefined,
+          });
+        }
+
+        // In a real implementation, this would call the backend API
+        // For now, we'll simulate a successful response
+        const result: NotificationResult = {
+          notification_id: notificationMessage.id,
+          success: true,
+          delivered_channels: message.channels,
+          failed_channels: [],
+          tracking_ids: [],
+        };
+
+        dispatch({ type: 'SET_LOADING', payload: false });
+        return result;
+      } catch (error) {
+        dispatch({ type: 'SET_LOADING', payload: false });
+        throw error;
       }
-
-      // Add to in-app notifications
-      if (state.preferences.in_app_enabled && state.preferences.notification_types[message.type]) {
-        addNotification({
-          title: message.subject || 'Notification',
-          message: message.body,
-          type: message.type,
-          priority: message.priority,
-          created_at: notificationMessage.created_at,
-          action: message.data?.actionUrl ? {
-            label: 'View Details',
-            url: message.data.actionUrl,
-          } : undefined,
-        });
-      }
-
-      // In a real implementation, this would call the backend API
-      // For now, we'll simulate a successful response
-      const result: NotificationResult = {
-        notification_id: notificationMessage.id,
-        success: true,
-        delivered_channels: message.channels,
-        failed_channels: [],
-        tracking_ids: [],
-      };
-
-      dispatch({ type: 'SET_LOADING', payload: false });
-      return result;
-    } catch (error) {
-      dispatch({ type: 'SET_LOADING', payload: false });
-      throw error;
-    }
-  }, [state.preferences, addToast, addNotification]);
+    },
+    [state.preferences, addToast, addNotification]
+  );
 
   // Stats actions
   const fetchStats = useCallback(async () => {
@@ -343,7 +353,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           [NotificationChannel.IN_APP]: 100,
         },
       };
-      
+
       dispatch({ type: 'SET_STATS', payload: mockStats });
     } catch (error) {
       console.error('Failed to fetch notification stats:', error);
@@ -371,11 +381,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     fetchStats,
   };
 
-  return React.createElement(
-    NotificationContext.Provider,
-    { value: contextValue },
-    children
-  );
+  return React.createElement(NotificationContext.Provider, { value: contextValue }, children);
 };
 
 // Hook
@@ -394,23 +400,23 @@ export const useToasts = () => {
 };
 
 export const useInAppNotifications = () => {
-  const { 
-    notifications, 
-    unreadCount, 
-    addNotification, 
-    markAsRead, 
-    markAllAsRead, 
-    deleteNotification, 
-    clearNotifications 
+  const {
+    notifications,
+    unreadCount,
+    addNotification,
+    markAsRead,
+    markAllAsRead,
+    deleteNotification,
+    clearNotifications,
   } = useNotifications();
-  return { 
-    notifications, 
-    unreadCount, 
-    addNotification, 
-    markAsRead, 
-    markAllAsRead, 
-    deleteNotification, 
-    clearNotifications 
+  return {
+    notifications,
+    unreadCount,
+    addNotification,
+    markAsRead,
+    markAllAsRead,
+    deleteNotification,
+    clearNotifications,
   };
 };
 

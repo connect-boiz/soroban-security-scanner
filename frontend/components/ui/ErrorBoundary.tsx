@@ -152,12 +152,25 @@ function InlineFallback({ resetError }: FallbackProps) {
   return (
     <span
       role="alert"
-      style={{ color: '#ef4444', fontSize: '0.875rem', display: 'inline-flex', gap: '0.5rem', alignItems: 'center' }}
+      style={{
+        color: '#ef4444',
+        fontSize: '0.875rem',
+        display: 'inline-flex',
+        gap: '0.5rem',
+        alignItems: 'center',
+      }}
     >
       Failed to render.{' '}
       <button
         onClick={resetError}
-        style={{ color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', fontSize: 'inherit' }}
+        style={{
+          color: '#2563eb',
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          textDecoration: 'underline',
+          fontSize: 'inherit',
+        }}
       >
         Retry
       </button>

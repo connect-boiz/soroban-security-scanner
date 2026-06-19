@@ -13,10 +13,12 @@ export const SkeletonTable: React.FC<SkeletonTableProps> = ({
   rows = 5,
   columns = 4,
   className = '',
-  showHeader = true
+  showHeader = true,
 }) => {
   return (
-    <div className={`bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden ${className}`}>
+    <div
+      className={`bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden ${className}`}
+    >
       {showHeader && (
         <div className="bg-gray-50 border-b border-gray-200 p-4">
           <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${columns}, 1fr)` }}>
@@ -26,7 +28,7 @@ export const SkeletonTable: React.FC<SkeletonTableProps> = ({
           </div>
         </div>
       )}
-      
+
       <div className="p-4">
         <div className="space-y-3">
           {Array.from({ length: rows }).map((_, rowIndex) => (

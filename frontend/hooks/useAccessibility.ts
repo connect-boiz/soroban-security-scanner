@@ -2,14 +2,7 @@
 //
 // Collection of WCAG 2.1 AA React hooks for the Soroban Security Scanner.
 
-import {
-  useEffect,
-  useRef,
-  useCallback,
-  useState,
-  useId,
-  RefObject,
-} from "react";
+import { useEffect, useRef, useCallback, useState, useId, RefObject } from 'react';
 import {
   trapFocus,
   focusFirstIn,
@@ -17,7 +10,7 @@ import {
   liveRegion,
   prefersReducedMotion,
   getFocusableElements,
-} from "@/lib/accessibility/utils";
+} from '@/lib/accessibility/utils';
 
 // ── useFocusTrap ──────────────────────────────────────────────────────────────
 /**
@@ -68,12 +61,9 @@ export function useFocusTrap<T extends HTMLElement = HTMLDivElement>(
  * announce("Scan complete. 3 vulnerabilities found.", "assertive");
  */
 export function useAnnounce() {
-  return useCallback(
-    (message: string, politeness: "polite" | "assertive" = "polite") => {
-      liveRegion.announce(message, politeness);
-    },
-    []
-  );
+  return useCallback((message: string, politeness: 'polite' | 'assertive' = 'polite') => {
+    liveRegion.announce(message, politeness);
+  }, []);
 }
 
 // ── useReducedMotion ──────────────────────────────────────────────────────────
@@ -89,10 +79,10 @@ export function useReducedMotion(): boolean {
   const [reduced, setReduced] = useState(prefersReducedMotion);
 
   useEffect(() => {
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
     const handler = (e: MediaQueryListEvent) => setReduced(e.matches);
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
   }, []);
 
   return reduced;
@@ -114,7 +104,7 @@ export function useReducedMotion(): boolean {
  * </ul>
  */
 export function useKeyboardNavigation<T extends HTMLElement = HTMLUListElement>(
-  orientation: "horizontal" | "vertical" | "both" = "horizontal",
+  orientation: 'horizontal' | 'vertical' | 'both' = 'horizontal',
   wrap = true
 ): { containerRef: RefObject<T> } {
   const containerRef = useRef<T>(null);
@@ -138,21 +128,33 @@ export function useKeyboardNavigation<T extends HTMLElement = HTMLUListElement>(
         e.preventDefault();
       };
 
-      const isHoriz = orientation === "horizontal" || orientation === "both";
-      const isVert = orientation === "vertical" || orientation === "both";
+      const isHoriz = orientation === 'horizontal' || orientation === 'both';
+      const isVert = orientation === 'vertical' || orientation === 'both';
 
       switch (e.key) {
-        case "ArrowRight": if (isHoriz) goTo(currentIndex + 1); break;
-        case "ArrowLeft":  if (isHoriz) goTo(currentIndex - 1); break;
-        case "ArrowDown":  if (isVert)  goTo(currentIndex + 1); break;
-        case "ArrowUp":    if (isVert)  goTo(currentIndex - 1); break;
-        case "Home":       goTo(0);               break;
-        case "End":        goTo(items.length - 1); break;
+        case 'ArrowRight':
+          if (isHoriz) goTo(currentIndex + 1);
+          break;
+        case 'ArrowLeft':
+          if (isHoriz) goTo(currentIndex - 1);
+          break;
+        case 'ArrowDown':
+          if (isVert) goTo(currentIndex + 1);
+          break;
+        case 'ArrowUp':
+          if (isVert) goTo(currentIndex - 1);
+          break;
+        case 'Home':
+          goTo(0);
+          break;
+        case 'End':
+          goTo(items.length - 1);
+          break;
       }
     };
 
-    container.addEventListener("keydown", handler);
-    return () => container.removeEventListener("keydown", handler);
+    container.addEventListener('keydown', handler);
+    return () => container.removeEventListener('keydown', handler);
   }, [orientation, wrap]);
 
   return { containerRef };
@@ -169,7 +171,7 @@ export function useKeyboardNavigation<T extends HTMLElement = HTMLUListElement>(
  * <input aria-labelledby={labelId} aria-describedby={descId} />
  * <p id={descId}>Enter a valid Stellar contract address.</p>
  */
-export function useAriaIds(prefix = "aria") {
+export function useAriaIds(prefix = 'aria') {
   const base = useId();
   return {
     labelId: `${prefix}-label-${base}`,
@@ -195,11 +197,11 @@ export function useSkipLink(targetId: string) {
       e.preventDefault();
       const target = document.getElementById(targetId);
       if (!target) return;
-      const hadTabIndex = target.hasAttribute("tabindex");
-      if (!hadTabIndex) target.setAttribute("tabindex", "-1");
+      const hadTabIndex = target.hasAttribute('tabindex');
+      if (!hadTabIndex) target.setAttribute('tabindex', '-1');
       target.focus({ preventScroll: false });
       if (!hadTabIndex) {
-        target.addEventListener("blur", () => target.removeAttribute("tabindex"), {
+        target.addEventListener('blur', () => target.removeAttribute('tabindex'), {
           once: true,
         });
       }
@@ -224,11 +226,11 @@ export function useHighContrast(): boolean {
   const [highContrast, setHighContrast] = useState(false);
 
   useEffect(() => {
-    const mq = window.matchMedia("(forced-colors: active)");
+    const mq = window.matchMedia('(forced-colors: active)');
     setHighContrast(mq.matches);
     const handler = (e: MediaQueryListEvent) => setHighContrast(e.matches);
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
   }, []);
 
   return highContrast;
@@ -243,9 +245,9 @@ export function useEscapeKey(onEscape: () => void, active = true): void {
   useEffect(() => {
     if (!active) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onEscape();
+      if (e.key === 'Escape') onEscape();
     };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
   }, [onEscape, active]);
 }

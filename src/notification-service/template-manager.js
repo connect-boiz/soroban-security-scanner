@@ -6,7 +6,7 @@ const {
   VariableType,
   NotificationTemplate,
   TemplateVariable,
-  TemplateRender
+  TemplateRender,
 } = require('./types');
 
 class TemplateError extends Error {
@@ -24,7 +24,7 @@ class TemplateManager {
   constructor() {
     this.templates = new Map();
     this.handlebars = Handlebars.create();
-    
+
     // Register custom helpers
     this.registerCustomHelpers();
   }
@@ -34,27 +34,35 @@ class TemplateManager {
    */
   registerCustomHelpers() {
     // Format date helper with i18n support
-    this.handlebars.registerHelper('format_date', function(date, language = 'en') {
-      if (!date) { return ''; }
+    this.handlebars.registerHelper('format_date', function (date, language = 'en') {
+      if (!date) {
+        return '';
+      }
       return formatDate(date, language);
     });
 
     // Format currency helper with i18n support
-    this.handlebars.registerHelper('format_currency', function(amount, language = 'en') {
-      if (typeof amount !== 'number') { return ''; }
+    this.handlebars.registerHelper('format_currency', function (amount, language = 'en') {
+      if (typeof amount !== 'number') {
+        return '';
+      }
       return formatCurrency(amount, language);
     });
 
     // Truncate helper
-    this.handlebars.registerHelper('truncate', function(text, length) {
-      if (!text) { return ''; }
+    this.handlebars.registerHelper('truncate', function (text, length) {
+      if (!text) {
+        return '';
+      }
       const len = parseInt(length) || 50;
-      if (text.length <= len) { return text; }
+      if (text.length <= len) {
+        return text;
+      }
       return text.substring(0, len) + '...';
     });
 
     // Conditional helper for critical alerts
-    this.handlebars.registerHelper('if_critical', function(conditional, options) {
+    this.handlebars.registerHelper('if_critical', function (conditional, options) {
       if (conditional) {
         return options.fn(this);
       }
@@ -147,7 +155,7 @@ class TemplateManager {
       return new TemplateRender({
         subject,
         body,
-        templateId
+        templateId,
       });
     } catch (error) {
       throw new TemplateError(`Template rendering failed: ${error.message}`, 'RENDER_ERROR');
@@ -179,7 +187,8 @@ class TemplateManager {
       if (variable.required) {
         const placeholder = `{{${variable.name}}}`;
         const inBody = template.bodyTemplate.includes(placeholder);
-        const inSubject = template.subjectTemplate && template.subjectTemplate.includes(placeholder);
+        const inSubject =
+          template.subjectTemplate && template.subjectTemplate.includes(placeholder);
 
         if (!inBody && !inSubject) {
           throw new TemplateError(
@@ -230,52 +239,52 @@ class TemplateManager {
             name: 'user_name',
             description: 'Recipient name',
             required: true,
-            variableType: VariableType.STRING
+            variableType: VariableType.STRING,
           }),
           new TemplateVariable({
             name: 'severity',
             description: 'Vulnerability severity',
             required: true,
-            variableType: VariableType.STRING
+            variableType: VariableType.STRING,
           }),
           new TemplateVariable({
             name: 'contract_name',
             description: 'Name of the contract',
             required: true,
-            variableType: VariableType.STRING
+            variableType: VariableType.STRING,
           }),
           new TemplateVariable({
             name: 'vulnerability_type',
             description: 'Type of vulnerability',
             required: true,
-            variableType: VariableType.STRING
+            variableType: VariableType.STRING,
           }),
           new TemplateVariable({
             name: 'description',
             description: 'Vulnerability description',
             required: true,
-            variableType: VariableType.STRING
+            variableType: VariableType.STRING,
           }),
           new TemplateVariable({
             name: 'risk_score',
             description: 'Risk score (0-100)',
             required: true,
-            variableType: VariableType.NUMBER
+            variableType: VariableType.NUMBER,
           }),
           new TemplateVariable({
             name: 'critical',
             description: 'Whether this is critical',
             required: false,
             defaultValue: false,
-            variableType: VariableType.BOOLEAN
+            variableType: VariableType.BOOLEAN,
           }),
           new TemplateVariable({
             name: 'report_url',
             description: 'Link to full report',
             required: true,
-            variableType: VariableType.URL
-          })
-        ]
+            variableType: VariableType.URL,
+          }),
+        ],
       }),
 
       // Scan completed template with i18n
@@ -292,52 +301,52 @@ class TemplateManager {
             name: 'user_name',
             description: 'Recipient name',
             required: true,
-            variableType: VariableType.STRING
+            variableType: VariableType.STRING,
           }),
           new TemplateVariable({
             name: 'file_path',
             description: 'Path to scanned file',
             required: true,
-            variableType: VariableType.STRING
+            variableType: VariableType.STRING,
           }),
           new TemplateVariable({
             name: 'total_issues',
             description: 'Total number of issues',
             required: true,
-            variableType: VariableType.NUMBER
+            variableType: VariableType.NUMBER,
           }),
           new TemplateVariable({
             name: 'critical_count',
             description: 'Number of critical issues',
             required: true,
-            variableType: VariableType.NUMBER
+            variableType: VariableType.NUMBER,
           }),
           new TemplateVariable({
             name: 'high_count',
             description: 'Number of high issues',
             required: true,
-            variableType: VariableType.NUMBER
+            variableType: VariableType.NUMBER,
           }),
           new TemplateVariable({
             name: 'medium_count',
             description: 'Number of medium issues',
             required: true,
-            variableType: VariableType.NUMBER
+            variableType: VariableType.NUMBER,
           }),
           new TemplateVariable({
             name: 'has_issues',
             description: 'Whether issues were found',
             required: true,
-            variableType: VariableType.BOOLEAN
+            variableType: VariableType.BOOLEAN,
           }),
           new TemplateVariable({
             name: 'report_url',
             description: 'Link to full report',
             required: true,
-            variableType: VariableType.URL
-          })
-        ]
-      })
+            variableType: VariableType.URL,
+          }),
+        ],
+      }),
     ];
 
     for (const template of templates) {
@@ -350,5 +359,5 @@ class TemplateManager {
 
 module.exports = {
   TemplateManager,
-  TemplateError
+  TemplateError,
 };

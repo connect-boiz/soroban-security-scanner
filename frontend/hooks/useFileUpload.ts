@@ -29,10 +29,7 @@ function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-function validateFile(
-  file: File,
-  options: Required<FileValidationOptions>
-): string | null {
+function validateFile(file: File, options: Required<FileValidationOptions>): string | null {
   const maxBytes = options.maxSizeMB * 1024 * 1024;
   if (file.size > maxBytes) {
     return `File exceeds ${options.maxSizeMB}MB limit`;
@@ -41,9 +38,7 @@ function validateFile(
   const ext = '.' + file.name.split('.').pop()?.toLowerCase();
   const mime = file.type;
 
-  const isAllowedExt = options.allowedTypes.some((t) =>
-    t.startsWith('.') ? t === ext : t === mime
-  );
+  const isAllowedExt = options.allowedTypes.some(t => (t.startsWith('.') ? t === ext : t === mime));
   if (!isAllowedExt) {
     return `File type "${ext}" is not allowed. Accepted: ${options.allowedTypes.join(', ')}`;
   }
@@ -53,9 +48,9 @@ function validateFile(
 
 async function generatePreview(file: File): Promise<string | undefined> {
   if (!file.type.startsWith('image/')) return undefined;
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     const reader = new FileReader();
-    reader.onload = (e) => resolve(e.target?.result as string);
+    reader.onload = e => resolve(e.target?.result as string);
     reader.onerror = () => resolve(undefined);
     reader.readAsDataURL(file);
   });
@@ -67,21 +62,18 @@ export function useFileUpload(options: FileValidationOptions = {}) {
   const [isDragActive, setIsDragActive] = useState(false);
   const abortRefs = useRef<Record<string, AbortController>>({});
 
-  const updateFile = useCallback(
-    (id: string, patch: Partial<UploadedFile>) => {
-      setFiles((prev: UploadedFile[]) =>
-        prev.map((f: UploadedFile) => (f.id === id ? { ...f, ...patch } : f))
-      );
-    },
-    []
-  );
+  const updateFile = useCallback((id: string, patch: Partial<UploadedFile>) => {
+    setFiles((prev: UploadedFile[]) =>
+      prev.map((f: UploadedFile) => (f.id === id ? { ...f, ...patch } : f))
+    );
+  }, []);
 
   const simulateUpload = useCallback(
     async (id: string, controller: AbortController) => {
       const intervals = [15, 30, 45, 60, 75, 88, 95, 100];
       for (const pct of intervals) {
         if (controller.signal.aborted) return;
-        await new Promise((r) => setTimeout(r, 250 + Math.random() * 200));
+        await new Promise(r => setTimeout(r, 250 + Math.random() * 200));
         if (controller.signal.aborted) return;
         updateFile(id, { progress: pct });
       }
@@ -116,7 +108,7 @@ export function useFileUpload(options: FileValidationOptions = {}) {
 
       for (const entry of newEntries) {
         updateFile(entry.id, { status: 'validating' });
-        await new Promise((r) => setTimeout(r, 150));
+        await new Promise(r => setTimeout(r, 150));
 
         const error = validateFile(entry.file, opts);
         if (error) {
@@ -190,7 +182,9 @@ export function useFileUpload(options: FileValidationOptions = {}) {
         const error = validateFile(target.file, opts);
         if (error) return prev;
         return prev.map((f: UploadedFile) =>
-          f.id === id ? { ...f, status: 'uploading' as FileStatus, progress: 0, error: undefined } : f
+          f.id === id
+            ? { ...f, status: 'uploading' as FileStatus, progress: 0, error: undefined }
+            : f
         );
       });
       const controller = new AbortController();
@@ -201,9 +195,7 @@ export function useFileUpload(options: FileValidationOptions = {}) {
   );
 
   const clearAll = useCallback(() => {
-    const controllers = Object.keys(abortRefs.current).map(
-      (k) => abortRefs.current[k]
-    );
+    const controllers = Object.keys(abortRefs.current).map(k => abortRefs.current[k]);
     controllers.forEach((c: AbortController) => c.abort());
     abortRefs.current = {};
     setFiles((prev: UploadedFile[]) => {

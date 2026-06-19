@@ -25,13 +25,15 @@ export default function SignUpForm({ onSignUp, onSignIn, isLoading = false }: Si
     email: '',
     password: '',
     confirmPassword: '',
-    agreeToTerms: false
+    agreeToTerms: false,
   });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<keyof SignUpFormData, string>>>({});
   const [touched, setTouched] = useState<Partial<Record<keyof SignUpFormData, boolean>>>({});
-  const [passwordStrength, setPasswordStrength] = useState<'weak' | 'medium' | 'strong' | null>(null);
+  const [passwordStrength, setPasswordStrength] = useState<'weak' | 'medium' | 'strong' | null>(
+    null
+  );
 
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -40,7 +42,7 @@ export default function SignUpForm({ onSignUp, onSignIn, isLoading = false }: Si
 
   const calculatePasswordStrength = (password: string): 'weak' | 'medium' | 'strong' | null => {
     if (!password) return null;
-    
+
     let strength = 0;
     if (password.length >= 8) strength++;
     if (password.length >= 12) strength++;
@@ -79,7 +81,8 @@ export default function SignUpForm({ onSignUp, onSignIn, isLoading = false }: Si
     } else if (formData.password.length < 8) {
       newErrors.password = 'Password must be at least 8 characters';
     } else if (passwordStrength === 'weak') {
-      newErrors.password = 'Password is too weak. Include uppercase, lowercase, numbers, and special characters';
+      newErrors.password =
+        'Password is too weak. Include uppercase, lowercase, numbers, and special characters';
     }
 
     if (!formData.confirmPassword) {
@@ -98,7 +101,7 @@ export default function SignUpForm({ onSignUp, onSignIn, isLoading = false }: Si
 
   const handleInputChange = (field: keyof SignUpFormData, value: string | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }));
-    
+
     // Clear error for this field when user starts typing
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: undefined }));
@@ -112,7 +115,7 @@ export default function SignUpForm({ onSignUp, onSignIn, isLoading = false }: Si
 
   const handleBlur = (field: keyof SignUpFormData) => {
     setTouched(prev => ({ ...prev, [field]: true }));
-    
+
     // Validate field on blur
     if (field === 'firstName' && formData.firstName) {
       if (formData.firstName.trim().length < 2) {
@@ -139,7 +142,7 @@ export default function SignUpForm({ onSignUp, onSignIn, isLoading = false }: Si
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    
+
     if (!validateForm()) {
       return;
     }
@@ -154,19 +157,27 @@ export default function SignUpForm({ onSignUp, onSignIn, isLoading = false }: Si
 
   const getPasswordStrengthColor = () => {
     switch (passwordStrength) {
-      case 'weak': return 'bg-red-500';
-      case 'medium': return 'bg-yellow-500';
-      case 'strong': return 'bg-green-500';
-      default: return 'bg-gray-300';
+      case 'weak':
+        return 'bg-red-500';
+      case 'medium':
+        return 'bg-yellow-500';
+      case 'strong':
+        return 'bg-green-500';
+      default:
+        return 'bg-gray-300';
     }
   };
 
   const getPasswordStrengthText = () => {
     switch (passwordStrength) {
-      case 'weak': return 'Weak';
-      case 'medium': return 'Medium';
-      case 'strong': return 'Strong';
-      default: return '';
+      case 'weak':
+        return 'Weak';
+      case 'medium':
+        return 'Medium';
+      case 'strong':
+        return 'Strong';
+      default:
+        return '';
     }
   };
 
@@ -193,14 +204,14 @@ export default function SignUpForm({ onSignUp, onSignIn, isLoading = false }: Si
                   id="firstName"
                   type="text"
                   value={formData.firstName}
-                  onChange={(e) => handleInputChange('firstName', e.target.value)}
+                  onChange={e => handleInputChange('firstName', e.target.value)}
                   onBlur={() => handleBlur('firstName')}
                   className={`block w-full pl-10 pr-3 py-3 border rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-optimized ${
                     errors.firstName && touched.firstName
                       ? 'border-red-300 bg-red-50'
                       : touched.firstName && !errors.firstName
-                      ? 'border-green-300 bg-green-50'
-                      : 'border-gray-300'
+                        ? 'border-green-300 bg-green-50'
+                        : 'border-gray-300'
                   }`}
                   placeholder="First name"
                   disabled={isLoading}
@@ -233,14 +244,14 @@ export default function SignUpForm({ onSignUp, onSignIn, isLoading = false }: Si
                   id="lastName"
                   type="text"
                   value={formData.lastName}
-                  onChange={(e) => handleInputChange('lastName', e.target.value)}
+                  onChange={e => handleInputChange('lastName', e.target.value)}
                   onBlur={() => handleBlur('lastName')}
                   className={`block w-full pl-10 pr-3 py-3 border rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-optimized ${
                     errors.lastName && touched.lastName
                       ? 'border-red-300 bg-red-50'
                       : touched.lastName && !errors.lastName
-                      ? 'border-green-300 bg-green-50'
-                      : 'border-gray-300'
+                        ? 'border-green-300 bg-green-50'
+                        : 'border-gray-300'
                   }`}
                   placeholder="Last name"
                   disabled={isLoading}
@@ -275,14 +286,14 @@ export default function SignUpForm({ onSignUp, onSignIn, isLoading = false }: Si
                 id="email"
                 type="email"
                 value={formData.email}
-                onChange={(e) => handleInputChange('email', e.target.value)}
+                onChange={e => handleInputChange('email', e.target.value)}
                 onBlur={() => handleBlur('email')}
                 className={`block w-full pl-10 pr-3 py-3 border rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-optimized ${
                   errors.email && touched.email
                     ? 'border-red-300 bg-red-50'
                     : touched.email && !errors.email
-                    ? 'border-green-300 bg-green-50'
-                    : 'border-gray-300'
+                      ? 'border-green-300 bg-green-50'
+                      : 'border-gray-300'
                 }`}
                 placeholder="Enter your email"
                 disabled={isLoading}
@@ -316,14 +327,14 @@ export default function SignUpForm({ onSignUp, onSignIn, isLoading = false }: Si
                 id="password"
                 type={showPassword ? 'text' : 'password'}
                 value={formData.password}
-                onChange={(e) => handleInputChange('password', e.target.value)}
+                onChange={e => handleInputChange('password', e.target.value)}
                 onBlur={() => handleBlur('password')}
                 className={`block w-full pl-10 pr-10 py-3 border rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-optimized ${
                   errors.password && touched.password
                     ? 'border-red-300 bg-red-50'
                     : touched.password && !errors.password
-                    ? 'border-green-300 bg-green-50'
-                    : 'border-gray-300'
+                      ? 'border-green-300 bg-green-50'
+                      : 'border-gray-300'
                 }`}
                 placeholder="Create a password"
                 disabled={isLoading}
@@ -341,17 +352,23 @@ export default function SignUpForm({ onSignUp, onSignIn, isLoading = false }: Si
                 )}
               </button>
             </div>
-            
+
             {/* Password Strength Indicator */}
             {formData.password && (
               <div className="mt-2">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-xs text-gray-600">Password strength</span>
-                  <span className={`text-xs font-medium ${
-                    passwordStrength === 'weak' ? 'text-red-600' :
-                    passwordStrength === 'medium' ? 'text-yellow-600' :
-                    passwordStrength === 'strong' ? 'text-green-600' : 'text-gray-600'
-                  }`}>
+                  <span
+                    className={`text-xs font-medium ${
+                      passwordStrength === 'weak'
+                        ? 'text-red-600'
+                        : passwordStrength === 'medium'
+                          ? 'text-yellow-600'
+                          : passwordStrength === 'strong'
+                            ? 'text-green-600'
+                            : 'text-gray-600'
+                    }`}
+                  >
                     {getPasswordStrengthText()}
                   </span>
                 </div>
@@ -359,15 +376,20 @@ export default function SignUpForm({ onSignUp, onSignIn, isLoading = false }: Si
                   <div
                     className={`h-2 rounded-full transition-all duration-300 ${getPasswordStrengthColor()}`}
                     style={{
-                      width: passwordStrength === 'weak' ? '33%' :
-                             passwordStrength === 'medium' ? '66%' :
-                             passwordStrength === 'strong' ? '100%' : '0%'
+                      width:
+                        passwordStrength === 'weak'
+                          ? '33%'
+                          : passwordStrength === 'medium'
+                            ? '66%'
+                            : passwordStrength === 'strong'
+                              ? '100%'
+                              : '0%',
                     }}
                   ></div>
                 </div>
               </div>
             )}
-            
+
             {errors.password && touched.password && (
               <p className="mt-1 text-sm text-red-600">{errors.password}</p>
             )}
@@ -375,7 +397,10 @@ export default function SignUpForm({ onSignUp, onSignIn, isLoading = false }: Si
 
           {/* Confirm Password Field */}
           <div>
-            <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-2">
+            <label
+              htmlFor="confirmPassword"
+              className="block text-sm font-medium text-gray-700 mb-2"
+            >
               Confirm Password
             </label>
             <div className="relative">
@@ -386,14 +411,14 @@ export default function SignUpForm({ onSignUp, onSignIn, isLoading = false }: Si
                 id="confirmPassword"
                 type={showConfirmPassword ? 'text' : 'password'}
                 value={formData.confirmPassword}
-                onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
+                onChange={e => handleInputChange('confirmPassword', e.target.value)}
                 onBlur={() => handleBlur('confirmPassword')}
                 className={`block w-full pl-10 pr-10 py-3 border rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-optimized ${
                   errors.confirmPassword && touched.confirmPassword
                     ? 'border-red-300 bg-red-50'
                     : touched.confirmPassword && !errors.confirmPassword
-                    ? 'border-green-300 bg-green-50'
-                    : 'border-gray-300'
+                      ? 'border-green-300 bg-green-50'
+                      : 'border-gray-300'
                 }`}
                 placeholder="Confirm your password"
                 disabled={isLoading}
@@ -423,7 +448,7 @@ export default function SignUpForm({ onSignUp, onSignIn, isLoading = false }: Si
                 id="agreeToTerms"
                 type="checkbox"
                 checked={formData.agreeToTerms}
-                onChange={(e) => handleInputChange('agreeToTerms', e.target.checked)}
+                onChange={e => handleInputChange('agreeToTerms', e.target.checked)}
                 className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded mt-1"
                 disabled={isLoading}
               />
@@ -431,8 +456,8 @@ export default function SignUpForm({ onSignUp, onSignIn, isLoading = false }: Si
                 I agree to the{' '}
                 <a href="#" className="text-blue-600 hover:text-blue-500 font-medium">
                   Terms and Conditions
-                </a>
-                {' '}and{' '}
+                </a>{' '}
+                and{' '}
                 <a href="#" className="text-blue-600 hover:text-blue-500 font-medium">
                   Privacy Policy
                 </a>

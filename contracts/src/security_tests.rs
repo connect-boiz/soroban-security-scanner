@@ -3,7 +3,7 @@ mod security {
     use crate::{
         ContractError, Role, SecurityScannerContract, SecurityScannerContractClient, ADMIN_ROLES,
     };
-    use soroban_sdk::testutils::{Address as _, Ledger as _};
+    use soroban_sdk::testutils::{Address as _};
     use soroban_sdk::{Address, BytesN, Env, String};
 
     fn test_address(env: &Env, _seed: u64) -> Address {

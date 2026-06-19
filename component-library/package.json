@@ -10,7 +10,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "rollup -c",
+    "build": "rollup -c && tsc --emitDeclarationOnly --project tsconfig.json",
     "dev": "rollup -c -w",
     "type-check": "tsc --noEmit",
     "lint": "eslint src --ext .ts,.tsx",
@@ -51,6 +51,7 @@
     "eslint-plugin-react-hooks": "^4.6.0",
     "jest": "^29.6.0",
     "rollup": "^3.26.0",
+    "rollup-plugin-esbuild": "^6.2.1",
     "rollup-plugin-peer-deps-external": "^2.2.4",
     "typescript": "^5.1.0"
   },

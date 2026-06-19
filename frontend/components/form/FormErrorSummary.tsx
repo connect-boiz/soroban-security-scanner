@@ -16,7 +16,7 @@ export function FormErrorSummary({
   touched,
   title = 'Please fix the following errors:',
   className = '',
-  showOnlyTouched = true
+  showOnlyTouched = true,
 }: FormErrorSummaryProps) {
   const filteredErrors = Object.entries(errors).filter(([field, error]) => {
     if (!error) return false;
@@ -33,14 +33,15 @@ export function FormErrorSummary({
           <AlertTriangle className="h-5 w-5 text-red-600 mt-0.5" />
         </div>
         <div className="ml-3 flex-1">
-          <h3 className="text-sm font-medium text-red-800">
-            {title}
-          </h3>
+          <h3 className="text-sm font-medium text-red-800">{title}</h3>
           <div className="mt-2 text-sm text-red-700">
             <ul className="list-disc list-inside space-y-1">
               {filteredErrors.map(([field, error]) => (
                 <li key={field}>
-                  <span className="font-medium capitalize">{field.replace(/([A-Z])/g, ' $1').trim()}:</span> {error}
+                  <span className="font-medium capitalize">
+                    {field.replace(/([A-Z])/g, ' $1').trim()}:
+                  </span>{' '}
+                  {error}
                 </li>
               ))}
             </ul>

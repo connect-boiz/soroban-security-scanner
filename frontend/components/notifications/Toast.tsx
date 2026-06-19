@@ -1,6 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { ToastNotification, NotificationPriority, NotificationType } from '../../types/notifications';
-import { cn, getPriorityColor, getToastDuration, getNotificationIcon } from '../../lib/notifications/utils';
+import {
+  ToastNotification,
+  NotificationPriority,
+  NotificationType,
+} from '../../types/notifications';
+import {
+  cn,
+  getPriorityColor,
+  getToastDuration,
+  getNotificationIcon,
+} from '../../lib/notifications/utils';
 
 interface ToastProps {
   toast: ToastNotification;
@@ -48,40 +57,46 @@ export const Toast: React.FC<ToastProps> = ({ toast, onClose }) => {
         'transform transition-all duration-300 ease-in-out',
         'backdrop-blur-sm',
         priorityClasses,
-        isVisible && !isLeaving ? 'translate-x-0 opacity-100 scale-100' : 'translate-x-full opacity-0 scale-95',
+        isVisible && !isLeaving
+          ? 'translate-x-0 opacity-100 scale-100'
+          : 'translate-x-full opacity-0 scale-95',
         isLeaving && 'translate-x-full opacity-0 scale-95'
       )}
       role="alert"
       aria-live={toast.priority === NotificationPriority.CRITICAL ? 'assertive' : 'polite'}
     >
       {/* Icon */}
-      <div className="flex-shrink-0 mt-0.5">
-        {getIconElement()}
-      </div>
+      <div className="flex-shrink-0 mt-0.5">{getIconElement()}</div>
 
       {/* Content */}
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1">
-            <h4 className="text-sm font-semibold text-gray-900">
-              {toast.title}
-            </h4>
+            <h4 className="text-sm font-semibold text-gray-900">{toast.title}</h4>
             {toast.message && (
-              <p className="mt-1 text-sm text-gray-600 leading-relaxed">
-                {toast.message}
-              </p>
+              <p className="mt-1 text-sm text-gray-600 leading-relaxed">{toast.message}</p>
             )}
           </div>
 
           {/* Close button */}
-          {(toast.dismissible !== false) && (
+          {toast.dismissible !== false && (
             <button
               onClick={handleClose}
               className="flex-shrink-0 p-1 rounded-md hover:bg-black/5 transition-colors"
               aria-label="Close notification"
             >
-              <svg className="w-4 h-4 text-gray-400 hover:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <svg
+                className="w-4 h-4 text-gray-400 hover:text-gray-600"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
               </svg>
             </button>
           )}
@@ -137,7 +152,7 @@ export const ToastContainer: React.FC<ToastContainerProps> = ({ toasts, onClose 
   return (
     <div className="fixed top-4 right-4 z-50 space-y-3 pointer-events-none">
       <div className="space-y-3 pointer-events-auto">
-        {toasts.map((toast) => (
+        {toasts.map(toast => (
           <Toast key={toast.id} toast={toast} onClose={onClose} />
         ))}
       </div>

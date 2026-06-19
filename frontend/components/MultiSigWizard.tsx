@@ -31,18 +31,18 @@ type WizardStep = 'basic-info' | 'signers' | 'threshold' | 'advanced' | 'preview
 
 const STEP_TITLES: Record<WizardStep, string> = {
   'basic-info': 'Basic Information',
-  'signers': 'Configure Signers',
-  'threshold': 'Set Threshold',
-  'advanced': 'Advanced Settings',
-  'preview': 'Preview & Create'
+  signers: 'Configure Signers',
+  threshold: 'Set Threshold',
+  advanced: 'Advanced Settings',
+  preview: 'Preview & Create',
 };
 
 const STEP_DESCRIPTIONS: Record<WizardStep, string> = {
   'basic-info': 'Provide basic information about your multi-signature wallet',
-  'signers': 'Add and configure the signers for your multi-signature wallet',
-  'threshold': 'Define the signature threshold required for transactions',
-  'advanced': 'Configure advanced security settings',
-  'preview': 'Review your configuration before creating the wallet'
+  signers: 'Add and configure the signers for your multi-signature wallet',
+  threshold: 'Define the signature threshold required for transactions',
+  advanced: 'Configure advanced security settings',
+  preview: 'Review your configuration before creating the wallet',
 };
 
 export default function MultiSigWizard() {
@@ -53,13 +53,13 @@ export default function MultiSigWizard() {
     signers: [],
     threshold: 1,
     timeLock: 0,
-    network: 'testnet'
+    network: 'testnet',
   });
 
   const [validationErrors, setValidationErrors] = useState<ValidationResult>({
     isValid: false,
     errors: [],
-    warnings: []
+    warnings: [],
   });
 
   const steps: WizardStep[] = ['basic-info', 'signers', 'threshold', 'advanced', 'preview'];
@@ -85,7 +85,7 @@ export default function MultiSigWizard() {
     return {
       isValid: errors.length === 0,
       errors,
-      warnings
+      warnings,
     };
   }, [config.name, config.description]);
 
@@ -140,7 +140,7 @@ export default function MultiSigWizard() {
     return {
       isValid: errors.length === 0,
       errors,
-      warnings
+      warnings,
     };
   }, [config.signers]);
 
@@ -169,7 +169,7 @@ export default function MultiSigWizard() {
     return {
       isValid: errors.length === 0,
       errors,
-      warnings
+      warnings,
     };
   }, [config.threshold, config.signers]);
 
@@ -181,14 +181,15 @@ export default function MultiSigWizard() {
       errors.push('Time lock cannot be negative');
     }
 
-    if (config.timeLock > 86400 * 30) { // 30 days
+    if (config.timeLock > 86400 * 30) {
+      // 30 days
       warnings.push('Time lock is very long (over 30 days)');
     }
 
     return {
       isValid: errors.length === 0,
       errors,
-      warnings
+      warnings,
     };
   }, [config.timeLock]);
 
@@ -208,11 +209,16 @@ export default function MultiSigWizard() {
         const signers = validateSigners();
         const threshold = validateThreshold();
         const advanced = validateAdvanced();
-        
+
         return {
           isValid: basic.isValid && signers.isValid && threshold.isValid && advanced.isValid,
           errors: [...basic.errors, ...signers.errors, ...threshold.errors, ...advanced.errors],
-          warnings: [...basic.warnings, ...signers.warnings, ...threshold.warnings, ...advanced.warnings]
+          warnings: [
+            ...basic.warnings,
+            ...signers.warnings,
+            ...threshold.warnings,
+            ...advanced.warnings,
+          ],
         };
       }
       default:
@@ -255,27 +261,25 @@ export default function MultiSigWizard() {
       name: '',
       publicKey: '',
       weight: 1,
-      signatureScheme: 'ed25519'
+      signatureScheme: 'ed25519',
     };
     setConfig(prev => ({
       ...prev,
-      signers: [...prev.signers, newSigner]
+      signers: [...prev.signers, newSigner],
     }));
   };
 
   const updateSigner = (id: string, updates: Partial<SignerInfo>) => {
     setConfig(prev => ({
       ...prev,
-      signers: prev.signers.map(signer =>
-        signer.id === id ? { ...signer, ...updates } : signer
-      )
+      signers: prev.signers.map(signer => (signer.id === id ? { ...signer, ...updates } : signer)),
     }));
   };
 
   const removeSigner = (id: string) => {
     setConfig(prev => ({
       ...prev,
-      signers: prev.signers.filter(signer => signer.id !== id)
+      signers: prev.signers.filter(signer => signer.id !== id),
     }));
   };
 
@@ -297,16 +301,11 @@ export default function MultiSigWizard() {
           <ThresholdStep
             threshold={config.threshold}
             signers={config.signers}
-            onThresholdChange={(threshold) => setConfig(prev => ({ ...prev, threshold }))}
+            onThresholdChange={threshold => setConfig(prev => ({ ...prev, threshold }))}
           />
         );
       case 'advanced':
-        return (
-          <AdvancedStep
-            config={config}
-            setConfig={setConfig}
-          />
-        );
+        return <AdvancedStep config={config} setConfig={setConfig} />;
       case 'preview':
         return <PreviewStep config={config} />;
       default:
@@ -325,9 +324,7 @@ export default function MultiSigWizard() {
           height={48}
         />
         <div>
-          <h2 className="text-xl font-semibold text-gray-900">
-            Multi-Signature Wallet Creator
-          </h2>
+          <h2 className="text-xl font-semibold text-gray-900">Multi-Signature Wallet Creator</h2>
           <p className="text-sm text-gray-600">
             Create a secure multi-signature wallet with customizable thresholds
           </p>
@@ -345,19 +342,21 @@ export default function MultiSigWizard() {
                 currentStep === step
                   ? 'border-blue-500 text-blue-600'
                   : index < currentStepIndex
-                  ? 'border-green-500 text-green-600 hover:text-green-700'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
+                    ? 'border-green-500 text-green-600 hover:text-green-700'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
               disabled={index > currentStepIndex && !validateStep().isValid}
             >
               <div className="flex items-center space-x-2">
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${
-                  currentStep === step
-                    ? 'bg-blue-500 text-white'
-                    : index < currentStepIndex
-                    ? 'bg-green-500 text-white'
-                    : 'bg-gray-300 text-gray-600'
-                }`}>
+                <div
+                  className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${
+                    currentStep === step
+                      ? 'bg-blue-500 text-white'
+                      : index < currentStepIndex
+                        ? 'bg-green-500 text-white'
+                        : 'bg-gray-300 text-gray-600'
+                  }`}
+                >
                   {index < currentStepIndex ? '✓' : index + 1}
                 </div>
                 <span>{STEP_TITLES[step]}</span>
@@ -369,18 +368,12 @@ export default function MultiSigWizard() {
 
       {/* Step Description */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <h3 className="text-sm font-medium text-blue-900">
-          {STEP_TITLES[currentStep]}
-        </h3>
-        <p className="text-sm text-blue-700 mt-1">
-          {STEP_DESCRIPTIONS[currentStep]}
-        </p>
+        <h3 className="text-sm font-medium text-blue-900">{STEP_TITLES[currentStep]}</h3>
+        <p className="text-sm text-blue-700 mt-1">{STEP_DESCRIPTIONS[currentStep]}</p>
       </div>
 
       {/* Step Content */}
-      <div className="min-h-[400px]">
-        {renderStepContent()}
-      </div>
+      <div className="min-h-[400px]">{renderStepContent()}</div>
 
       {/* Validation Errors/Warnings */}
       {(validationErrors.errors.length > 0 || validationErrors.warnings.length > 0) && (
@@ -438,7 +431,7 @@ export default function MultiSigWizard() {
 // Helper function to validate public keys
 function isValidPublicKey(publicKey: string, scheme: string): boolean {
   if (!publicKey) return false;
-  
+
   switch (scheme) {
     case 'ed25519':
       // Stellar Ed25519 public keys start with 'G' and are 56 characters
@@ -455,7 +448,13 @@ function isValidPublicKey(publicKey: string, scheme: string): boolean {
 }
 
 // Step Components
-function BasicInfoStep({ config, setConfig }: { config: MultiSigConfig; setConfig: (config: MultiSigConfig) => void }) {
+function BasicInfoStep({
+  config,
+  setConfig,
+}: {
+  config: MultiSigConfig;
+  setConfig: (config: MultiSigConfig) => void;
+}) {
   return (
     <div className="space-y-6">
       <div>
@@ -466,7 +465,7 @@ function BasicInfoStep({ config, setConfig }: { config: MultiSigConfig; setConfi
           id="wallet-name"
           type="text"
           value={config.name}
-          onChange={(e) => setConfig({ ...config, name: e.target.value })}
+          onChange={e => setConfig({ ...config, name: e.target.value })}
           className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-optimized"
           placeholder="My Multi-Sig Wallet"
         />
@@ -476,20 +475,21 @@ function BasicInfoStep({ config, setConfig }: { config: MultiSigConfig; setConfi
       </div>
 
       <div>
-        <label htmlFor="wallet-description" className="block text-sm font-medium text-gray-700 mb-2">
+        <label
+          htmlFor="wallet-description"
+          className="block text-sm font-medium text-gray-700 mb-2"
+        >
           Description
         </label>
         <textarea
           id="wallet-description"
           value={config.description}
-          onChange={(e) => setConfig({ ...config, description: e.target.value })}
+          onChange={e => setConfig({ ...config, description: e.target.value })}
           rows={3}
           className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-optimized"
           placeholder="Optional description of the wallet's purpose"
         />
-        <p className="text-xs text-gray-500 mt-1">
-          Describe the purpose of this wallet (optional)
-        </p>
+        <p className="text-xs text-gray-500 mt-1">Describe the purpose of this wallet (optional)</p>
       </div>
 
       <div>
@@ -499,7 +499,9 @@ function BasicInfoStep({ config, setConfig }: { config: MultiSigConfig; setConfi
         <select
           id="network"
           value={config.network}
-          onChange={(e) => setConfig({ ...config, network: e.target.value as 'mainnet' | 'testnet' | 'futurenet' })}
+          onChange={e =>
+            setConfig({ ...config, network: e.target.value as 'mainnet' | 'testnet' | 'futurenet' })
+          }
           className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-optimized"
         >
           <option value="testnet">Testnet (Recommended for testing)</option>
@@ -518,7 +520,7 @@ function SignersStep({
   signers,
   onAddSigner,
   onUpdateSigner,
-  onRemoveSigner
+  onRemoveSigner,
 }: {
   signers: SignerInfo[];
   onAddSigner: () => void;
@@ -549,7 +551,7 @@ function SignersStep({
               key={signer.id}
               signer={signer}
               index={index}
-              onUpdate={(updates) => onUpdateSigner(signer.id, updates)}
+              onUpdate={updates => onUpdateSigner(signer.id, updates)}
               onRemove={() => onRemoveSigner(signer.id)}
               canRemove={signers.length > 1}
             />
@@ -574,7 +576,7 @@ function SignerCard({
   index,
   onUpdate,
   onRemove,
-  canRemove
+  canRemove,
 }: {
   signer: SignerInfo;
   index: number;
@@ -598,40 +600,36 @@ function SignerCard({
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Name *
-          </label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
           <input
             type="text"
             value={signer.name}
-            onChange={(e) => onUpdate({ name: e.target.value })}
+            onChange={e => onUpdate({ name: e.target.value })}
             className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-optimized"
             placeholder="Signer name"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Weight *
-          </label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Weight *</label>
           <input
             type="number"
             min="1"
             max="100"
             value={signer.weight}
-            onChange={(e) => onUpdate({ weight: parseInt(e.target.value) || 1 })}
+            onChange={e => onUpdate({ weight: parseInt(e.target.value) || 1 })}
             className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-optimized"
           />
         </div>
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Signature Scheme
-        </label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Signature Scheme</label>
         <select
           value={signer.signatureScheme}
-          onChange={(e) => onUpdate({ signatureScheme: e.target.value as 'ed25519' | 'secp256k1' | 'p256' })}
+          onChange={e =>
+            onUpdate({ signatureScheme: e.target.value as 'ed25519' | 'secp256k1' | 'p256' })
+          }
           className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-optimized"
         >
           <option value="ed25519">Ed25519 (Stellar)</option>
@@ -641,21 +639,18 @@ function SignerCard({
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Public Key *
-        </label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Public Key *</label>
         <input
           type="text"
           value={signer.publicKey}
-          onChange={(e) => onUpdate({ publicKey: e.target.value })}
+          onChange={e => onUpdate({ publicKey: e.target.value })}
           className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-optimized font-mono text-sm"
           placeholder={signer.signatureScheme === 'ed25519' ? 'G...' : 'Enter public key'}
         />
         <p className="text-xs text-gray-500 mt-1">
-          {signer.signatureScheme === 'ed25519' 
+          {signer.signatureScheme === 'ed25519'
             ? 'Stellar public keys start with "G" and are 56 characters'
-            : 'Enter the public key in hex format'
-          }
+            : 'Enter the public key in hex format'}
         </p>
       </div>
     </div>
@@ -665,7 +660,7 @@ function SignerCard({
 function ThresholdStep({
   threshold,
   signers,
-  onThresholdChange
+  onThresholdChange,
 }: {
   threshold: number;
   signers: SignerInfo[];
@@ -687,7 +682,7 @@ function ThresholdStep({
             min="1"
             max={maxThreshold}
             value={threshold}
-            onChange={(e) => onThresholdChange(parseInt(e.target.value))}
+            onChange={e => onThresholdChange(parseInt(e.target.value))}
             className="flex-1"
           />
           <div className="w-20 text-center">
@@ -713,9 +708,7 @@ function ThresholdStep({
           </div>
           <div className="flex justify-between text-sm">
             <span>Signers Needed:</span>
-            <span className="font-medium">
-              {calculateSignersNeeded(threshold, signers)}
-            </span>
+            <span className="font-medium">{calculateSignersNeeded(threshold, signers)}</span>
           </div>
         </div>
       </div>
@@ -757,7 +750,7 @@ function ThresholdStep({
 
 function AdvancedStep({
   config,
-  setConfig
+  setConfig,
 }: {
   config: MultiSigConfig;
   setConfig: (config: MultiSigConfig) => void;
@@ -773,7 +766,7 @@ function AdvancedStep({
           type="number"
           min="0"
           value={config.timeLock}
-          onChange={(e) => setConfig({ ...config, timeLock: parseInt(e.target.value) || 0 })}
+          onChange={e => setConfig({ ...config, timeLock: parseInt(e.target.value) || 0 })}
           className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-optimized"
         />
         <p className="text-sm text-gray-600 mt-1">
@@ -859,7 +852,9 @@ function PreviewStep({ config }: { config: MultiSigConfig }) {
             <dl className="space-y-2">
               <div className="flex justify-between text-sm">
                 <dt className="text-gray-600">Threshold:</dt>
-                <dd className="font-medium">{config.threshold} / {totalWeight}</dd>
+                <dd className="font-medium">
+                  {config.threshold} / {totalWeight}
+                </dd>
               </div>
               <div className="flex justify-between text-sm">
                 <dt className="text-gray-600">Time Lock:</dt>
@@ -904,7 +899,7 @@ function PreviewStep({ config }: { config: MultiSigConfig }) {
         <div className="flex items-center space-x-2 text-sm text-gray-600">
           <span>💡</span>
           <span>
-            This configuration will be deployed to {config.network}. 
+            This configuration will be deployed to {config.network}.
             {config.network === 'mainnet' && ' Please double-check all details before proceeding.'}
           </span>
         </div>
@@ -928,7 +923,13 @@ function calculateSignersNeeded(threshold: number, signers: SignerInfo[]): strin
   return `${count} of ${signers.length}`;
 }
 
-function ThresholdVisualization({ threshold, signers }: { threshold: number; signers: SignerInfo[] }) {
+function ThresholdVisualization({
+  threshold,
+  signers,
+}: {
+  threshold: number;
+  signers: SignerInfo[];
+}) {
   const totalWeight = signers.reduce((sum, signer) => sum + signer.weight, 0);
   const thresholdPercentage = (threshold / totalWeight) * 100;
 

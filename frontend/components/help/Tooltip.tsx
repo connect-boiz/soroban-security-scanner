@@ -61,7 +61,7 @@ const Tooltip: React.FC<TooltipProps> = ({
   };
 
   return (
-    <div 
+    <div
       className="relative inline-block"
       onMouseEnter={showTooltip}
       onMouseLeave={hideTooltip}
@@ -79,9 +79,7 @@ const Tooltip: React.FC<TooltipProps> = ({
           style={{ maxWidth: `${maxWidth}px`, backgroundColor: '#0f172a' }}
         >
           {content}
-          <div 
-            className={`absolute border-4 border-transparent ${arrowClasses[placement]}`}
-          />
+          <div className={`absolute border-4 border-transparent ${arrowClasses[placement]}`} />
         </div>
       )}
     </div>

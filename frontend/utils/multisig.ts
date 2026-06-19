@@ -26,7 +26,7 @@ export interface ValidationResult {
 // Public key validation functions
 export function isValidPublicKey(publicKey: string, scheme: string): boolean {
   if (!publicKey) return false;
-  
+
   switch (scheme) {
     case 'ed25519':
       // Stellar Ed25519 public keys start with 'G' and are 56 characters
@@ -73,11 +73,11 @@ export function getThresholdRecommendations(signers: SignerInfo[]): {
   flexible: number;
 } {
   const totalWeight = calculateTotalWeight(signers);
-  
+
   return {
     conservative: Math.ceil(totalWeight * 0.8), // 80% - high security
     standard: Math.ceil(totalWeight * 0.67), // 67% - supermajority
-    flexible: Math.ceil(totalWeight * 0.51) // 51% - simple majority
+    flexible: Math.ceil(totalWeight * 0.51), // 51% - simple majority
   };
 }
 
@@ -168,14 +168,15 @@ export function validateMultiSigConfig(config: MultiSigConfig): ValidationResult
     errors.push('Time lock cannot be negative');
   }
 
-  if (config.timeLock > 86400 * 30) { // 30 days
+  if (config.timeLock > 86400 * 30) {
+    // 30 days
     warnings.push('Time lock is very long (over 30 days)');
   }
 
   return {
     isValid: errors.length === 0,
     errors,
-    warnings
+    warnings,
   };
 }
 
@@ -189,7 +190,7 @@ export function generateStellarMultiSigConfig(config: MultiSigConfig): {
 } {
   const signerKeys = config.signers.map(signer => ({
     publicKey: signer.publicKey,
-    weight: signer.weight
+    weight: signer.weight,
   }));
 
   // Use the same threshold for all operations for simplicity
@@ -201,7 +202,7 @@ export function generateStellarMultiSigConfig(config: MultiSigConfig): {
     masterKey: config.signers[0]?.publicKey || '', // First signer as master key
     lowThreshold: threshold,
     medThreshold: threshold,
-    highThreshold: threshold
+    highThreshold: threshold,
   };
 }
 
@@ -222,7 +223,8 @@ export function simulateMultiSigTransaction(
     .reduce((sum, signer) => sum + signer.weight, 0);
 
   const remainingWeight = config.threshold - currentWeight;
-  const signersNeeded = calculateSignersNeeded(remainingWeight, 
+  const signersNeeded = calculateSignersNeeded(
+    remainingWeight,
     config.signers.filter(signer => approvingSigners.indexOf(signer.publicKey) === -1)
   );
 
@@ -231,7 +233,7 @@ export function simulateMultiSigTransaction(
     currentWeight,
     requiredWeight: config.threshold,
     remainingWeight: Math.max(0, remainingWeight),
-    signersNeeded: Math.max(0, signersNeeded)
+    signersNeeded: Math.max(0, signersNeeded),
   };
 }
 
@@ -299,7 +301,7 @@ export function analyzeSecurity(config: MultiSigConfig): {
   return {
     score: Math.max(0, score),
     risks,
-    recommendations
+    recommendations,
   };
 }
 
@@ -311,12 +313,12 @@ export function exportConfig(config: MultiSigConfig): string {
 export function importConfig(jsonString: string): MultiSigConfig | null {
   try {
     const config = JSON.parse(jsonString);
-    
+
     // Basic validation
     if (!config.name || !Array.isArray(config.signers) || typeof config.threshold !== 'number') {
       throw new Error('Invalid configuration format');
     }
-    
+
     return config;
   } catch (error) {
     console.error('Failed to import configuration:', error);
@@ -334,18 +336,18 @@ export function getNetworkConfig(network: 'mainnet' | 'testnet' | 'futurenet'): 
     mainnet: {
       horizonUrl: 'https://horizon.stellar.org',
       networkPassphrase: 'Public Global Stellar Network ; September 2015',
-      isTestnet: false
+      isTestnet: false,
     },
     testnet: {
       horizonUrl: 'https://horizon-testnet.stellar.org',
       networkPassphrase: 'Test SDF Network ; September 2015',
-      isTestnet: true
+      isTestnet: true,
     },
     futurenet: {
       horizonUrl: 'https://horizon-futurenet.stellar.org',
       networkPassphrase: 'Test SDF Future Network ; October 2022',
-      isTestnet: true
-    }
+      isTestnet: true,
+    },
   };
 
   return configs[network];
@@ -354,7 +356,7 @@ export function getNetworkConfig(network: 'mainnet' | 'testnet' | 'futurenet'): 
 // Utility functions
 export function formatDuration(seconds: number): string {
   if (seconds === 0) return 'None';
-  
+
   const days = Math.floor(seconds / 86400);
   const hours = Math.floor((seconds % 86400) / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
@@ -368,11 +370,15 @@ export function formatDuration(seconds: number): string {
   }
 }
 
-export function truncatePublicKey(publicKey: string, startChars: number = 8, endChars: number = 4): string {
+export function truncatePublicKey(
+  publicKey: string,
+  startChars: number = 8,
+  endChars: number = 4
+): string {
   if (publicKey.length <= startChars + endChars) {
     return publicKey;
   }
-  
+
   return `${publicKey.substring(0, startChars)}...${publicKey.substring(publicKey.length - endChars)}`;
 }
 

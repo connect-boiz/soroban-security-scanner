@@ -6,7 +6,7 @@ const {
   DeliveryTracking,
   ChannelStats,
   DeliveryStats,
-  ProviderStats
+  ProviderStats,
 } = require('./types');
 
 class TrackingError extends Error {
@@ -98,7 +98,7 @@ class DeliveryMetrics {
         totalDelivered: this.totalDelivered.get(channel) || 0,
         totalFailed: this.totalFailed.get(channel) || 0,
         successRate: this.successRate(channel),
-        averageDeliveryTimeMs: this.averageDeliveryTime(channel)
+        averageDeliveryTimeMs: this.averageDeliveryTime(channel),
       });
     }
 
@@ -245,7 +245,7 @@ class DeliveryTracker {
    */
   async updateStatus(notificationId, recipientId, channel, status, errorMessage = null) {
     const tracking = this.storage.getTracking(notificationId, recipientId, channel);
-    
+
     if (!tracking) {
       throw new TrackingError('Tracking record not found', 'NOT_FOUND');
     }
@@ -255,7 +255,7 @@ class DeliveryTracker {
       status,
       lastAttempt: new Date(),
       errorMessage,
-      deliveredAt: status === DeliveryStatus.DELIVERED ? new Date() : tracking.deliveredAt
+      deliveredAt: status === DeliveryStatus.DELIVERED ? new Date() : tracking.deliveredAt,
     });
 
     this.storage.updateTracking(updatedTracking);
@@ -297,11 +297,11 @@ class DeliveryTracker {
    */
   async getDeliveryStats(startTime, endTime) {
     const trackings = this.storage.getTrackingInPeriod(startTime, endTime);
-    
+
     const stats = new DeliveryStats({
       startTime,
       endTime,
-      totalNotifications: trackings.length
+      totalNotifications: trackings.length,
     });
 
     // Group by channel and calculate statistics
@@ -325,16 +325,17 @@ class DeliveryTracker {
       const deliveryTimes = channelTrackings
         .filter(t => t.deliveredAt && t.lastAttempt)
         .map(t => t.deliveredAt - t.lastAttempt);
-      const avgDeliveryTime = deliveryTimes.length > 0 
-        ? Math.round(deliveryTimes.reduce((a, b) => a + b, 0) / deliveryTimes.length)
-        : 0;
+      const avgDeliveryTime =
+        deliveryTimes.length > 0
+          ? Math.round(deliveryTimes.reduce((a, b) => a + b, 0) / deliveryTimes.length)
+          : 0;
 
       stats.channelStats[channel] = new ChannelStats({
         totalSent: sent,
         totalDelivered: delivered,
         totalFailed: failed,
         successRate,
-        averageDeliveryTimeMs: avgDeliveryTime
+        averageDeliveryTimeMs: avgDeliveryTime,
       });
     }
 
@@ -349,12 +350,13 @@ class DeliveryTracker {
     const retried = [];
 
     for (const tracking of failedTrackings) {
-      if (tracking.attempts < 3) { // Max 3 attempts
+      if (tracking.attempts < 3) {
+        // Max 3 attempts
         const updatedTracking = new DeliveryTracking({
           ...tracking,
           attempts: tracking.attempts + 1,
           status: DeliveryStatus.RETRYING,
-          lastAttempt: new Date()
+          lastAttempt: new Date(),
         });
 
         this.storage.updateTracking(updatedTracking);
@@ -388,7 +390,7 @@ class DeliveryTracker {
         totalFailed: channelStats.totalFailed,
         averageDeliveryTimeMs: channelStats.averageDeliveryTimeMs,
         lastSuccess: null, // Would be tracked in real implementation
-        lastFailure: null  // Would be tracked in real implementation
+        lastFailure: null, // Would be tracked in real implementation
       });
     }
 
@@ -400,5 +402,5 @@ module.exports = {
   DeliveryTracker,
   DeliveryMetrics,
   TrackingStorage,
-  TrackingError
+  TrackingError,
 };

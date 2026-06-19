@@ -1,6 +1,6 @@
 import resolve from '@rollup/plugin-node-resolve';
 import commonjs from '@rollup/plugin-commonjs';
-import typescript from '@rollup/plugin-typescript';
+import esbuild from 'rollup-plugin-esbuild';
 import peerDepsExternal from 'rollup-plugin-peer-deps-external';
 
 export default {
@@ -23,7 +23,11 @@ export default {
       browser: true,
     }),
     commonjs(),
-    typescript({ tsconfig: './tsconfig.json' }),
+    esbuild({
+      include: /\.[jt]sx?$/,
+      target: 'esnext',
+      jsx: 'automatic',
+    }),
   ],
   external: ['react', 'react-dom'],
 };

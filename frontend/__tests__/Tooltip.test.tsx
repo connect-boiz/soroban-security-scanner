@@ -36,7 +36,7 @@ describe('Tooltip', () => {
 
     const trigger = screen.getByText('Hover me');
     fireEvent.mouseEnter(trigger);
-    
+
     await waitFor(() => {
       expect(screen.getByText('Helpful text')).toBeInTheDocument();
     });
@@ -75,10 +75,10 @@ describe('Tooltip', () => {
         <span>Hover me</span>
       </Tooltip>
     );
-    
+
     const trigger = screen.getByText('Hover me');
     fireEvent.mouseEnter(trigger);
-    
+
     const tooltip = await screen.findByRole('tooltip');
     expect(tooltip).toHaveAttribute('id');
     expect(trigger.parentElement).toHaveAttribute('aria-describedby', tooltip.id);

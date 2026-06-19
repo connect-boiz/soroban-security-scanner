@@ -27,7 +27,7 @@ export const useLoadingStates = (options: UseLoadingStatesOptions = {}) => {
     isLoading: false,
     progress: 0,
     stage: '',
-    error: null
+    error: null,
   });
 
   const [isCancelled, setIsCancelled] = useState(false);
@@ -38,7 +38,7 @@ export const useLoadingStates = (options: UseLoadingStatesOptions = {}) => {
       isLoading: true,
       progress: 0,
       stage: 'Initializing...',
-      error: null
+      error: null,
     });
 
     if (!options.stages) {
@@ -54,7 +54,7 @@ export const useLoadingStates = (options: UseLoadingStatesOptions = {}) => {
         setLoadingState(prev => ({
           ...prev,
           stage: stage.name,
-          progress: stage.progress
+          progress: stage.progress,
         }));
 
         options.onProgress?.(stage.progress, stage.name);
@@ -67,7 +67,7 @@ export const useLoadingStates = (options: UseLoadingStatesOptions = {}) => {
           isLoading: false,
           progress: 100,
           stage: 'Complete',
-          error: null
+          error: null,
         });
         options.onComplete?.();
       }
@@ -77,7 +77,7 @@ export const useLoadingStates = (options: UseLoadingStatesOptions = {}) => {
         setLoadingState(prev => ({
           ...prev,
           isLoading: false,
-          error: errorMessage
+          error: errorMessage,
         }));
         options.onError?.(errorMessage);
       }
@@ -90,7 +90,7 @@ export const useLoadingStates = (options: UseLoadingStatesOptions = {}) => {
       ...prev,
       isLoading: false,
       stage: 'Cancelled',
-      error: 'Operation was cancelled'
+      error: 'Operation was cancelled',
     }));
   }, []);
 
@@ -100,36 +100,42 @@ export const useLoadingStates = (options: UseLoadingStatesOptions = {}) => {
       isLoading: false,
       progress: 0,
       stage: '',
-      error: null
+      error: null,
     });
   }, []);
 
-  const updateProgress = useCallback((progress: number, stage: string) => {
-    setLoadingState(prev => ({
-      ...prev,
-      progress: Math.min(100, Math.max(0, progress)),
-      stage
-    }));
-    options.onProgress?.(progress, stage);
-  }, [options.onProgress]);
+  const updateProgress = useCallback(
+    (progress: number, stage: string) => {
+      setLoadingState(prev => ({
+        ...prev,
+        progress: Math.min(100, Math.max(0, progress)),
+        stage,
+      }));
+      options.onProgress?.(progress, stage);
+    },
+    [options.onProgress]
+  );
 
   const setLoading = useCallback((loading: boolean) => {
     setLoadingState(prev => ({
       ...prev,
-      isLoading: loading
+      isLoading: loading,
     }));
   }, []);
 
-  const setError = useCallback((error: string | null) => {
-    setLoadingState(prev => ({
-      ...prev,
-      error,
-      isLoading: false
-    }));
-    if (error) {
-      options.onError?.(error);
-    }
-  }, [options.onError]);
+  const setError = useCallback(
+    (error: string | null) => {
+      setLoadingState(prev => ({
+        ...prev,
+        error,
+        isLoading: false,
+      }));
+      if (error) {
+        options.onError?.(error);
+      }
+    },
+    [options.onError]
+  );
 
   return {
     ...loadingState,
@@ -138,7 +144,7 @@ export const useLoadingStates = (options: UseLoadingStatesOptions = {}) => {
     resetLoading,
     updateProgress,
     setLoading,
-    setError
+    setError,
   };
 };
 
@@ -150,7 +156,7 @@ interface UseAsyncOperationOptions<T> {
   loadingMessage?: string;
 }
 
-export const useAsyncOperation = <T,>() => {
+export const useAsyncOperation = <T>() => {
   const [state, setState] = useState<{
     isLoading: boolean;
     data: T | null;
@@ -158,7 +164,7 @@ export const useAsyncOperation = <T,>() => {
   }>({
     isLoading: false,
     data: null,
-    error: null
+    error: null,
   });
 
   const execute = useCallback(async (options: UseAsyncOperationOptions<T>) => {
@@ -182,7 +188,7 @@ export const useAsyncOperation = <T,>() => {
   return {
     ...state,
     execute,
-    reset
+    reset,
   };
 };
 
@@ -210,7 +216,7 @@ export const useStagedLoading = (options: UseStagedLoadingOptions) => {
     currentStage: '',
     progress: 0,
     completedStages: [],
-    error: null
+    error: null,
   });
 
   const execute = useCallback(async () => {
@@ -219,7 +225,7 @@ export const useStagedLoading = (options: UseStagedLoadingOptions) => {
       currentStage: 'Starting...',
       progress: 0,
       completedStages: [],
-      error: null
+      error: null,
     });
 
     let accumulatedProgress = 0;
@@ -228,17 +234,17 @@ export const useStagedLoading = (options: UseStagedLoadingOptions) => {
       for (const stage of options.stages) {
         setState(prev => ({
           ...prev,
-          currentStage: stage.name
+          currentStage: stage.name,
         }));
 
         await stage.action();
-        
+
         accumulatedProgress += stage.progressWeight;
-        
+
         setState(prev => ({
           ...prev,
           progress: Math.min(100, accumulatedProgress),
-          completedStages: [...prev.completedStages, stage.name]
+          completedStages: [...prev.completedStages, stage.name],
         }));
 
         options.onStageComplete?.(stage.name);
@@ -249,7 +255,7 @@ export const useStagedLoading = (options: UseStagedLoadingOptions) => {
         currentStage: 'Complete',
         progress: 100,
         completedStages: options.stages.map(s => s.name),
-        error: null
+        error: null,
       });
 
       options.onComplete?.();
@@ -258,7 +264,7 @@ export const useStagedLoading = (options: UseStagedLoadingOptions) => {
       setState(prev => ({
         ...prev,
         isLoading: false,
-        error: errorMessage
+        error: errorMessage,
       }));
       options.onError?.(errorMessage, state.currentStage);
     }
@@ -270,14 +276,14 @@ export const useStagedLoading = (options: UseStagedLoadingOptions) => {
       currentStage: '',
       progress: 0,
       completedStages: [],
-      error: null
+      error: null,
     });
   }, []);
 
   return {
     ...state,
     execute,
-    reset
+    reset,
   };
 };
 
@@ -290,7 +296,7 @@ interface UseRetryOperationOptions<T> {
   onError?: (error: string, attempt: number) => void;
 }
 
-export const useRetryOperation = <T,>(options: UseRetryOperationOptions<T>) => {
+export const useRetryOperation = <T>(options: UseRetryOperationOptions<T>) => {
   const [state, setState] = useState<{
     isLoading: boolean;
     data: T | null;
@@ -300,7 +306,7 @@ export const useRetryOperation = <T,>(options: UseRetryOperationOptions<T>) => {
     isLoading: false,
     data: null,
     error: null,
-    attempt: 0
+    attempt: 0,
   });
 
   const execute = useCallback(async () => {
@@ -312,7 +318,7 @@ export const useRetryOperation = <T,>(options: UseRetryOperationOptions<T>) => {
         ...prev,
         isLoading: true,
         attempt,
-        error: null
+        error: null,
       }));
 
       try {
@@ -321,25 +327,25 @@ export const useRetryOperation = <T,>(options: UseRetryOperationOptions<T>) => {
           isLoading: false,
           data: result,
           error: null,
-          attempt
+          attempt,
         });
         options.onSuccess?.(result);
         return;
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'An error occurred';
-        
+
         if (attempt === maxRetries) {
           setState({
             isLoading: false,
             data: null,
             error: errorMessage,
-            attempt
+            attempt,
           });
           options.onError?.(errorMessage, attempt);
         } else {
           setState(prev => ({
             ...prev,
-            error: `${errorMessage} (Retrying... ${attempt}/${maxRetries})`
+            error: `${errorMessage} (Retrying... ${attempt}/${maxRetries})`,
           }));
           await new Promise(resolve => setTimeout(resolve, retryDelay));
         }
@@ -352,13 +358,13 @@ export const useRetryOperation = <T,>(options: UseRetryOperationOptions<T>) => {
       isLoading: false,
       data: null,
       error: null,
-      attempt: 0
+      attempt: 0,
     });
   }, []);
 
   return {
     ...state,
     execute,
-    reset
+    reset,
   };
 };

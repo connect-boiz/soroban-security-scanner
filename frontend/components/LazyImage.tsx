@@ -62,9 +62,7 @@ export default function LazyImage({
   // Generate optimized srcset for different screen sizes
   const generateSrcSet = (baseSrc: string) => {
     const widths = [320, 640, 768, 1024, 1280];
-    return widths
-      .map(w => `${baseSrc}?w=${w} ${w}w`)
-      .join(', ');
+    return widths.map(w => `${baseSrc}?w=${w} ${w}w`).join(', ');
   };
 
   // Generate sizes attribute for responsive images
@@ -74,7 +72,7 @@ export default function LazyImage({
 
   if (hasError) {
     return (
-      <div 
+      <div
         className={`flex items-center justify-center bg-gray-200 text-gray-500 ${className}`}
         style={{ width, height }}
       >
@@ -87,12 +85,9 @@ export default function LazyImage({
     <div className={`relative overflow-hidden ${className}`} style={{ width, height }}>
       {/* Placeholder */}
       {!isLoaded && (
-        <div 
-          className="absolute inset-0 bg-gray-200 skeleton"
-          style={{ width, height }}
-        />
+        <div className="absolute inset-0 bg-gray-200 skeleton" style={{ width, height }} />
       )}
-      
+
       {/* Actual image */}
       <img
         ref={imgRef}
@@ -106,9 +101,7 @@ export default function LazyImage({
         decoding="async"
         onLoad={handleLoad}
         onError={handleError}
-        className={`transition-opacity duration-300 ${
-          isLoaded ? 'opacity-100' : 'opacity-0'
-        }`}
+        className={`transition-opacity duration-300 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
         style={{
           objectFit: 'cover',
           width: '100%',

@@ -7,7 +7,7 @@ const NotificationChannel = {
   EMAIL: 'email',
   SMS: 'sms',
   PUSH: 'push',
-  IN_APP: 'in_app'
+  IN_APP: 'in_app',
 };
 
 /**
@@ -17,7 +17,7 @@ const NotificationPriority = {
   LOW: 'low',
   NORMAL: 'normal',
   HIGH: 'high',
-  CRITICAL: 'critical'
+  CRITICAL: 'critical',
 };
 
 /**
@@ -29,7 +29,7 @@ const DeliveryStatus = {
   SENT: 'sent',
   DELIVERED: 'delivered',
   FAILED: 'failed',
-  RETRYING: 'retrying'
+  RETRYING: 'retrying',
 };
 
 /**
@@ -43,7 +43,7 @@ const VariableType = {
   URL: 'url',
   DATETIME: 'datetime',
   BOOLEAN: 'boolean',
-  CUSTOM: 'custom'
+  CUSTOM: 'custom',
 };
 
 /**
@@ -80,7 +80,7 @@ class NotificationPreferences {
 class QuietHours {
   constructor(data) {
     this.startHour = data.startHour || 22; // 10 PM
-    this.endHour = data.endHour || 8;     // 8 AM
+    this.endHour = data.endHour || 8; // 8 AM
     this.timezone = data.timezone || 'UTC';
   }
 }
@@ -270,5 +270,5 @@ module.exports = {
   ChannelStats,
   DeliveryStats,
   HourlyStats,
-  ProviderStats
+  ProviderStats,
 };

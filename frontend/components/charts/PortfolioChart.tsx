@@ -16,7 +16,7 @@ import {
   LineChart,
   Line,
   Area,
-  AreaChart
+  AreaChart,
 } from 'recharts';
 import { PortfolioData, ChartConfig, ChartDataPoint } from '@/types/charts';
 import { TrendingUp, TrendingDown, DollarSign, PieChartIcon } from 'lucide-react';
@@ -46,10 +46,11 @@ const CustomTooltip = ({ active, payload }: any) => {
         <p className="font-semibold text-gray-900">{data.asset}</p>
         <p className="text-sm text-gray-600">Value: ${data.value.toLocaleString()}</p>
         <p className="text-sm text-gray-600">Percentage: {data.percentage.toFixed(1)}%</p>
-        <p className={`text-sm font-medium ${
-          data.change >= 0 ? 'text-green-600' : 'text-red-600'
-        }`}>
-          Change: {data.change >= 0 ? '+' : ''}{data.changePercent.toFixed(2)}%
+        <p
+          className={`text-sm font-medium ${data.change >= 0 ? 'text-green-600' : 'text-red-600'}`}
+        >
+          Change: {data.change >= 0 ? '+' : ''}
+          {data.changePercent.toFixed(2)}%
         </p>
       </div>
     );
@@ -66,11 +67,11 @@ const CustomLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: an
   if (percent < 0.05) return null; // Don't show label for small slices
 
   return (
-    <text 
-      x={x} 
-      y={y} 
-      fill="white" 
-      textAnchor={x > cx ? 'start' : 'end'} 
+    <text
+      x={x}
+      y={y}
+      fill="white"
+      textAnchor={x > cx ? 'start' : 'end'}
       dominantBaseline="central"
       className="font-semibold text-sm"
     >
@@ -82,7 +83,7 @@ const CustomLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: an
 export const PortfolioChart: React.FC<PortfolioChartProps> = ({
   data,
   config = {},
-  className = ''
+  className = '',
 }) => {
   const {
     type = 'pie',
@@ -91,7 +92,7 @@ export const PortfolioChart: React.FC<PortfolioChartProps> = ({
     showGrid = true,
     height = 300,
     colors = DEFAULT_COLORS,
-    responsive = true
+    responsive = true,
   } = config;
 
   const totalValue = data.reduce((sum, item) => sum + item.value, 0);
@@ -108,14 +109,17 @@ export const PortfolioChart: React.FC<PortfolioChartProps> = ({
           ) : (
             <TrendingDown className="w-4 h-4 text-red-600" />
           )}
-          <span className={`text-sm font-medium ${
-            totalChangePercent >= 0 ? 'text-green-600' : 'text-red-600'
-          }`}>
-            {totalChangePercent >= 0 ? '+' : ''}{totalChangePercent.toFixed(2)}%
+          <span
+            className={`text-sm font-medium ${
+              totalChangePercent >= 0 ? 'text-green-600' : 'text-red-600'
+            }`}
+          >
+            {totalChangePercent >= 0 ? '+' : ''}
+            {totalChangePercent.toFixed(2)}%
           </span>
         </div>
       </div>
-      
+
       <ResponsiveContainer width="100%" height={height}>
         <PieChart>
           <Pie
@@ -134,8 +138,8 @@ export const PortfolioChart: React.FC<PortfolioChartProps> = ({
           </Pie>
           <Tooltip content={<CustomTooltip />} />
           {showLegend && (
-            <Legend 
-              verticalAlign="bottom" 
+            <Legend
+              verticalAlign="bottom"
               height={36}
               formatter={(value, entry: any) => (
                 <span className="text-sm text-gray-700">
@@ -155,24 +159,18 @@ export const PortfolioChart: React.FC<PortfolioChartProps> = ({
         <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
         <div className="flex items-center space-x-2">
           <DollarSign className="w-4 h-4 text-gray-600" />
-          <span className="text-sm font-medium text-gray-900">
-            ${totalValue.toLocaleString()}
-          </span>
+          <span className="text-sm font-medium text-gray-900">${totalValue.toLocaleString()}</span>
         </div>
       </div>
-      
+
       <ResponsiveContainer width="100%" height={height}>
         <BarChart data={data}>
           {showGrid && <CartesianGrid strokeDasharray="3 3" className="opacity-30" />}
-          <XAxis 
-            dataKey="asset" 
+          <XAxis dataKey="asset" tick={{ fontSize: 12 }} className="text-gray-600" />
+          <YAxis
             tick={{ fontSize: 12 }}
             className="text-gray-600"
-          />
-          <YAxis 
-            tick={{ fontSize: 12 }}
-            className="text-gray-600"
-            tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
+            tickFormatter={value => `$${(value / 1000).toFixed(0)}k`}
           />
           <Tooltip content={<CustomTooltip />} />
           <Bar dataKey="value" radius={[8, 8, 0, 0]}>
@@ -187,9 +185,8 @@ export const PortfolioChart: React.FC<PortfolioChartProps> = ({
 
   const renderAreaChart = () => {
     const cumulativeData = data.reduce((acc: any[], item, index) => {
-      const cumulativeValue = acc.length > 0 
-        ? acc[acc.length - 1].cumulativeValue + item.value 
-        : item.value;
+      const cumulativeValue =
+        acc.length > 0 ? acc[acc.length - 1].cumulativeValue + item.value : item.value;
       return [...acc, { ...item, cumulativeValue }];
     }, []);
 
@@ -204,25 +201,21 @@ export const PortfolioChart: React.FC<PortfolioChartProps> = ({
             </span>
           </div>
         </div>
-        
+
         <ResponsiveContainer width="100%" height={height}>
           <AreaChart data={cumulativeData}>
             {showGrid && <CartesianGrid strokeDasharray="3 3" className="opacity-30" />}
-            <XAxis 
-              dataKey="asset" 
+            <XAxis dataKey="asset" tick={{ fontSize: 12 }} className="text-gray-600" />
+            <YAxis
               tick={{ fontSize: 12 }}
               className="text-gray-600"
-            />
-            <YAxis 
-              tick={{ fontSize: 12 }}
-              className="text-gray-600"
-              tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
+              tickFormatter={value => `$${(value / 1000).toFixed(0)}k`}
             />
             <Tooltip content={<CustomTooltip />} />
-            <Area 
-              type="monotone" 
-              dataKey="cumulativeValue" 
-              stroke={colors[0]} 
+            <Area
+              type="monotone"
+              dataKey="cumulativeValue"
+              stroke={colors[0]}
               fill={colors[0]}
               fillOpacity={0.6}
               strokeWidth={2}
@@ -238,20 +231,21 @@ export const PortfolioChart: React.FC<PortfolioChartProps> = ({
       {type === 'pie' && renderPieChart()}
       {type === 'bar' && renderBarChart()}
       {type === 'area' && renderAreaChart()}
-      
+
       <div className="mt-6 grid grid-cols-2 gap-4">
         <div className="bg-gray-50 rounded-lg p-3">
           <p className="text-sm text-gray-600">Total Value</p>
-          <p className="text-lg font-semibold text-gray-900">
-            ${totalValue.toLocaleString()}
-          </p>
+          <p className="text-lg font-semibold text-gray-900">${totalValue.toLocaleString()}</p>
         </div>
         <div className="bg-gray-50 rounded-lg p-3">
           <p className="text-sm text-gray-600">24h Change</p>
-          <p className={`text-lg font-semibold ${
-            totalChangePercent >= 0 ? 'text-green-600' : 'text-red-600'
-          }`}>
-            {totalChangePercent >= 0 ? '+' : ''}{totalChangePercent.toFixed(2)}%
+          <p
+            className={`text-lg font-semibold ${
+              totalChangePercent >= 0 ? 'text-green-600' : 'text-red-600'
+            }`}
+          >
+            {totalChangePercent >= 0 ? '+' : ''}
+            {totalChangePercent.toFixed(2)}%
           </p>
         </div>
       </div>
