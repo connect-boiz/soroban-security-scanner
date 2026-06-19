@@ -53,7 +53,7 @@ const Modal: React.FC<ModalProps> = ({
 
   // Get all focusable elements within the modal
   const getFocusableElements = useCallback(() => {
-    if (!modalRef.current) return [];
+    if (!modalRef.current) { return []; }
     
     const selector = [
       'button:not([disabled])',
@@ -70,10 +70,10 @@ const Modal: React.FC<ModalProps> = ({
 
   // Trap focus within the modal
   const trapFocus = useCallback((event: KeyboardEvent) => {
-    if (!modalRef.current) return;
+    if (!modalRef.current) { return; }
 
     const focusableElements = getFocusableElements();
-    if (focusableElements.length === 0) return;
+    if (focusableElements.length === 0) { return; }
 
     const firstElement = focusableElements[0];
     const lastElement = focusableElements[focusableElements.length - 1];
@@ -127,7 +127,7 @@ const Modal: React.FC<ModalProps> = ({
 
   // Set up event listeners
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) { return; }
 
     // Add event listeners
     document.addEventListener('keydown', handleEscapeKey);
@@ -153,7 +153,7 @@ const Modal: React.FC<ModalProps> = ({
     };
   }, [isOpen, handleEscapeKey, trapFocus, restoreFocusRef]);
 
-  if (!isOpen) return null;
+  if (!isOpen) { return null; }
 
   const modalContent = (
     <div

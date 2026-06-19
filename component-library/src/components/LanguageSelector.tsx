@@ -1,5 +1,4 @@
 import React from 'react';
-import { useTranslation } from 'react-i18next';
 import { useLanguage, supportedLanguages } from '../i18n/config';
 
 interface LanguageSelectorProps {
@@ -8,7 +7,6 @@ interface LanguageSelectorProps {
 }
 
 export function LanguageSelector({ className, showFlags = true }: LanguageSelectorProps) {
-  const { i18n } = useTranslation();
   const { currentLanguage, changeLanguage, direction } = useLanguage();
 
   const handleLanguageChange = async (languageCode: string) => {

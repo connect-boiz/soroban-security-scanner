@@ -17,7 +17,7 @@ export interface DialogProps extends Omit<ModalProps, 'size' | 'children'> {
 }
 
 const Dialog: React.FC<DialogProps> = ({
-  title,
+  _title,
   message,
   confirmText = 'Confirm',
   cancelText = 'Cancel',
@@ -31,22 +31,23 @@ const Dialog: React.FC<DialogProps> = ({
   ...modalProps
 }) => {
   const confirmButtonRef = useRef<HTMLButtonElement>(null);
+  const { onClose } = modalProps;
 
   const handleConfirm = useCallback(async () => {
     if (onConfirm && !isConfirmLoading && !isConfirmDisabled) {
       await onConfirm();
       if (!isConfirmLoading) {
-        modalProps.onClose();
+        onClose();
       }
     }
-  }, [onConfirm, isConfirmLoading, isConfirmDisabled, modalProps.onClose]);
+  }, [onConfirm, isConfirmLoading, isConfirmDisabled, onClose]);
 
   const handleCancel = useCallback(() => {
     if (onCancel) {
       onCancel();
     }
-    modalProps.onClose();
-  }, [onCancel, modalProps.onClose]);
+    onClose();
+  }, [onCancel, onClose]);
 
   // Variant styles
   const variantStyles: Record<string, { confirm: string; cancel: string }> = {

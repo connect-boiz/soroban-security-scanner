@@ -45,7 +45,7 @@ export function LazyImage({
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined') { return; }
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
@@ -55,7 +55,7 @@ export function LazyImage({
       },
       { rootMargin: '200px' },
     );
-    if (ref.current) observer.observe(ref.current);
+    if (ref.current) { observer.observe(ref.current); }
     return () => observer.disconnect();
   }, []);
 

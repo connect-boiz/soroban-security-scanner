@@ -185,7 +185,7 @@ const ConversionPanel: React.FC<{
   const [amount, setAmount] = useState('1');
 
   const getConversionRate = (from: string, to: string): number => {
-    if (from === to) return 1;
+    if (from === to) { return 1; }
     const rate = conversionRates.find(r => r.from === from && r.to === to);
     return rate?.rate || 0;
   };
@@ -278,7 +278,7 @@ export const BalanceDisplay: React.FC<BalanceDisplayProps> = ({
 
   // Real-time updates simulation
   useEffect(() => {
-    if (!realTimeUpdates) return;
+    if (!realTimeUpdates) { return; }
 
     const interval = setInterval(() => {
       setTokens(prevTokens => 

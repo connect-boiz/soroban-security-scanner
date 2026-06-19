@@ -5,7 +5,7 @@ import { useRTLStyles } from '../hooks/useRTL';
 
 export function I18nDemo() {
   const { t } = useTranslation('common');
-  const { getStyle, getTextAlign, getMarginStyle, direction } = useRTLStyles();
+  const { getTextAlign, getMarginStyle, direction } = useRTLStyles();
 
   const currentDate = new Date();
   const sampleAmount = 1234.56;
