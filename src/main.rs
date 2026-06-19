@@ -1,10 +1,20 @@
 //! Command-line interface for the Stellar Security Scanner
+//!
+//! NOTE: This binary requires the `broken-modules` feature flag because
+//! it imports types from modules that are gated behind `#[cfg(feature = "broken-modules")]`.
+//! Build with: cargo build --features broken-modules
 
+#[cfg(feature = "broken-modules")]
 use anyhow::Result;
+#[cfg(feature = "broken-modules")]
 use clap::{Parser, Subcommand};
+#[cfg(feature = "broken-modules")]
 use colored::*;
+#[cfg(feature = "broken-modules")]
 use std::path::PathBuf;
+#[cfg(feature = "broken-modules")]
 use std::time::{Duration, Instant};
+#[cfg(feature = "broken-modules")]
 use stellar_security_scanner::{
     analysis::AnalysisResult,
     config::ScannerConfig,

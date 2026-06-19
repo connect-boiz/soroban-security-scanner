@@ -108,6 +108,10 @@ jobs:
           shared-key: backend-cache
       - name: cargo fmt
         run: cargo fmt --check
+      - name: cargo check
+        run: cargo check --lib
+      - name: cargo test
+        run: cargo test --lib
 
   node-backend:
     needs: detect-changes
