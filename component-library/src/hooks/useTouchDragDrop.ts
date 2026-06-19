@@ -43,7 +43,7 @@ export function useTouchDragDrop<T>(initialItems: T[]): TouchDragDropState<T> & 
     (e: React.DragEvent, index: number) => {
       e.preventDefault();
       setIsDragOver(true);
-      if (dragIndex === null || dragIndex === index) return;
+      if (dragIndex === null || dragIndex === index) {return;}
       setItems((prev) => {
         const next = [...prev];
         const [moved] = next.splice(dragIndex, 1);
@@ -64,7 +64,7 @@ export function useTouchDragDrop<T>(initialItems: T[]): TouchDragDropState<T> & 
     e.preventDefault();
     setIsDragOver(false);
     const files = Array.from(e.dataTransfer.files);
-    if (files.length) onFiles(files);
+    if (files.length) {onFiles(files);}
   }, []);
 
   // ── Touch ──────────────────────────────────────────────────────────────────
@@ -83,17 +83,17 @@ export function useTouchDragDrop<T>(initialItems: T[]): TouchDragDropState<T> & 
 
   const onTouchMove = useCallback((e: TouchEvent) => {
     e.preventDefault(); // prevent page scroll while dragging
-    if (touchDragIndex.current === null) return;
+    if (touchDragIndex.current === null) {return;}
 
     const deltaY = e.touches[0].clientY - touchStartY.current;
     const steps = Math.round(deltaY / itemHeightRef.current);
-    if (steps === 0) return;
+    if (steps === 0) {return;}
 
     const from = touchDragIndex.current;
     const to = Math.max(0, from + steps);
 
     setItems((prev) => {
-      if (to >= prev.length) return prev;
+      if (to >= prev.length) {return prev;}
       const next = [...prev];
       const [moved] = next.splice(from, 1);
       next.splice(to, 0, moved);

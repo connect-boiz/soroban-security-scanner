@@ -45,7 +45,7 @@ function calculateSignersNeeded(threshold: number, signers: SignerInfo[]): numbe
   for (const signer of sortedSigners) {
     accumulated += signer.weight;
     count++;
-    if (accumulated >= threshold) break;
+    if (accumulated >= threshold) {break;}
   }
 
   return count;
@@ -103,7 +103,7 @@ function analyzeSecurity(config: MultiSigConfig): {
 }
 
 function formatDuration(seconds: number): string {
-  if (seconds === 0) return 'None';
+  if (seconds === 0) {return 'None';}
   
   const days = Math.floor(seconds / 86400);
   const hours = Math.floor((seconds % 86400) / 3600);
@@ -128,21 +128,6 @@ function truncatePublicKey(publicKey: string, startChars: number = 8, endChars: 
 
 function generateSignerId(): string {
   return Date.now().toString() + Math.random().toString(36).substr(2, 9);
-}
-
-function isValidPublicKey(publicKey: string, scheme: string): boolean {
-  if (!publicKey) return false;
-  
-  switch (scheme) {
-    case 'ed25519':
-      return /^G[A-Z0-9]{55}$/.test(publicKey);
-    case 'secp256k1':
-      return /^0[2-3][0-9a-fA-F]{64}$/.test(publicKey);
-    case 'p256':
-      return /^0[2-3][0-9a-fA-F]{64}$/.test(publicKey);
-    default:
-      return false;
-  }
 }
 
 function validateMultiSigConfig(config: MultiSigConfig): ValidationResult {
@@ -216,7 +201,7 @@ export function MultiSigWizard({
   // Validation functions
   const validateStep = useCallback((): ValidationResult => {
     switch (currentStep) {
-      case 'basic-info':
+      case 'basic-info': {
         const basicErrors: string[] = [];
         const basicWarnings: string[] = [];
 
@@ -237,6 +222,7 @@ export function MultiSigWizard({
           errors: basicErrors,
           warnings: basicWarnings
         };
+      }
       case 'signers':
       case 'threshold':
       case 'advanced':
@@ -307,7 +293,7 @@ export function MultiSigWizard({
     }));
   };
 
-  const handleConfigCreate = () => {
+  const handleCreate = () => {
     if (onConfigCreate && canProceed) {
       onConfigCreate(config);
     }

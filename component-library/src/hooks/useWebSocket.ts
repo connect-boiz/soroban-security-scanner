@@ -51,7 +51,7 @@ export function useWebSocket(url: string, options: UseWebSocketOptions = {}) {
   useEffect(() => {
     connect();
     return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      if (timeoutRef.current) {clearTimeout(timeoutRef.current);}
       wsRef.current?.close();
     };
   }, [connect]);

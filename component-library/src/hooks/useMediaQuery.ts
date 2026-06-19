@@ -9,7 +9,7 @@ export function useMediaQuery(query: string): boolean {
   const [matches, setMatches] = useState(false);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined') {return;}
     const mql = window.matchMedia(query);
     setMatches(mql.matches);
     const handler = (e: MediaQueryListEvent) => setMatches(e.matches);
@@ -40,10 +40,10 @@ export function useActiveBreakpoint(): Breakpoint | 'xs' {
   const isLg = useMediaQuery(mediaQuery('lg'));
   const isXl = useMediaQuery(mediaQuery('xl'));
 
-  if (isXl) return 'xl';
-  if (isLg) return 'lg';
-  if (isMd) return 'md';
-  if (isSm) return 'sm';
+  if (isXl) {return 'xl';}
+  if (isLg) {return 'lg';}
+  if (isMd) {return 'md';}
+  if (isSm) {return 'sm';}
   return 'xs';
 }
 

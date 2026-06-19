@@ -6,7 +6,6 @@ const {
   NotificationPriority,
   Recipient,
   NotificationPreferences,
-  QuietHours,
   NotificationTemplate,
   TemplateVariable,
   VariableType

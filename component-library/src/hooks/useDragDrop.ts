@@ -12,7 +12,7 @@ export function useDragDrop<T>(initialItems: T[]) {
   const onDragOver = useCallback((e: DragEvent, index: number) => {
     e.preventDefault();
     setIsDragOver(true);
-    if (dragIndex === null || dragIndex === index) return;
+    if (dragIndex === null || dragIndex === index) {return;}
     setItems((prev) => {
       const next = [...prev];
       const [moved] = next.splice(dragIndex, 1);
@@ -31,7 +31,7 @@ export function useDragDrop<T>(initialItems: T[]) {
     e.preventDefault();
     setIsDragOver(false);
     const files = Array.from(e.dataTransfer.files);
-    if (files.length) onFiles(files);
+    if (files.length) {onFiles(files);}
   }, []);
 
   return { items, setItems, dragIndex, isDragOver, onDragStart, onDragOver, onDragEnd, onFileDrop };

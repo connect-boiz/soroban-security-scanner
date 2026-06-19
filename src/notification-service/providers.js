@@ -129,7 +129,6 @@ class EmailProvider extends NotificationProvider {
     }
 
     const startTime = Date.now();
-    const trackingId = `email_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
     try {
       const mailOptions = {
@@ -352,7 +351,6 @@ class PushProvider extends NotificationProvider {
         console.log(`Push sent to device ${deviceToken}: ${message.subject}`);
         successCount++;
       } catch (error) {
-        const _failure = true;
         errors.push(error.message);
       }
     }

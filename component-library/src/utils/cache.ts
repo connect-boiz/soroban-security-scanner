@@ -11,7 +11,7 @@ function set<T>(key: string, data: T, ttlMs = 5 * 60 * 1000): void {
 
 function get<T>(key: string): T | null {
   const entry = memoryCache.get(key) as CacheEntry<T> | undefined;
-  if (!entry) return null;
+  if (!entry) {return null;}
   if (Date.now() > entry.expiresAt) {
     memoryCache.delete(key);
     return null;
@@ -39,7 +39,7 @@ function persist<T>(key: string, data: T, ttlMs = 60 * 60 * 1000): void {
 function load<T>(key: string): T | null {
   try {
     const raw = localStorage.getItem(key);
-    if (!raw) return null;
+    if (!raw) {return null;}
     const entry: CacheEntry<T> = JSON.parse(raw);
     if (Date.now() > entry.expiresAt) {
       localStorage.removeItem(key);
@@ -57,7 +57,7 @@ async function fetchWithCache<T>(
   ttlMs = 5 * 60 * 1000
 ): Promise<T> {
   const cached = get<T>(key);
-  if (cached !== null) return cached;
+  if (cached !== null) {return cached;}
   const data = await fetcher();
   set(key, data, ttlMs);
   return data;

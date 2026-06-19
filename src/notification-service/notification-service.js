@@ -199,11 +199,6 @@ class NotificationService {
       recipient = new Recipient(recipient);
     }
 
-    const _scheduledMessage = new NotificationMessage({
-      ...message,
-      scheduledFor
-    });
-
     // In a real implementation, this would store in a database and use a job scheduler
     const jobId = uuidv4();
     
