@@ -11,13 +11,9 @@ import {
   Settings,
   Activity,
   Shield,
-  Zap,
-  Clock,
   Plus,
   HelpCircle,
-  FileText,
   ShieldCheck,
-  Users,
 } from 'lucide-react';
 
 // Help components
@@ -99,7 +95,7 @@ const MultiSigWizard = dynamic(() => import('../components/MultiSigWizard'), {
 });
 
 // Mock components for missing files to avoid build breakage
-const BountyBoard = ({ onBountySelect }: { onBountySelect: (bounty: Bounty) => void }) => (
+const BountyBoard = () => (
   <div className="p-8 text-center bg-white rounded-xl border border-dashed border-gray-300">
     <Search className="h-12 w-12 text-gray-400 mx-auto mb-4" />
     <h3 className="text-xl font-bold">Bounty Board</h3>
@@ -153,14 +149,7 @@ export default function App() {
   const [showDisputeForm, setShowDisputeForm] = useState(false);
   const [selectedSubmission, setSelectedSubmission] = useState<BountySubmissionType | null>(null);
   const [disputes, setDisputes] = useState<DisputeData[]>([]);
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-
   const { setActiveTour, helpPanelTopic, setHelpPanelTopic } = useHelpStore();
-
-  const handleBountySelect = (bounty: Bounty) => {
-    setSelectedBounty(bounty);
-    setShowReportForm(true);
-  };
 
   const handleReportSubmit = (submission: BountySubmissionType) => {
     console.log('Report submitted:', submission);

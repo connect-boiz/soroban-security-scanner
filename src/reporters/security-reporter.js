@@ -1,5 +1,5 @@
 const chalk = require('chalk');
-const { t } = require('./i18n/config');
+const { t } = require('../i18n/config');
 
 class SecurityReporter {
   generate(vulnerabilities, format = 'text') {
