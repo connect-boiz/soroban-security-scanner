@@ -51,6 +51,10 @@ impl Severity {
     }
 }
 
+// === Clean modules (no feature gate needed) ===
+// The api_versioning module compiles cleanly without the broken-modules feature.
+pub mod api_versioning;
+
 // === Broken modules gated behind feature flag ===
 // Each module has pre-existing compilation errors (borrow checker violations,
 // missing trait impls, type mismatches, unresolved imports) that are being
