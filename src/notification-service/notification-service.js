@@ -4,17 +4,14 @@ const { v4: uuidv4 } = require('uuid');
 const {
   NotificationChannel,
   NotificationPriority,
-  DeliveryStatus,
   Recipient,
   NotificationMessage,
-  NotificationResult,
-  ProviderConfig,
-  RateLimit
+  NotificationResult
 } = require('./types');
 
-const { TemplateManager, TemplateError } = require('./template-manager');
-const { DeliveryTracker, TrackingError } = require('./delivery-tracker');
-const { ProviderFactory, ProviderError } = require('./providers');
+const { TemplateManager } = require('./template-manager');
+const { DeliveryTracker } = require('./delivery-tracker');
+const { ProviderFactory } = require('./providers');
 
 class ServiceError extends Error {
   constructor(message, code) {

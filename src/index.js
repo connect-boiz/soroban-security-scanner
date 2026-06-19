@@ -3,11 +3,10 @@
 const { Command } = require('commander');
 const chalk = require('chalk');
 const fs = require('fs');
-const path = require('path');
 const TimeBasedAttackDetector = require('./detectors/time-based-attack-detector');
 const SecurityReporter = require('./reporters/security-reporter');
 const { NotificationService, NotificationChannel, NotificationPriority, Recipient, NotificationPreferences } = require('./notification-service');
-const { initializeI18n, t, getTextDirection, formatCurrency, formatDate } = require('./i18n/config');
+const { initializeI18n, t } = require('./i18n/config');
 
 // Notification service
 let notificationService = null;

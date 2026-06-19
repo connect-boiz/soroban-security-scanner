@@ -6,7 +6,6 @@ const {
   DeliveryTracking,
   ChannelStats,
   DeliveryStats,
-  HourlyStats,
   ProviderStats
 } = require('./types');
 
