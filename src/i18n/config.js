@@ -1,5 +1,9 @@
-const { Backend } = require('i18next-fs-backend');
 const i18next = require('i18next');
+
+// Load translation resources synchronously for test/CLI usage
+const enCommon = require('../../locales/en/common.json');
+const esCommon = require('../../locales/es/common.json');
+const arCommon = require('../../locales/ar/common.json');
 
 const i18nConfig = {
   // Supported languages
@@ -9,17 +13,19 @@ const i18nConfig = {
   fallbackLng: 'en',
 
   // Debug mode (disable in production)
+  lng: (process.env.LANG || 'en').split('.')[0].split('_')[0],
   debug: process.env.NODE_ENV === 'development',
 
-  // Backend configuration
-  backend: {
-    loadPath: './locales/{{lng}}/{{ns}}.json',
-    addPath: './locales/{{lng}}/{{ns}}.json',
+  // Resources loaded directly (no fs-backend needed)
+  resources: {
+    en: { common: enCommon },
+    es: { common: esCommon },
+    ar: { common: arCommon },
   },
 
   // Interpolation configuration
   interpolation: {
-    escapeValue: false, // React already escapes
+    escapeValue: false,
     format: function (value, format, lng) {
       if (format === 'currency') {
         const currencyFormats = {
@@ -45,39 +51,16 @@ const i18nConfig = {
       return value;
     },
   },
-
-  // Language detection
-  detection: {
-    // Order of detection methods
-    order: ['querystring', 'env', 'header'],
-
-    // Query string parameter name
-    lookupQuerystring: 'lang',
-
-    // Environment variable name
-    lookupFromEnv: 'LANG',
-
-    // Header name
-    lookupHeader: 'accept-language',
-
-    // Cache
-    caches: false,
-  },
 };
 
+// Initialize i18next synchronously
+i18next.init(i18nConfig);
+
 /**
- * Initialize i18next with the configuration
+ * Initialize i18next (synchronous, already done above)
  */
 async function initializeI18n() {
-  try {
-    await i18next.use(Backend).init(i18nConfig);
-
-    console.log('✅ i18next initialized successfully');
-    return i18next;
-  } catch (error) {
-    console.error('❌ Failed to initialize i18next:', error);
-    throw error;
-  }
+  return i18next;
 }
 
 /**
