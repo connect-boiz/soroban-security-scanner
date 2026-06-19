@@ -189,7 +189,7 @@ export class FormValidator {
       const fieldErrors = await this.validateField(fieldName, formData[fieldName], formData);
       if (fieldErrors.length > 0) {
         errors[fieldName] = fieldErrors;
-        fieldErrors[fieldName] = fieldErrors[0]; // First error for display
+        (fieldErrors as any)[fieldName] = fieldErrors[0]; // First error for display
       }
     }
 

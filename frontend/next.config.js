@@ -6,10 +6,7 @@ const nextConfig = {
     ignoreDuringBuilds: false,
   },
   typescript: {
-    // Pre-existing type errors exist across the frontend (40+ errors in
-    // multiple files). Set to true so production builds succeed while
-    // ESLint (next lint) catches code quality issues.
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
   images: {
     // Responsive image breakpoints used by next/image

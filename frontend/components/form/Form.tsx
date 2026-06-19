@@ -2,7 +2,8 @@
 
 import React, { ReactNode } from 'react';
 import { useFormValidation } from '@/hooks/useFormValidation';
-import { FormConfig, UseFormValidationOptions } from '@/utils/validation';
+import { FormConfig } from '@/utils/validation';
+import { UseFormValidationOptions } from '@/hooks/useFormValidation';
 
 export interface FormProps<T extends Record<string, any>> {
   config: FormConfig;

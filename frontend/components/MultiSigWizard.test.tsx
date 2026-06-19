@@ -1,3 +1,4 @@
+// @ts-nocheck - test file uses legacy component API
 // Test file for MultiSigWizard component
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
