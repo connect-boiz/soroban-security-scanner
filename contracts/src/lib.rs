@@ -25,6 +25,7 @@ const REPORT_NONCES: Symbol = symbol_short!("RPTNONC");
 const ESCROW_NONCES: Symbol = symbol_short!("ESCNONC");
 const ALERT_NONCES: Symbol = symbol_short!("ALRNONC");
 const MAX_TEXT_LEN: u32 = 280;
+const MAX_BATCH_SIZE: usize = 50; // Issue #358: Max batch size for batch vulnerability verification
 const DISPUTE_DEADLINE: u64 = 7 * 24 * 60 * 60; // 7 days in seconds
 const MIN_DISPUTE_QUORUM: u64 = 3; // Minimum 3 votes required for quorum
 const MIN_REPUTATION_SCORE: u64 = 50; // Minimum reputation to vote on disputes
@@ -1348,6 +1349,106 @@ impl SecurityScannerContract {
         Ok(())
     }
 
+    /// Batch verify multiple vulnerabilities in a single transaction
+    /// Issue #358: Gas optimization for bulk vulnerability verification
+    pub fn batch_verify_vulnerabilities(
+        env: Env,
+        admin: Address,
+        report_ids: Vec<u64>,
+        bounty_amounts: Vec<i128>,
+    ) -> Result<Vec<u64>, ContractError> {
+        admin.require_auth();
+        Self::require_non_default_address(&admin)?;
+
+        // Check role-based permissions
+        Self::require_permission(&env, &admin, Permission::VerifyVulnerability)?;
+
+        // Validate batch size
+        let batch_len = report_ids.len();
+        if batch_len == 0 || batch_len > MAX_BATCH_SIZE {
+            return Err(ContractError::InvalidInput);
+        }
+
+        // Validate lengths match
+        if batch_len != bounty_amounts.len() {
+            return Err(ContractError::InvalidInput);
+        }
+
+        // Check for duplicate report IDs
+        let mut seen: Vec<u64> = Vec::new(&env);
+        for report_id in report_ids.iter() {
+            for s in seen.iter() {
+                if report_id == s {
+                    return Err(ContractError::InvalidInput); // Duplicate detected
+                }
+            }
+            seen.push_back(report_id);
+        }
+
+        // Process batch and collect successful verifications
+        let mut successful_ids = Vec::new(&env);
+        let mut reports: Map<u64, VulnerabilityReport> = env
+            .storage()
+            .instance()
+            .get(&REPORTS)
+            .unwrap_or(Map::new(&env));
+
+        for i in 0..batch_len {
+            let report_id = report_ids.get(i).unwrap();
+            let bounty_amount = bounty_amounts.get(i).unwrap();
+
+            // Validate amount
+            if bounty_amount <= 0 {
+                // Emit failure event and skip
+                env.events().publish(
+                    (Symbol::new(&env, "batch_verify_failure"),),
+                    (report_id, bounty_amount, String::from_str(&env, "invalid_bounty")),
+                );
+                continue;
+            }
+
+            // Check if report exists
+            if !reports.contains_key(report_id) {
+                env.events().publish(
+                    (Symbol::new(&env, "batch_verify_failure"),),
+                    (report_id, bounty_amount, String::from_str(&env, "not_found")),
+                );
+                continue;
+            }
+
+            // Check high bounty threshold for multi-sig
+            if bounty_amount > 1_000_000i128 {
+                env.events().publish(
+                    (Symbol::new(&env, "batch_verify_skipped"),),
+                    (report_id, bounty_amount, String::from_str(&env, "multisig_required")),
+                );
+                continue;
+            }
+
+            // Verify this report
+            let mut report = reports.get(report_id).unwrap();
+            report.status = String::from_str(&env, "verified");
+            report.bounty_amount = bounty_amount;
+            reports.set(report_id, report.clone());
+
+            // Update researcher reputation
+            let _ = Self::update_reputation(&env, report.reporter.clone(), 1, bounty_amount);
+
+            // Emit success event
+            env.events().publish(
+                (Symbol::new(&env, "batch_verify_success"),),
+                (report_id, bounty_amount),
+            );
+
+            successful_ids.push_back(report_id);
+        }
+
+        // Store updated reports
+        env.storage().instance().set(&REPORTS, &reports);
+
+        Ok(successful_ids)
+    }
+
     /// Get escrow details
     pub fn get_escrow(env: Env, escrow_id: u64) -> Result<EscrowEntry, ContractError> {
         let escrows: Map<u64, EscrowEntry> = env
@@ -2404,3 +2505,10 @@ mod security_tests;
 
 #[cfg(test)]
 mod dispute_tests;
+
+#[cfg(test)]
+mod batch_verify_tests;
+
+#[cfg(test)]
+mod gas_benchmarks;
+
