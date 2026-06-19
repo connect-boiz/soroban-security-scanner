@@ -1,8 +1,8 @@
 #![cfg_attr(target_family = "wasm", no_std)]
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Bytes, BytesN, Env,
-    Map, String, Symbol, Vec,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short, Address,
+    Bytes, BytesN, Env, Map, String, Symbol, Vec,
 };
 
 // Contract state keys
@@ -24,6 +24,7 @@ const ALERT_COUNTER: Symbol = symbol_short!("ALRTCTR");
 const REPORT_NONCES: Symbol = symbol_short!("RPTNONC");
 const ESCROW_NONCES: Symbol = symbol_short!("ESCNONC");
 const ALERT_NONCES: Symbol = symbol_short!("ALRNONC");
+const REENTRANCY_LOCK: Symbol = symbol_short!("REENTR");
 const MAX_TEXT_LEN: u32 = 280;
 const DISPUTE_DEADLINE: u64 = 7 * 24 * 60 * 60; // 7 days in seconds
 const MIN_DISPUTE_QUORUM: u64 = 3; // Minimum 3 votes required for quorum
@@ -178,6 +179,7 @@ pub enum ContractError {
     AlreadyVoted = 27,
     DisputeAlreadyResolved = 28,
     DisputeNotFound = 29,
+    ReentrantCall = 30,
 }
 
 // Vulnerability structure
@@ -272,6 +274,35 @@ pub struct Dispute {
 
 #[contract]
 pub struct SecurityScannerContract;
+
+/// Holds the contract-wide reentrancy mutex for the lifetime of an entry point.
+/// Soroban rolls storage back if execution panics, so a failed invocation cannot
+/// leave the contract permanently locked.
+struct ReentrancyGuard {
+    env: Env,
+}
+
+impl ReentrancyGuard {
+    fn acquire(env: &Env) -> Self {
+        if env
+            .storage()
+            .instance()
+            .get(&REENTRANCY_LOCK)
+            .unwrap_or(false)
+        {
+            panic_with_error!(env, ContractError::ReentrantCall);
+        }
+
+        env.storage().instance().set(&REENTRANCY_LOCK, &true);
+        Self { env: env.clone() }
+    }
+}
+
+impl Drop for ReentrancyGuard {
+    fn drop(&mut self) {
+        self.env.storage().instance().remove(&REENTRANCY_LOCK);
+    }
+}
 
 #[contractimpl]
 impl SecurityScannerContract {
@@ -595,6 +626,7 @@ impl SecurityScannerContract {
 
     /// Initialize the contract with admin address
     pub fn initialize(env: Env, admin: Address) -> Result<(), ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         if env.storage().instance().has(&ADMIN) {
             return Err(ContractError::Unauthorized);
         }
@@ -665,6 +697,7 @@ impl SecurityScannerContract {
         description: String,
         location: String,
     ) -> Result<u64, ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         // Verify reporter is authorized
         reporter.require_auth();
         Self::require_non_default_address(&reporter)?;
@@ -716,6 +749,7 @@ impl SecurityScannerContract {
         report_id: u64,
         bounty_amount: i128,
     ) -> Result<(), ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         admin.require_auth();
         Self::require_non_default_address(&admin)?;
         Self::require_positive_amount(bounty_amount)?;
@@ -776,6 +810,7 @@ impl SecurityScannerContract {
         required_approvals: u64,
         execution_delay: u64,
     ) -> Result<u64, ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         proposer.require_auth();
         Self::require_permission(&env, &proposer, Permission::VerifyVulnerability)?;
 
@@ -801,6 +836,7 @@ impl SecurityScannerContract {
         approver: Address,
         proposal_id: u64,
     ) -> Result<(), ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         approver.require_auth();
         Self::require_permission(&env, &approver, Permission::VerifyVulnerability)?;
 
@@ -813,6 +849,7 @@ impl SecurityScannerContract {
         executor: Address,
         proposal_id: u64,
     ) -> Result<(), ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         executor.require_auth();
         Self::require_permission(&env, &executor, Permission::VerifyVulnerability)?;
 
@@ -862,6 +899,7 @@ impl SecurityScannerContract {
         env: Env,
         report_id: u64,
     ) -> Result<VulnerabilityReport, ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         let reports: Map<u64, VulnerabilityReport> = env
             .storage()
             .instance()
@@ -872,6 +910,7 @@ impl SecurityScannerContract {
 
     /// Get researcher reputation
     pub fn get_reputation(env: Env, researcher: Address) -> Result<Reputation, ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         let rep_map: Map<Address, Reputation> = env
             .storage()
             .instance()
@@ -882,6 +921,7 @@ impl SecurityScannerContract {
 
     /// Add funds to bounty pool
     pub fn fund_bounty_pool(env: Env, funder: Address, amount: i128) -> Result<(), ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         funder.require_auth();
         Self::require_non_default_address(&funder)?;
         Self::require_positive_amount(amount)?;
@@ -895,6 +935,7 @@ impl SecurityScannerContract {
 
     /// Get bounty pool balance
     pub fn get_bounty_pool(env: Env) -> i128 {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         env.storage().instance().get(&BOUNTY_POOL).unwrap_or(0i128)
     }
 
@@ -935,6 +976,18 @@ impl SecurityScannerContract {
 
     /// Create escrow entry for bounty payment
     pub fn create_escrow(
+        env: Env,
+        depositor: Address,
+        beneficiary: Address,
+        amount: i128,
+        purpose: String,
+        lock_duration: u64,
+    ) -> Result<u64, ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        Self::create_escrow_internal(env, depositor, beneficiary, amount, purpose, lock_duration)
+    }
+
+    fn create_escrow_internal(
         env: Env,
         depositor: Address,
         beneficiary: Address,
@@ -996,56 +1049,15 @@ impl SecurityScannerContract {
         depositor: Address,
         signature: Option<Bytes>,
     ) -> Result<(), ContractError> {
-        depositor.require_auth();
-
-        let mut escrows: Map<u64, EscrowEntry> = env
-            .storage()
-            .instance()
-            .get(&ESCROWS)
-            .unwrap_or(Map::new(&env));
-        let mut escrow: EscrowEntry = escrows.get(escrow_id).ok_or(ContractError::NotFound)?;
-
-        // Verify depositor authorization
-        if escrow.depositor != depositor {
-            return Err(ContractError::Unauthorized);
-        }
-
-        // Check if escrow can be released
-        if escrow.status == String::from_str(&env, "released") {
-            return Err(ContractError::InvalidEscrowStatus);
-        }
-
-        let current_time = env.ledger().timestamp();
-
-        // Allow release if conditions are met or lock period has expired
-        if !escrow.conditions_met && current_time < escrow.lock_until {
-            return Err(ContractError::EscrowLocked);
-        }
-
-        Self::execute_payout_placeholder(&env, &escrow.beneficiary, escrow.amount, escrow_id)?;
-
-        // Update escrow status
-        escrow.status = String::from_str(&env, "released");
-        escrow.release_signature = signature;
-        escrows.set(escrow_id, escrow.clone());
-        env.storage().instance().set(&ESCROWS, &escrows);
-
-        // Update escrow pool
-        let mut escrow_pool: i128 = env.storage().instance().get(&ESCROW).unwrap_or(0i128);
-        escrow_pool = Self::checked_sub_i128(escrow_pool, escrow.amount)?;
-        env.storage().instance().set(&ESCROW, &escrow_pool);
-
-        // In a real implementation, you would transfer the tokens here
-        // For now, we just update the state
-
-        Ok(())
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        Self::release_escrow_internal(env, escrow_id, depositor, signature)
     }
 
-    /// Refund escrow funds to depositor
-    pub fn refund_escrow(
+    fn release_escrow_internal(
         env: Env,
         escrow_id: u64,
         depositor: Address,
+        signature: Option<Bytes>,
     ) -> Result<(), ContractError> {
         depositor.require_auth();
 
@@ -1061,8 +1073,62 @@ impl SecurityScannerContract {
             return Err(ContractError::Unauthorized);
         }
 
+        // Check if escrow can be released
+        if escrow.status == String::from_str(&env, "released")
+            || escrow.status == String::from_str(&env, "refunded")
+        {
+            return Err(ContractError::InvalidEscrowStatus);
+        }
+
+        let current_time = env.ledger().timestamp();
+
+        // Allow release if conditions are met or lock period has expired
+        if !escrow.conditions_met && current_time < escrow.lock_until {
+            return Err(ContractError::EscrowLocked);
+        }
+
+        // Effects: make the escrow non-spendable before interacting with the recipient.
+        escrow.status = String::from_str(&env, "released");
+        escrow.release_signature = signature;
+        escrows.set(escrow_id, escrow.clone());
+        env.storage().instance().set(&ESCROWS, &escrows);
+
+        // Update escrow pool
+        let mut escrow_pool: i128 = env.storage().instance().get(&ESCROW).unwrap_or(0i128);
+        escrow_pool = Self::checked_sub_i128(escrow_pool, escrow.amount)?;
+        env.storage().instance().set(&ESCROW, &escrow_pool);
+
+        // Interaction: a token transfer will replace this placeholder.
+        Self::execute_payout_placeholder(&env, &escrow.beneficiary, escrow.amount, escrow_id)?;
+
+        Ok(())
+    }
+
+    /// Refund escrow funds to depositor
+    pub fn refund_escrow(
+        env: Env,
+        escrow_id: u64,
+        depositor: Address,
+    ) -> Result<(), ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        depositor.require_auth();
+
+        let mut escrows: Map<u64, EscrowEntry> = env
+            .storage()
+            .instance()
+            .get(&ESCROWS)
+            .unwrap_or(Map::new(&env));
+        let mut escrow: EscrowEntry = escrows.get(escrow_id).ok_or(ContractError::NotFound)?;
+
+        // Verify depositor authorization
+        if escrow.depositor != depositor {
+            return Err(ContractError::Unauthorized);
+        }
+
         // Check if escrow can be refunded
-        if escrow.status == String::from_str(&env, "released") {
+        if escrow.status == String::from_str(&env, "released")
+            || escrow.status == String::from_str(&env, "refunded")
+        {
             return Err(ContractError::InvalidEscrowStatus);
         }
 
@@ -1073,9 +1139,7 @@ impl SecurityScannerContract {
             return Err(ContractError::EscrowLocked);
         }
 
-        Self::execute_payout_placeholder(&env, &escrow.depositor, escrow.amount, escrow_id)?;
-
-        // Update escrow status
+        // Effects: make the escrow non-spendable before interacting with the depositor.
         escrow.status = String::from_str(&env, "refunded");
         escrows.set(escrow_id, escrow.clone());
         env.storage().instance().set(&ESCROWS, &escrows);
@@ -1085,14 +1149,23 @@ impl SecurityScannerContract {
         escrow_pool = Self::checked_sub_i128(escrow_pool, escrow.amount)?;
         env.storage().instance().set(&ESCROW, &escrow_pool);
 
-        // In a real implementation, you would transfer tokens back to depositor
-        // For now, we just update the state
+        // Interaction: a token transfer will replace this placeholder.
+        Self::execute_payout_placeholder(&env, &escrow.depositor, escrow.amount, escrow_id)?;
 
         Ok(())
     }
 
     /// Mark escrow conditions as met (requires EscrowManager role)
     pub fn mark_escrow_conditions_met(
+        env: Env,
+        escrow_id: u64,
+        admin: Address,
+    ) -> Result<(), ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        Self::mark_escrow_conditions_met_internal(env, escrow_id, admin)
+    }
+
+    fn mark_escrow_conditions_met_internal(
         env: Env,
         escrow_id: u64,
         admin: Address,
@@ -1127,6 +1200,7 @@ impl SecurityScannerContract {
         description: String,
         location: String,
     ) -> Result<u64, ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         Self::require_non_default_address(&reporter)?;
         Self::require_valid_text(&vulnerability_type)?;
         Self::require_valid_text(&severity)?;
@@ -1188,6 +1262,7 @@ impl SecurityScannerContract {
         _alert_id: u64,
         _verified: bool,
     ) -> Result<(), ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         admin.require_auth();
         Self::require_non_default_address(&admin)?;
 
@@ -1207,6 +1282,7 @@ impl SecurityScannerContract {
         required_approvals: u64,
         execution_delay: u64,
     ) -> Result<u64, ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         proposer.require_auth();
         Self::require_permission(&env, &proposer, Permission::VerifyEmergency)?;
 
@@ -1244,6 +1320,7 @@ impl SecurityScannerContract {
         approver: Address,
         proposal_id: u64,
     ) -> Result<(), ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         approver.require_auth();
         Self::require_permission(&env, &approver, Permission::VerifyEmergency)?;
 
@@ -1256,6 +1333,7 @@ impl SecurityScannerContract {
         executor: Address,
         proposal_id: u64,
     ) -> Result<(), ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         executor.require_auth();
         Self::require_permission(&env, &executor, Permission::VerifyEmergency)?;
 
@@ -1318,7 +1396,7 @@ impl SecurityScannerContract {
             alert.verified_by = Some(admin.clone());
 
             // Create immediate escrow for emergency reward
-            let escrow_id = Self::create_escrow(
+            let escrow_id = Self::create_escrow_internal(
                 env.clone(),
                 admin.clone(), // Admin deposits on behalf of the platform
                 alert.reporter.clone(),
@@ -1328,8 +1406,8 @@ impl SecurityScannerContract {
             )?;
 
             // Immediately mark conditions as met and release
-            Self::mark_escrow_conditions_met(env.clone(), escrow_id, admin.clone())?;
-            Self::release_escrow(env.clone(), escrow_id, admin, None)?;
+            Self::mark_escrow_conditions_met_internal(env.clone(), escrow_id, admin.clone())?;
+            Self::release_escrow_internal(env.clone(), escrow_id, admin, None)?;
 
             // Update reputation
             Self::update_reputation(
@@ -1350,6 +1428,7 @@ impl SecurityScannerContract {
 
     /// Get escrow details
     pub fn get_escrow(env: Env, escrow_id: u64) -> Result<EscrowEntry, ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         let escrows: Map<u64, EscrowEntry> = env
             .storage()
             .instance()
@@ -1360,6 +1439,7 @@ impl SecurityScannerContract {
 
     /// Get emergency alert details
     pub fn get_emergency_alert(env: Env, alert_id: u64) -> Result<EmergencyAlert, ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         let alerts: Map<u64, EmergencyAlert> = env
             .storage()
             .instance()
@@ -1370,11 +1450,13 @@ impl SecurityScannerContract {
 
     /// Get escrow pool balance
     pub fn get_escrow_pool_balance(env: Env) -> i128 {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         env.storage().instance().get(&ESCROW).unwrap_or(0i128)
     }
 
     /// Get emergency pool balance
     pub fn get_emergency_pool_balance(env: Env) -> i128 {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         env.storage()
             .instance()
             .get(&EMERGENCY_POOL)
@@ -1387,6 +1469,7 @@ impl SecurityScannerContract {
         funder: Address,
         amount: i128,
     ) -> Result<(), ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         funder.require_auth();
         Self::require_non_default_address(&funder)?;
         Self::require_positive_amount(amount)?;
@@ -1409,11 +1492,12 @@ impl SecurityScannerContract {
 
     /// Grant a role to an address (requires SuperAdmin role and multi-sig)
     pub fn grant_role(
-        _env: Env,
+        env: Env,
         super_admin: Address,
         user: Address,
         _role: Role,
     ) -> Result<(), ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         super_admin.require_auth();
         Self::require_non_default_address(&super_admin)?;
         Self::require_non_default_address(&user)?;
@@ -1431,6 +1515,7 @@ impl SecurityScannerContract {
         required_approvals: u64,
         execution_delay: u64,
     ) -> Result<u64, ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         proposer.require_auth();
         Self::require_permission(&env, &proposer, Permission::ManageRoles)?;
 
@@ -1472,6 +1557,7 @@ impl SecurityScannerContract {
         approver: Address,
         proposal_id: u64,
     ) -> Result<(), ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         approver.require_auth();
         Self::require_permission(&env, &approver, Permission::ManageRoles)?;
 
@@ -1484,6 +1570,7 @@ impl SecurityScannerContract {
         executor: Address,
         proposal_id: u64,
     ) -> Result<(), ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         executor.require_auth();
         Self::require_permission(&env, &executor, Permission::ManageRoles)?;
 
@@ -1564,11 +1651,12 @@ impl SecurityScannerContract {
 
     /// Revoke a role from an address (requires SuperAdmin role and multi-sig)
     pub fn revoke_role(
-        _env: Env,
+        env: Env,
         super_admin: Address,
         user: Address,
         _role: Role,
     ) -> Result<(), ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         super_admin.require_auth();
         Self::require_non_default_address(&super_admin)?;
         Self::require_non_default_address(&user)?;
@@ -1579,6 +1667,7 @@ impl SecurityScannerContract {
 
     /// Get user roles
     pub fn get_user_roles(env: Env, user: Address) -> Result<Vec<Role>, ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         let admin_roles: Map<Address, Vec<Role>> = env
             .storage()
             .instance()
@@ -1589,6 +1678,7 @@ impl SecurityScannerContract {
 
     /// Get multi-signature proposal details
     pub fn get_proposal(env: Env, proposal_id: u64) -> Result<MultiSigProposal, ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         let proposals: Map<u64, MultiSigProposal> = env
             .storage()
             .instance()
@@ -1601,6 +1691,7 @@ impl SecurityScannerContract {
 
     /// Check if a proposal can be executed
     pub fn can_execute_proposal_check(env: Env, proposal_id: u64) -> Result<bool, ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         Self::can_execute_proposal(&env, proposal_id)
     }
 
@@ -1610,10 +1701,15 @@ impl SecurityScannerContract {
 
     /// Get current contract version
     pub fn get_version(env: Env) -> String {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        Self::get_version_internal(&env)
+    }
+
+    fn get_version_internal(env: &Env) -> String {
         env.storage()
             .instance()
             .get(&CONTRACT_VERSION)
-            .unwrap_or(String::from_str(&env, "1.0.0"))
+            .unwrap_or(String::from_str(env, "1.0.0"))
     }
 
     /// Set upgrade authority (admin only)
@@ -1622,6 +1718,7 @@ impl SecurityScannerContract {
         admin: Address,
         new_authority: Address,
     ) -> Result<(), ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         admin.require_auth();
         Self::require_non_default_address(&new_authority)?;
 
@@ -1637,6 +1734,7 @@ impl SecurityScannerContract {
         admin: Address,
         delay_seconds: u64,
     ) -> Result<(), ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         admin.require_auth();
 
         if delay_seconds < 86400 {
@@ -1659,6 +1757,7 @@ impl SecurityScannerContract {
         new_version: String,
         reason: String,
     ) -> Result<(), ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         proposer.require_auth();
         Self::require_non_default_address(&new_contract_address)?;
         Self::require_valid_text(&new_version)?;
@@ -1709,6 +1808,7 @@ impl SecurityScannerContract {
 
     /// Get pending upgrade information
     pub fn get_pending_upgrade(env: Env) -> Result<UpgradeRequest, ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         env.storage()
             .instance()
             .get(&PENDING_UPGRADE)
@@ -1718,6 +1818,7 @@ impl SecurityScannerContract {
     /// Execute a pending upgrade after the timelock delay has passed.
     /// Only the upgrade authority can execute.
     pub fn execute_upgrade(env: Env, executor: Address) -> Result<(), ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         executor.require_auth();
 
         // Check caller is upgrade authority
@@ -1743,7 +1844,7 @@ impl SecurityScannerContract {
         }
 
         // Record upgrade history
-        let current_version = Self::get_version(env.clone());
+        let current_version = Self::get_version_internal(&env);
         let mut history: Vec<UpgradeHistory> = env
             .storage()
             .instance()
@@ -1795,6 +1896,7 @@ impl SecurityScannerContract {
         new_version: String,
         reason: String,
     ) -> Result<(), ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         admin.require_auth();
         Self::require_non_default_address(&new_contract_address)?;
         Self::require_valid_text(&new_version)?;
@@ -1860,7 +1962,7 @@ impl SecurityScannerContract {
 
         // ---- Execute emergency upgrade ----
 
-        let current_version = Self::get_version(env.clone());
+        let current_version = Self::get_version_internal(&env);
         let mut history: Vec<UpgradeHistory> = env
             .storage()
             .instance()
@@ -1914,6 +2016,7 @@ impl SecurityScannerContract {
 
     /// Cancel a pending upgrade (proposer or admin only)
     pub fn cancel_upgrade(env: Env, canceler: Address) -> Result<(), ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         canceler.require_auth();
 
         let request: UpgradeRequest = env
@@ -1950,6 +2053,7 @@ impl SecurityScannerContract {
 
     /// Get upgrade history
     pub fn get_upgrade_history(env: Env) -> Vec<UpgradeHistory> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         env.storage()
             .instance()
             .get(&UPGRADE_HISTORY)
@@ -1958,6 +2062,7 @@ impl SecurityScannerContract {
 
     /// Get migration status (target contract, timestamp)
     pub fn get_migration_status(env: Env) -> Option<(Address, u64)> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         env.storage().instance().get(&MIGRATION_STATUS)
     }
 
@@ -1969,6 +2074,7 @@ impl SecurityScannerContract {
         challenge_reason: String,
         required_votes: u64,
     ) -> Result<u64, ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         challenger.require_auth();
         Self::require_valid_text(&challenge_reason)?;
 
@@ -2010,6 +2116,7 @@ impl SecurityScannerContract {
         challenge_timestamp: u64,
         vote_to_halt: bool,
     ) -> Result<(), ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         voter.require_auth();
 
         let now = env.ledger().timestamp();
@@ -2073,6 +2180,7 @@ impl SecurityScannerContract {
         reason: String,
         evidence_hashes: Vec<BytesN<32>>,
     ) -> Result<u64, ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         disputant.require_auth();
         Self::require_non_default_address(&disputant)?;
         Self::require_valid_text(&reason)?;
@@ -2164,6 +2272,7 @@ impl SecurityScannerContract {
         dispute_id: u64,
         vote: Vote,
     ) -> Result<(), ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         voter.require_auth();
         Self::require_non_default_address(&voter)?;
 
@@ -2221,6 +2330,7 @@ impl SecurityScannerContract {
     /// - If dispute is upheld (majority Accept): stake returned to disputant, reporter keeps bounty.
     /// - If dispute is dismissed (majority Reject or no quorum): stake forfeited to bounty pool.
     pub fn resolve_dispute(env: Env, dispute_id: u64) -> Result<DisputeStatus, ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         // Get dispute
         let mut disputes: Map<u64, Dispute> = env
             .storage()
@@ -2325,6 +2435,7 @@ impl SecurityScannerContract {
 
     /// Get dispute details
     pub fn get_dispute(env: Env, dispute_id: u64) -> Result<Dispute, ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         let disputes: Map<u64, Dispute> = env
             .storage()
             .instance()
@@ -2337,6 +2448,7 @@ impl SecurityScannerContract {
 
     /// Get the stake amount for a dispute
     pub fn get_dispute_stake(env: Env, dispute_id: u64) -> Result<i128, ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         let dispute_stakes: Map<u64, i128> = env
             .storage()
             .instance()

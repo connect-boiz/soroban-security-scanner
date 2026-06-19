@@ -2,6 +2,7 @@
 mod security {
     use crate::{
         ContractError, Role, SecurityScannerContract, SecurityScannerContractClient, ADMIN_ROLES,
+        REENTRANCY_LOCK,
     };
     use soroban_sdk::testutils::Address as _;
     use soroban_sdk::{Address, BytesN, Env, String};
@@ -27,6 +28,37 @@ mod security {
             admin_roles.set(user.clone(), user_roles);
             env.storage().instance().set(&ADMIN_ROLES, &admin_roles);
         });
+    }
+
+    #[test]
+    fn reentrancy_guard_allows_normal_execution_and_clears_lock() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, SecurityScannerContract);
+        let client = SecurityScannerContractClient::new(&env, &contract_id);
+
+        assert_eq!(client.get_version(), String::from_str(&env, "1.0.0"));
+        env.as_contract(&contract_id, || {
+            assert!(!env.storage().instance().has(&REENTRANCY_LOCK));
+        });
+    }
+
+    #[test]
+    fn reentrancy_guard_rejects_call_while_contract_is_locked() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, SecurityScannerContract);
+        let client = SecurityScannerContractClient::new(&env, &contract_id);
+
+        // Model an outer invocation paused during an external interaction.
+        env.as_contract(&contract_id, || {
+            env.storage().instance().set(&REENTRANCY_LOCK, &true);
+        });
+
+        assert_eq!(
+            client.try_get_version(),
+            Err(Ok(soroban_sdk::Error::from_contract_error(
+                ContractError::ReentrantCall as u32
+            )))
+        );
     }
 
     #[test]
