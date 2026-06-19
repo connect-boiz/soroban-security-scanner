@@ -5,12 +5,12 @@
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.esm.js",
-  "types": "dist/index.d.ts",
+  "types": "dist/component-library/src/index.d.ts",
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "rollup -c && tsc --emitDeclarationOnly --project tsconfig.json",
+    "build": "rollup -c && tsc --project tsconfig.build.json",
     "dev": "rollup -c -w",
     "type-check": "tsc --noEmit",
     "lint": "eslint src --ext .ts,.tsx",

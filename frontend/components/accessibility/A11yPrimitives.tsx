@@ -399,9 +399,7 @@ export function IconButton({
       {...props}
     >
       {/* Icon is decorative; button label is the accessible name */}
-      <span aria-hidden="true" focusable={false as unknown as undefined}>
-        {icon}
-      </span>
+      <span aria-hidden="true">{icon}</span>
     </button>
   );
 }

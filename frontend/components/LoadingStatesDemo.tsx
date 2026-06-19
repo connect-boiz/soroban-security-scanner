@@ -13,7 +13,7 @@ import {
   SkeletonModal,
   EnhancedProgressBar,
   MultiStepProgress,
-  CircularProgress as EnhancedCircularProgress,
+  EnhancedCircularProgress,
 } from './ui';
 import { useLoadingStates, useAsyncOperation, useStagedLoading } from '../hooks/useLoadingStates';
 
@@ -213,7 +213,7 @@ export default function LoadingStatesDemo() {
                   value={progressValue}
                   size={120}
                   strokeWidth={8}
-                  color="#3B82F6"
+                  color="blue"
                   showPercentage={true}
                 />
               </div>
@@ -232,7 +232,7 @@ export default function LoadingStatesDemo() {
                 <div className="space-y-2">
                   <EnhancedProgressBar
                     value={hookProgress}
-                    color="indigo"
+                    color="purple"
                     showLabel={true}
                     showPercentage={true}
                   />
@@ -254,7 +254,7 @@ export default function LoadingStatesDemo() {
 
             <div className="bg-white p-6 rounded-lg shadow-md">
               <h3 className="text-lg font-medium text-gray-700 mb-4">Skeleton Table</h3>
-              <SkeletonTable lines={5} />
+              <SkeletonTable rows={5} />
             </div>
 
             <div className="bg-white p-6 rounded-lg shadow-md">
