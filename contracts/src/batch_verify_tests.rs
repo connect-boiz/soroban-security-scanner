@@ -1,11 +1,11 @@
 #[cfg(test)]
 mod batch_verify_tests {
     use crate::{
-        ContractError, Role, SecurityScannerContract, SecurityScannerContractClient, Permission,
-        VulnerabilityReport, REPORTS, REPUTATION_MAP,
+        ContractError, SecurityScannerContract, SecurityScannerContractClient, Permission,
+        VulnerabilityReport, REPORTS, ROLE_PERMISSIONS,
     };
     use soroban_sdk::testutils::Address as _;
-    use soroban_sdk::{Address, BytesN, Env, String, Vec, Map};
+    use soroban_sdk::{Address, BytesN, Env, String, Symbol, Vec, Map};
 
     fn test_address(env: &Env, seed: u64) -> Address {
         Address::generate(env)
@@ -16,7 +16,7 @@ mod batch_verify_tests {
             let mut permissions: Map<Address, Vec<Permission>> = env
                 .storage()
                 .instance()
-                .get(&crate::ROLE_PERMISSIONS)
+                .get(&ROLE_PERMISSIONS)
                 .unwrap_or(Map::new(env));
             let mut user_perms = permissions
                 .get(user.clone())
@@ -25,7 +25,7 @@ mod batch_verify_tests {
                 user_perms.push_back(Permission::VerifyVulnerability);
             }
             permissions.set(user.clone(), user_perms);
-            env.storage().instance().set(&crate::ROLE_PERMISSIONS, &permissions);
+            env.storage().instance().set(&ROLE_PERMISSIONS, &permissions);
         });
     }
 
