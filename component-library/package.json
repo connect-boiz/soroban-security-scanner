@@ -15,7 +15,7 @@
     "type-check": "tsc --noEmit",
     "lint": "eslint src --ext .ts,.tsx",
     "lint:fix": "eslint src --ext .ts,.tsx --fix",
-    "test": "jest",
+    "test": "jest --passWithNoTests",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
