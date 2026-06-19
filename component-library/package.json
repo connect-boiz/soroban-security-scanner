@@ -2,6 +2,7 @@
   "name": "@soroban-scanner/ui-components",
   "version": "1.0.0",
   "description": "Reusable UI components and utilities for Soroban Security Scanner",
+  "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.esm.js",
   "types": "dist/index.d.ts",

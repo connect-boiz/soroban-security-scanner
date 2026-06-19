@@ -1,13 +1,17 @@
 use super::models::*;
 use super::Database;
-use sqlx::{PgPool, Row};
 use anyhow::Result;
 use chrono::Utc;
+use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 // User queries
 impl Database {
-    pub async fn create_user(&self, user: CreateUserRequest, password_hash: String) -> Result<User> {
+    pub async fn create_user(
+        &self,
+        user: CreateUserRequest,
+        password_hash: String,
+    ) -> Result<User> {
         let user = sqlx::query_as!(
             User,
             r#"
@@ -32,37 +36,25 @@ impl Database {
     }
 
     pub async fn get_user_by_id(&self, user_id: Uuid) -> Result<Option<User>> {
-        let user = sqlx::query_as!(
-            User,
-            "SELECT * FROM users WHERE id = $1",
-            user_id
-        )
-        .fetch_optional(self.pool())
-        .await?;
+        let user = sqlx::query_as!(User, "SELECT * FROM users WHERE id = $1", user_id)
+            .fetch_optional(self.pool())
+            .await?;
 
         Ok(user)
     }
 
     pub async fn get_user_by_email(&self, email: &str) -> Result<Option<User>> {
-        let user = sqlx::query_as!(
-            User,
-            "SELECT * FROM users WHERE email = $1",
-            email
-        )
-        .fetch_optional(self.pool())
-        .await?;
+        let user = sqlx::query_as!(User, "SELECT * FROM users WHERE email = $1", email)
+            .fetch_optional(self.pool())
+            .await?;
 
         Ok(user)
     }
 
     pub async fn get_user_by_username(&self, username: &str) -> Result<Option<User>> {
-        let user = sqlx::query_as!(
-            User,
-            "SELECT * FROM users WHERE username = $1",
-            username
-        )
-        .fetch_optional(self.pool())
-        .await?;
+        let user = sqlx::query_as!(User, "SELECT * FROM users WHERE username = $1", username)
+            .fetch_optional(self.pool())
+            .await?;
 
         Ok(user)
     }
@@ -132,7 +124,11 @@ impl Database {
 
 // Wallet queries
 impl Database {
-    pub async fn create_wallet(&self, user_id: Uuid, wallet: CreateWalletRequest) -> Result<Wallet> {
+    pub async fn create_wallet(
+        &self,
+        user_id: Uuid,
+        wallet: CreateWalletRequest,
+    ) -> Result<Wallet> {
         let wallet = sqlx::query_as!(
             Wallet,
             r#"
@@ -159,13 +155,9 @@ impl Database {
     }
 
     pub async fn get_wallet_by_id(&self, wallet_id: Uuid) -> Result<Option<Wallet>> {
-        let wallet = sqlx::query_as!(
-            Wallet,
-            "SELECT * FROM wallets WHERE id = $1",
-            wallet_id
-        )
-        .fetch_optional(self.pool())
-        .await?;
+        let wallet = sqlx::query_as!(Wallet, "SELECT * FROM wallets WHERE id = $1", wallet_id)
+            .fetch_optional(self.pool())
+            .await?;
 
         Ok(wallet)
     }
@@ -194,7 +186,12 @@ impl Database {
         Ok(wallet)
     }
 
-    pub async fn update_wallet_balance(&self, wallet_id: Uuid, lumen_balance: sqlx::types::Decimal, native_balance: sqlx::types::Decimal) -> Result<()> {
+    pub async fn update_wallet_balance(
+        &self,
+        wallet_id: Uuid,
+        lumen_balance: sqlx::types::Decimal,
+        native_balance: sqlx::types::Decimal,
+    ) -> Result<()> {
         sqlx::query!(
             r#"
             UPDATE wallets 
@@ -218,7 +215,7 @@ impl Database {
 
     pub async fn set_primary_wallet(&self, user_id: Uuid, wallet_id: Uuid) -> Result<()> {
         let mut tx = self.begin_transaction().await?;
-        
+
         // Unset all other primary wallets for this user
         sqlx::query!(
             "UPDATE wallets SET is_primary = false WHERE user_id = $1",
@@ -226,7 +223,7 @@ impl Database {
         )
         .execute(&mut *tx)
         .await?;
-        
+
         // Set the new primary wallet
         sqlx::query!(
             "UPDATE wallets SET is_primary = true WHERE id = $1 AND user_id = $2",
@@ -235,7 +232,7 @@ impl Database {
         )
         .execute(&mut *tx)
         .await?;
-        
+
         tx.commit().await?;
         Ok(())
     }
@@ -243,7 +240,11 @@ impl Database {
 
 // Transaction queries
 impl Database {
-    pub async fn create_transaction(&self, user_id: Uuid, transaction: CreateTransactionRequest) -> Result<Transaction> {
+    pub async fn create_transaction(
+        &self,
+        user_id: Uuid,
+        transaction: CreateTransactionRequest,
+    ) -> Result<Transaction> {
         let transaction = sqlx::query_as!(
             Transaction,
             r#"
@@ -298,7 +299,12 @@ impl Database {
         Ok(transaction)
     }
 
-    pub async fn update_transaction_status(&self, transaction_id: Uuid, status: TransactionStatus, stellar_hash: Option<String>) -> Result<Transaction> {
+    pub async fn update_transaction_status(
+        &self,
+        transaction_id: Uuid,
+        status: TransactionStatus,
+        stellar_hash: Option<String>,
+    ) -> Result<Transaction> {
         let transaction = sqlx::query_as!(
             Transaction,
             r#"
@@ -334,7 +340,10 @@ impl Database {
 
         if let Some(wallet_id) = filter.wallet_id {
             param_count += 1;
-            query.push_str(&format!(" AND (from_wallet_id = ${} OR to_wallet_id = ${})", param_count, param_count));
+            query.push_str(&format!(
+                " AND (from_wallet_id = ${} OR to_wallet_id = ${})",
+                param_count, param_count
+            ));
             params.push(wallet_id);
         }
 
@@ -394,7 +403,11 @@ impl Database {
 
 // Multi-signature queries
 impl Database {
-    pub async fn create_multi_signature_operation(&self, user_id: Uuid, operation: CreateMultiSigRequest) -> Result<MultiSignatureOperation> {
+    pub async fn create_multi_signature_operation(
+        &self,
+        user_id: Uuid,
+        operation: CreateMultiSigRequest,
+    ) -> Result<MultiSignatureOperation> {
         let mut tx = self.begin_transaction().await?;
 
         let multi_sig = sqlx::query_as!(
@@ -442,7 +455,10 @@ impl Database {
         Ok(multi_sig)
     }
 
-    pub async fn get_multi_signature_operation(&self, operation_id: Uuid) -> Result<Option<MultiSignatureOperation>> {
+    pub async fn get_multi_signature_operation(
+        &self,
+        operation_id: Uuid,
+    ) -> Result<Option<MultiSignatureOperation>> {
         let operation = sqlx::query_as!(
             MultiSignatureOperation,
             "SELECT * FROM multi_signature_operations WHERE id = $1",
@@ -454,7 +470,10 @@ impl Database {
         Ok(operation)
     }
 
-    pub async fn get_multi_signature_signers(&self, operation_id: Uuid) -> Result<Vec<MultiSignatureSigner>> {
+    pub async fn get_multi_signature_signers(
+        &self,
+        operation_id: Uuid,
+    ) -> Result<Vec<MultiSignatureSigner>> {
         let signers = sqlx::query_as!(
             MultiSignatureSigner,
             "SELECT * FROM multi_signature_signers WHERE multi_sig_operation_id = $1 ORDER BY created_at",
@@ -466,7 +485,12 @@ impl Database {
         Ok(signers)
     }
 
-    pub async fn add_signature(&self, operation_id: Uuid, signer_address: &str, signature_data: &str) -> Result<()> {
+    pub async fn add_signature(
+        &self,
+        operation_id: Uuid,
+        signer_address: &str,
+        signature_data: &str,
+    ) -> Result<()> {
         sqlx::query!(
             r#"
             UPDATE multi_signature_signers 
@@ -494,7 +518,8 @@ impl Database {
         let operation = self.get_multi_signature_operation(operation_id).await?;
         if let Some(op) = operation {
             let signers = self.get_multi_signature_signers(operation_id).await?;
-            let signed_weight: i32 = signers.iter()
+            let signed_weight: i32 = signers
+                .iter()
                 .filter(|s| s.status == SignatureStatus::Signed)
                 .map(|s| s.weight)
                 .sum();
@@ -542,12 +567,15 @@ impl Database {
         Ok(alert)
     }
 
-    pub async fn get_security_alerts(&self, filter: SecurityAlertFilter) -> Result<Vec<SecurityAlert>> {
+    pub async fn get_security_alerts(
+        &self,
+        filter: SecurityAlertFilter,
+    ) -> Result<Vec<SecurityAlert>> {
         let mut query = "SELECT * FROM security_alerts WHERE 1=1".to_string();
-        
+
         // Similar filtering logic as transactions
         // This is simplified for brevity
-        
+
         let alerts = sqlx::query_as!(SecurityAlert, &query)
             .fetch_all(self.pool())
             .await?;
@@ -555,7 +583,13 @@ impl Database {
         Ok(alerts)
     }
 
-    pub async fn update_security_alert_status(&self, alert_id: Uuid, status: &str, resolved_by: Option<Uuid>, notes: Option<String>) -> Result<SecurityAlert> {
+    pub async fn update_security_alert_status(
+        &self,
+        alert_id: Uuid,
+        status: &str,
+        resolved_by: Option<Uuid>,
+        notes: Option<String>,
+    ) -> Result<SecurityAlert> {
         let alert = sqlx::query_as!(
             SecurityAlert,
             r#"
@@ -583,7 +617,12 @@ impl Database {
 
 // Bounty system queries
 impl Database {
-    pub async fn create_bounty(&self, project_id: Option<Uuid>, user_id: Uuid, bounty: CreateBountyRequest) -> Result<Bounty> {
+    pub async fn create_bounty(
+        &self,
+        project_id: Option<Uuid>,
+        user_id: Uuid,
+        bounty: CreateBountyRequest,
+    ) -> Result<Bounty> {
         let bounty = sqlx::query_as!(
             Bounty,
             r#"
@@ -615,7 +654,12 @@ impl Database {
         Ok(bounty)
     }
 
-    pub async fn create_escrow_account(&self, bounty_id: Uuid, funder_id: Uuid, amount: sqlx::types::Decimal) -> Result<EscrowAccount> {
+    pub async fn create_escrow_account(
+        &self,
+        bounty_id: Uuid,
+        funder_id: Uuid,
+        amount: sqlx::types::Decimal,
+    ) -> Result<EscrowAccount> {
         let escrow = sqlx::query_as!(
             EscrowAccount,
             r#"
@@ -638,10 +682,10 @@ impl Database {
 
     pub async fn list_bounties(&self, filter: BountyFilter) -> Result<Vec<Bounty>> {
         let mut query = "SELECT * FROM bounties WHERE 1=1".to_string();
-        
+
         // Similar filtering logic as other list methods
         // Simplified for brevity
-        
+
         let bounties = sqlx::query_as!(Bounty, &query)
             .fetch_all(self.pool())
             .await?;
@@ -652,7 +696,10 @@ impl Database {
 
 // Notification delivery tracking queries
 impl Database {
-    pub async fn create_delivery_tracking(&self, request: CreateDeliveryTrackingRequest) -> Result<NotificationDeliveryTracking> {
+    pub async fn create_delivery_tracking(
+        &self,
+        request: CreateDeliveryTrackingRequest,
+    ) -> Result<NotificationDeliveryTracking> {
         let tracking = sqlx::query_as!(
             NotificationDeliveryTracking,
             r#"
@@ -737,7 +784,10 @@ impl Database {
         Ok(tracking)
     }
 
-    pub async fn get_notification_delivery_trackings(&self, notification_id: &str) -> Result<Vec<NotificationDeliveryTracking>> {
+    pub async fn get_notification_delivery_trackings(
+        &self,
+        notification_id: &str,
+    ) -> Result<Vec<NotificationDeliveryTracking>> {
         let trackings = sqlx::query_as!(
             NotificationDeliveryTracking,
             r#"
@@ -753,7 +803,10 @@ impl Database {
         Ok(trackings)
     }
 
-    pub async fn get_recipient_delivery_trackings(&self, recipient_id: &str) -> Result<Vec<NotificationDeliveryTracking>> {
+    pub async fn get_recipient_delivery_trackings(
+        &self,
+        recipient_id: &str,
+    ) -> Result<Vec<NotificationDeliveryTracking>> {
         let trackings = sqlx::query_as!(
             NotificationDeliveryTracking,
             r#"
@@ -769,7 +822,10 @@ impl Database {
         Ok(trackings)
     }
 
-    pub async fn get_failed_delivery_trackings(&self, max_attempts: i32) -> Result<Vec<NotificationDeliveryTracking>> {
+    pub async fn get_failed_delivery_trackings(
+        &self,
+        max_attempts: i32,
+    ) -> Result<Vec<NotificationDeliveryTracking>> {
         let trackings = sqlx::query_as!(
             NotificationDeliveryTracking,
             r#"
@@ -821,7 +877,10 @@ impl Database {
         Ok(result.rows_affected())
     }
 
-    pub async fn retry_failed_deliveries(&self, max_retries: i32) -> Result<Vec<DeliveryRetryResult>> {
+    pub async fn retry_failed_deliveries(
+        &self,
+        max_retries: i32,
+    ) -> Result<Vec<DeliveryRetryResult>> {
         let rows = sqlx::query_as!(
             DeliveryRetryResult,
             r#"

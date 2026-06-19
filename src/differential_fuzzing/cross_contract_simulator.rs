@@ -1,14 +1,14 @@
 //! Cross-Contract Call Simulator for Differential Fuzzing
-//! 
+//!
 //! Simulates cross-contract calls to detect reentrancy-like logic errors.
 
 use crate::differential_fuzzing::{
-    TestInput, ExecutionResult, DifferentialFuzzingConfig, ArgumentValue
+    ArgumentValue, DifferentialFuzzingConfig, ExecutionResult, TestInput,
 };
-use serde::{Serialize, Deserialize};
+use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::time::SystemTime;
-use anyhow::Result;
 
 /// Reentrancy patterns that can be detected
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -234,13 +234,35 @@ pub struct FunctionBody {
 /// Statement in function body
 #[derive(Debug, Clone)]
 pub enum Statement {
-    VariableDeclaration { name: String, var_type: String },
-    Assignment { variable: String, value: String },
-    FunctionCall { function: String, arguments: Vec<String> },
-    ExternalCall { contract: String, function: String, arguments: Vec<String> },
-    IfStatement { condition: String, then_branch: Vec<Statement>, else_branch: Option<Vec<Statement>> },
-    LoopStatement { loop_type: LoopType, body: Vec<Statement> },
-    ReturnStatement { value: Option<String> },
+    VariableDeclaration {
+        name: String,
+        var_type: String,
+    },
+    Assignment {
+        variable: String,
+        value: String,
+    },
+    FunctionCall {
+        function: String,
+        arguments: Vec<String>,
+    },
+    ExternalCall {
+        contract: String,
+        function: String,
+        arguments: Vec<String>,
+    },
+    IfStatement {
+        condition: String,
+        then_branch: Vec<Statement>,
+        else_branch: Option<Vec<Statement>>,
+    },
+    LoopStatement {
+        loop_type: LoopType,
+        body: Vec<Statement>,
+    },
+    ReturnStatement {
+        value: Option<String>,
+    },
 }
 
 /// Loop type
@@ -342,24 +364,24 @@ impl CrossContractSimulator {
     ) -> Result<CrossContractSimulationResult> {
         // Build call graph
         let call_graph = self.build_call_graph(input, config).await?;
-        
+
         // Detect reentrancy vulnerabilities
         let reentrancy_vulnerabilities = if self.reentrancy_detection_enabled {
             self.detect_reentrancy_vulnerabilities(&call_graph)?
         } else {
             Vec::new()
         };
-        
+
         // Check state consistency
         let state_consistency_issues = if self.state_consistency_check_enabled {
             self.check_state_consistency(&call_graph)?
         } else {
             Vec::new()
         };
-        
+
         // Analyze gas consumption
         let gas_analysis = self.analyze_gas_consumption(&call_graph)?;
-        
+
         // Calculate overall security score
         let security_score = self.calculate_security_score(
             &reentrancy_vulnerabilities,
@@ -377,10 +399,14 @@ impl CrossContractSimulator {
     }
 
     /// Build call graph from test input
-    async fn build_call_graph(&mut self, input: &TestInput, config: &DifferentialFuzzingConfig) -> Result<CallGraph> {
+    async fn build_call_graph(
+        &mut self,
+        input: &TestInput,
+        config: &DifferentialFuzzingConfig,
+    ) -> Result<CallGraph> {
         let mut nodes = Vec::new();
         let mut edges = Vec::new();
-        
+
         // Create entry point node
         let entry_node = CallNode {
             contract_address: "main_contract".to_string(),
@@ -392,17 +418,22 @@ impl CrossContractSimulator {
             gas_consumed: 0,
             is_payable: false,
         };
-        
-        let entry_node_id = format!("{}::{}", entry_node.contract_address, entry_node.function_name);
+
+        let entry_node_id = format!(
+            "{}::{}",
+            entry_node.contract_address, entry_node.function_name
+        );
         nodes.push(entry_node);
-        
+
         // Simulate execution and discover external calls
-        let discovered_calls = self.simulate_execution_and_discover_calls(input, config).await?;
-        
+        let discovered_calls = self
+            .simulate_execution_and_discover_calls(input, config)
+            .await?;
+
         // Create nodes and edges for discovered calls
         for (index, call) in discovered_calls.iter().enumerate() {
             let node_id = format!("{}::{}", call.contract_address, call.function_name);
-            
+
             let node = CallNode {
                 contract_address: call.contract_address.clone(),
                 function_name: call.function_name.clone(),
@@ -418,16 +449,20 @@ impl CrossContractSimulator {
                 gas_consumed: 0,
                 is_payable: false,
             };
-            
+
             nodes.push(node);
-            
+
             // Create edge from previous node
             let from_node_id = if index == 0 {
                 entry_node_id.clone()
             } else {
-                format!("{}::{}", discovered_calls[index - 1].contract_address, discovered_calls[index - 1].function_name)
+                format!(
+                    "{}::{}",
+                    discovered_calls[index - 1].contract_address,
+                    discovered_calls[index - 1].function_name
+                )
             };
-            
+
             let edge = CallEdge {
                 from_node: from_node_id,
                 to_node: node_id.clone(),
@@ -435,13 +470,13 @@ impl CrossContractSimulator {
                 parameters: call.arguments.clone(),
                 value_transferred: call.value_transferred,
             };
-            
+
             edges.push(edge);
         }
-        
+
         // Detect reentrancy cycles
         let reentrancy_cycles = self.detect_reentrancy_cycles(&nodes, &edges)?;
-        
+
         Ok(CallGraph {
             nodes,
             edges,
@@ -457,47 +492,52 @@ impl CrossContractSimulator {
         config: &DifferentialFuzzingConfig,
     ) -> Result<Vec<ExternalCall>> {
         let mut discovered_calls = Vec::new();
-        
+
         // In a real implementation, this would execute the contract and trace external calls
         // For now, we'll simulate based on the input
-        
+
         if input.function_name.contains("transfer") || input.function_name.contains("call") {
             // Simulate a potential external call
             discovered_calls.push(ExternalCall {
                 contract_address: "external_contract".to_string(),
                 function_name: "external_function".to_string(),
-                arguments: input.arguments.iter()
+                arguments: input
+                    .arguments
+                    .iter()
                     .map(|arg| format!("{:?}", arg.value))
                     .collect(),
                 call_type: CallType::ExternalCall,
                 value_transferred: None,
             });
         }
-        
+
         // Check for recursive calls (reentrancy)
         if self.is_potential_reentrancy(&input.function_name) {
             discovered_calls.push(ExternalCall {
                 contract_address: "main_contract".to_string(),
                 function_name: input.function_name.clone(),
-                arguments: input.arguments.iter()
+                arguments: input
+                    .arguments
+                    .iter()
                     .map(|arg| format!("{:?}", arg.value))
                     .collect(),
                 call_type: CallType::ExternalCall,
                 value_transferred: None,
             });
         }
-        
+
         Ok(discovered_calls)
     }
 
     /// Check if a function call could be reentrant
     fn is_potential_reentrancy(&self, function_name: &str) -> bool {
         let reentrancy_prone_functions = vec![
-            "transfer", "approve", "withdraw", "deposit", "call", "send",
-            "execute", "invoke", "trigger", "handle", "process",
+            "transfer", "approve", "withdraw", "deposit", "call", "send", "execute", "invoke",
+            "trigger", "handle", "process",
         ];
-        
-        reentrancy_prone_functions.iter()
+
+        reentrancy_prone_functions
+            .iter()
             .any(|&func| function_name.contains(func))
     }
 
@@ -525,22 +565,27 @@ impl CrossContractSimulator {
     }
 
     /// Detect reentrancy cycles in the call graph
-    fn detect_reentrancy_cycles(&self, nodes: &[CallNode], edges: &[CallEdge]) -> Result<Vec<ReentrancyCycle>> {
+    fn detect_reentrancy_cycles(
+        &self,
+        nodes: &[CallNode],
+        edges: &[CallEdge],
+    ) -> Result<Vec<ReentrancyCycle>> {
         let mut cycles = Vec::new();
-        
+
         // Build adjacency list
         let mut adjacency: HashMap<String, Vec<String>> = HashMap::new();
         for edge in edges {
-            adjacency.entry(edge.from_node.clone())
+            adjacency
+                .entry(edge.from_node.clone())
                 .or_insert_with(Vec::new)
                 .push(edge.to_node.clone());
         }
-        
+
         // Detect cycles using DFS
         let mut visited = HashSet::new();
         let mut recursion_stack = HashSet::new();
         let mut path = Vec::new();
-        
+
         for node in nodes.iter() {
             let node_id = format!("{}::{}", node.contract_address, node.function_name);
             if !visited.contains(&node_id) {
@@ -554,7 +599,7 @@ impl CrossContractSimulator {
                 );
             }
         }
-        
+
         Ok(cycles)
     }
 
@@ -571,7 +616,7 @@ impl CrossContractSimulator {
         visited.insert(node.to_string());
         recursion_stack.insert(node.to_string());
         path.push(node.to_string());
-        
+
         if let Some(neighbors) = adjacency.get(node) {
             for neighbor in neighbors {
                 if !visited.contains(neighbor) {
@@ -587,20 +632,23 @@ impl CrossContractSimulator {
                     // Cycle detected
                     let cycle_start = path.iter().position(|n| n == neighbor).unwrap_or(0);
                     let cycle_nodes = path[cycle_start..].to_vec();
-                    
+
                     let cycle = ReentrancyCycle {
                         cycle_nodes: cycle_nodes.clone(),
                         cycle_type: self.classify_reentrancy_cycle(&cycle_nodes),
                         vulnerability_score: self.calculate_cycle_vulnerability_score(&cycle_nodes),
-                        description: format!("Reentrancy cycle detected: {}", cycle_nodes.join(" -> ")),
+                        description: format!(
+                            "Reentrancy cycle detected: {}",
+                            cycle_nodes.join(" -> ")
+                        ),
                         mitigation_suggestions: self.generate_mitigation_suggestions(&cycle_nodes),
                     };
-                    
+
                     cycles.push(cycle);
                 }
             }
         }
-        
+
         recursion_stack.remove(node);
         path.pop();
     }
@@ -609,7 +657,10 @@ impl CrossContractSimulator {
     fn classify_reentrancy_cycle(&self, cycle_nodes: &[String]) -> ReentrancyPattern {
         if cycle_nodes.len() == 2 {
             ReentrancyPattern::DirectReentrancy
-        } else if cycle_nodes.iter().all(|node| node.contains("main_contract")) {
+        } else if cycle_nodes
+            .iter()
+            .all(|node| node.contains("main_contract"))
+        {
             ReentrancyPattern::CrossFunctionReentrancy
         } else if cycle_nodes.iter().any(|node| node.contains("delegate")) {
             ReentrancyPattern::DelegateCallReentrancy
@@ -623,7 +674,7 @@ impl CrossContractSimulator {
         let base_score = 0.5;
         let length_factor = (cycle_nodes.len() as f64 - 2.0) * 0.1;
         let complexity_factor = if cycle_nodes.len() > 3 { 0.2 } else { 0.0 };
-        
+
         (base_score + length_factor + complexity_factor).min(1.0)
     }
 
@@ -638,13 +689,17 @@ impl CrossContractSimulator {
     }
 
     /// Detect reentrancy vulnerabilities
-    fn detect_reentrancy_vulnerabilities(&self, call_graph: &CallGraph) -> Result<Vec<ReentrancyVulnerability>> {
+    fn detect_reentrancy_vulnerabilities(
+        &self,
+        call_graph: &CallGraph,
+    ) -> Result<Vec<ReentrancyVulnerability>> {
         let mut vulnerabilities = Vec::new();
-        
+
         for cycle in &call_graph.reentrancy_cycles {
             let vulnerability = ReentrancyVulnerability {
                 pattern: cycle.cycle_type.clone(),
-                severity: self.calculate_reentrancy_severity(&cycle.cycle_type, cycle.vulnerability_score),
+                severity: self
+                    .calculate_reentrancy_severity(&cycle.cycle_type, cycle.vulnerability_score),
                 description: format!("Reentrancy vulnerability detected: {}", cycle.description),
                 affected_functions: cycle.cycle_nodes.clone(),
                 call_sequence: cycle.cycle_nodes.clone(),
@@ -652,26 +707,29 @@ impl CrossContractSimulator {
                 mitigation: cycle.mitigation_suggestions.join("; "),
                 confidence: cycle.vulnerability_score,
             };
-            
+
             vulnerabilities.push(vulnerability);
         }
-        
+
         // Check for other reentrancy patterns
         vulnerabilities.extend(self.check_state_change_reentrancy(call_graph)?);
         vulnerabilities.extend(self.check_read_only_reentrancy(call_graph)?);
-        
+
         Ok(vulnerabilities)
     }
 
     /// Check for state change reentrancy patterns
-    fn check_state_change_reentrancy(&self, call_graph: &CallGraph) -> Result<Vec<ReentrancyVulnerability>> {
+    fn check_state_change_reentrancy(
+        &self,
+        call_graph: &CallGraph,
+    ) -> Result<Vec<ReentrancyVulnerability>> {
         let mut vulnerabilities = Vec::new();
-        
+
         for node in &call_graph.nodes {
             // Check if state changes happen before external calls
             let has_state_writes = !node.state_writes.is_empty();
             let has_external_calls = !node.external_calls.is_empty();
-            
+
             if has_state_writes && has_external_calls {
                 let vulnerability = ReentrancyVulnerability {
                     pattern: ReentrancyPattern::StateChangeBeforeCall,
@@ -680,30 +738,39 @@ impl CrossContractSimulator {
                         "Function {} performs state changes before external calls",
                         node.function_name
                     ),
-                    affected_functions: vec![format!("{}::{}", node.contract_address, node.function_name)],
+                    affected_functions: vec![format!(
+                        "{}::{}",
+                        node.contract_address, node.function_name
+                    )],
                     call_sequence: vec![node.function_name.clone()],
-                    exploit_scenario: "Attacker can reenter function before state changes are complete".to_string(),
-                    mitigation: "Reorder operations to follow checks-effects-interactions pattern".to_string(),
+                    exploit_scenario:
+                        "Attacker can reenter function before state changes are complete"
+                            .to_string(),
+                    mitigation: "Reorder operations to follow checks-effects-interactions pattern"
+                        .to_string(),
                     confidence: 0.8,
                 };
-                
+
                 vulnerabilities.push(vulnerability);
             }
         }
-        
+
         Ok(vulnerabilities)
     }
 
     /// Check for read-only reentrancy patterns
-    fn check_read_only_reentrancy(&self, call_graph: &CallGraph) -> Result<Vec<ReentrancyVulnerability>> {
+    fn check_read_only_reentrancy(
+        &self,
+        call_graph: &CallGraph,
+    ) -> Result<Vec<ReentrancyVulnerability>> {
         let mut vulnerabilities = Vec::new();
-        
+
         for node in &call_graph.nodes {
             // Check if function only reads state but makes external calls
             let has_state_reads = !node.state_reads.is_empty();
             let has_state_writes = node.state_writes.is_empty();
             let has_external_calls = !node.external_calls.is_empty();
-            
+
             if has_state_reads && has_state_writes && has_external_calls {
                 let vulnerability = ReentrancyVulnerability {
                     pattern: ReentrancyPattern::ReadOnlyReentrancy,
@@ -712,40 +779,48 @@ impl CrossContractSimulator {
                         "Function {} makes external calls with only state reads",
                         node.function_name
                     ),
-                    affected_functions: vec![format!("{}::{}", node.contract_address, node.function_name)],
+                    affected_functions: vec![format!(
+                        "{}::{}",
+                        node.contract_address, node.function_name
+                    )],
                     call_sequence: vec![node.function_name.clone()],
-                    exploit_scenario: "Read-only reentrancy might affect function logic consistency".to_string(),
-                    mitigation: "Consider if external calls are necessary in read-only functions".to_string(),
+                    exploit_scenario:
+                        "Read-only reentrancy might affect function logic consistency".to_string(),
+                    mitigation: "Consider if external calls are necessary in read-only functions"
+                        .to_string(),
                     confidence: 0.6,
                 };
-                
+
                 vulnerabilities.push(vulnerability);
             }
         }
-        
+
         Ok(vulnerabilities)
     }
 
     /// Check state consistency issues
-    fn check_state_consistency(&self, call_graph: &CallGraph) -> Result<Vec<StateConsistencyIssue>> {
+    fn check_state_consistency(
+        &self,
+        call_graph: &CallGraph,
+    ) -> Result<Vec<StateConsistencyIssue>> {
         let mut issues = Vec::new();
-        
+
         // Check for race conditions
         issues.extend(self.check_race_conditions(call_graph)?);
-        
+
         // Check for check-then-race patterns
         issues.extend(self.check_check_then_race(call_graph)?);
-        
+
         Ok(issues)
     }
 
     /// Check for race conditions
     fn check_race_conditions(&self, call_graph: &CallGraph) -> Result<Vec<StateConsistencyIssue>> {
         let mut issues = Vec::new();
-        
+
         // Look for concurrent access to state variables
         let mut state_access_count: HashMap<String, usize> = HashMap::new();
-        
+
         for node in &call_graph.nodes {
             for state_var in &node.state_reads {
                 *state_access_count.entry(state_var.clone()).or_insert(0) += 1;
@@ -754,34 +829,37 @@ impl CrossContractSimulator {
                 *state_access_count.entry(state_var.clone()).or_insert(0) += 1;
             }
         }
-        
+
         for (state_var, count) in state_access_count {
             if count > 2 {
                 let issue = StateConsistencyIssue {
                     issue_type: StateConsistencyType::RaceCondition,
                     severity: crate::Severity::High,
-                    description: format!("State variable {} accessed {} times across calls", state_var, count),
+                    description: format!(
+                        "State variable {} accessed {} times across calls",
+                        state_var, count
+                    ),
                     state_variables: vec![state_var],
                     inconsistent_states: HashMap::new(),
                     fix_suggestion: "Implement proper locking or atomic operations".to_string(),
                 };
-                
+
                 issues.push(issue);
             }
         }
-        
+
         Ok(issues)
     }
 
     /// Check for check-then-race patterns
     fn check_check_then_race(&self, call_graph: &CallGraph) -> Result<Vec<StateConsistencyIssue>> {
         let mut issues = Vec::new();
-        
+
         for node in &call_graph.nodes {
             // Look for patterns where state is checked then external call is made
             let has_state_reads = !node.state_reads.is_empty();
             let has_external_calls = !node.external_calls.is_empty();
-            
+
             if has_state_reads && has_external_calls {
                 let issue = StateConsistencyIssue {
                     issue_type: StateConsistencyType::CheckThenRace,
@@ -794,11 +872,11 @@ impl CrossContractSimulator {
                     inconsistent_states: HashMap::new(),
                     fix_suggestion: "Use reentrancy guards or atomic operations".to_string(),
                 };
-                
+
                 issues.push(issue);
             }
         }
-        
+
         Ok(issues)
     }
 
@@ -807,17 +885,21 @@ impl CrossContractSimulator {
         let mut total_gas = 0u64;
         let mut gas_by_contract = HashMap::new();
         let mut gas_by_function = HashMap::new();
-        
+
         for node in &call_graph.nodes {
             total_gas += node.gas_consumed;
-            
-            *gas_by_contract.entry(node.contract_address.clone()).or_insert(0) += node.gas_consumed;
-            *gas_by_function.entry(node.function_name.clone()).or_insert(0) += node.gas_consumed;
+
+            *gas_by_contract
+                .entry(node.contract_address.clone())
+                .or_insert(0) += node.gas_consumed;
+            *gas_by_function
+                .entry(node.function_name.clone())
+                .or_insert(0) += node.gas_consumed;
         }
-        
+
         let gas_griefing_potential = self.calculate_gas_griefing_potential(call_graph);
         let infinite_loop_risk = self.calculate_infinite_loop_risk(call_graph);
-        
+
         Ok(GasAnalysis {
             total_gas_consumed: total_gas,
             gas_by_contract,
@@ -829,23 +911,27 @@ impl CrossContractSimulator {
 
     /// Calculate gas griefing potential
     fn calculate_gas_griefing_potential(&self, call_graph: &CallGraph) -> f64 {
-        let external_call_count = call_graph.edges.iter()
+        let external_call_count = call_graph
+            .edges
+            .iter()
             .filter(|edge| matches!(edge.call_type, CallType::ExternalCall))
             .count();
-        
+
         let max_depth = self.calculate_max_call_depth(call_graph);
-        
+
         (external_call_count as f64 * 0.1 + max_depth as f64 * 0.2).min(1.0)
     }
 
     /// Calculate infinite loop risk
     fn calculate_infinite_loop_risk(&self, call_graph: &CallGraph) -> f64 {
         let cycle_count = call_graph.reentrancy_cycles.len();
-        let max_cycle_length = call_graph.reentrancy_cycles.iter()
+        let max_cycle_length = call_graph
+            .reentrancy_cycles
+            .iter()
             .map(|cycle| cycle.cycle_nodes.len())
             .max()
             .unwrap_or(0);
-        
+
         ((cycle_count as f64 * 0.3) + (max_cycle_length as f64 * 0.1)).min(1.0)
     }
 
@@ -856,7 +942,11 @@ impl CrossContractSimulator {
     }
 
     /// Calculate reentrancy severity
-    fn calculate_reentrancy_severity(&self, pattern: &ReentrancyPattern, vulnerability_score: f64) -> crate::Severity {
+    fn calculate_reentrancy_severity(
+        &self,
+        pattern: &ReentrancyPattern,
+        vulnerability_score: f64,
+    ) -> crate::Severity {
         let base_severity = match pattern {
             ReentrancyPattern::DirectReentrancy => crate::Severity::Critical,
             ReentrancyPattern::IndirectReentrancy => crate::Severity::High,
@@ -867,7 +957,7 @@ impl CrossContractSimulator {
             ReentrancyPattern::DelegateCallReentrancy => crate::Severity::Critical,
             ReentrancyPattern::MultiContractReentrancy => crate::Severity::Critical,
         };
-        
+
         // Adjust severity based on vulnerability score
         if vulnerability_score > 0.8 && base_severity != crate::Severity::Critical {
             crate::Severity::High
@@ -902,7 +992,7 @@ impl CrossContractSimulator {
         gas_analysis: &GasAnalysis,
     ) -> f64 {
         let mut score = 1.0;
-        
+
         // Penalize for reentrancy vulnerabilities
         for vuln in reentrancy_vulnerabilities {
             let penalty = match vuln.severity {
@@ -911,10 +1001,10 @@ impl CrossContractSimulator {
                 crate::Severity::Medium => 0.2,
                 crate::Severity::Low => 0.1,
             } * vuln.confidence;
-            
+
             score -= penalty;
         }
-        
+
         // Penalize for state consistency issues
         for issue in state_consistency_issues {
             let penalty = match issue.severity {
@@ -923,14 +1013,14 @@ impl CrossContractSimulator {
                 crate::Severity::Medium => 0.1,
                 crate::Severity::Low => 0.05,
             };
-            
+
             score -= penalty;
         }
-        
+
         // Penalize for gas issues
         score -= gas_analysis.gas_griefing_potential * 0.1;
         score -= gas_analysis.infinite_loop_risk * 0.1;
-        
+
         score.max(0.0)
     }
 

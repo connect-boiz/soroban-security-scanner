@@ -1,8 +1,8 @@
 //! Types and enums for the notification service
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use chrono::{DateTime, Utc};
 
 /// Notification channel types
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

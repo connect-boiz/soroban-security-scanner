@@ -1,16 +1,16 @@
 //! Input Generator for Differential Fuzzing
-//! 
+//!
 //! Generates edge case inputs and test data for comprehensive testing.
 
 use crate::differential_fuzzing::{
-    TestInput, TestArgument, ArgumentValue, ArgumentType, TestInputMetadata, EdgeCaseType
+    ArgumentType, ArgumentValue, EdgeCaseType, TestArgument, TestInput, TestInputMetadata,
 };
+use anyhow::Result;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
-use std::collections::{HashMap, HashSet, hash_map::DefaultHasher};
+use serde::{Deserialize, Serialize};
+use std::collections::{hash_map::DefaultHasher, HashMap, HashSet};
 use std::hash::{Hash, Hasher};
-use anyhow::Result;
-use serde::{Serialize, Deserialize};
 
 /// Predefined composite edge case scenarios that combine multiple edge conditions
 /// in a single function call to uncover vulnerabilities that only manifest at the
@@ -102,13 +102,13 @@ impl InputGenerator {
     /// Generate a specified number of test inputs
     pub fn generate_test_inputs(&mut self, count: usize) -> Result<Vec<TestInput>> {
         let mut inputs = Vec::new();
-        
+
         for i in 0..count {
             let edge_case_type = self.select_edge_case_type(i);
             let input = self.generate_single_input(edge_case_type)?;
             inputs.push(input);
         }
-        
+
         Ok(inputs)
     }
 
@@ -117,30 +117,44 @@ impl InputGenerator {
         if self.edge_case_types.is_empty() {
             return EdgeCaseType::RandomValue;
         }
-        
+
         // Cycle through edge case types with some randomness
         let base_index = index % self.edge_case_types.len();
         let random_offset = self.rng.gen_range(0..=2);
         let adjusted_index = (base_index + random_offset) % self.edge_case_types.len();
-        
+
         self.edge_case_types[adjusted_index].clone()
     }
 
     /// Generate a single test input
     fn generate_single_input(&mut self, edge_case_type: EdgeCaseType) -> Result<TestInput> {
         let function_names = vec![
-            "transfer", "approve", "mint", "burn", "balance", "allowance",
-            "deposit", "withdraw", "stake", "unstake", "claim", "vote",
-            "initialize", "upgrade", "pause", "unpause", "set_admin", "get_info"
+            "transfer",
+            "approve",
+            "mint",
+            "burn",
+            "balance",
+            "allowance",
+            "deposit",
+            "withdraw",
+            "stake",
+            "unstake",
+            "claim",
+            "vote",
+            "initialize",
+            "upgrade",
+            "pause",
+            "unpause",
+            "set_admin",
+            "get_info",
         ];
-        
+
         let function_name = function_names[self.rng.gen_range(0..function_names.len())].to_string();
         let arguments = self.generate_arguments(&function_name, &edge_case_type)?;
         let salt = Some(self.rng.gen());
-        
-        let complexity_score = self.complexity_weights.get(&edge_case_type)
-            .unwrap_or(&0.5);
-        
+
+        let complexity_score = self.complexity_weights.get(&edge_case_type).unwrap_or(&0.5);
+
         let metadata = TestInputMetadata {
             edge_case_type: Some(edge_case_type),
             generation_method: "differential_fuzzing".to_string(),
@@ -156,7 +170,11 @@ impl InputGenerator {
     }
 
     /// Generate arguments for a specific function
-    fn generate_arguments(&mut self, function_name: &str, edge_case_type: &EdgeCaseType) -> Result<Vec<TestArgument>> {
+    fn generate_arguments(
+        &mut self,
+        function_name: &str,
+        edge_case_type: &EdgeCaseType,
+    ) -> Result<Vec<TestArgument>> {
         match function_name {
             "transfer" | "approve" => Ok(vec![
                 TestArgument {
@@ -178,18 +196,14 @@ impl InputGenerator {
                     argument_type: ArgumentType::I128,
                 },
             ]),
-            "balance" | "allowance" => Ok(vec![
-                TestArgument {
-                    value: self.generate_address(edge_case_type)?,
-                    argument_type: ArgumentType::Address,
-                },
-            ]),
-            "deposit" | "withdraw" => Ok(vec![
-                TestArgument {
-                    value: self.generate_i128(edge_case_type)?,
-                    argument_type: ArgumentType::I128,
-                },
-            ]),
+            "balance" | "allowance" => Ok(vec![TestArgument {
+                value: self.generate_address(edge_case_type)?,
+                argument_type: ArgumentType::Address,
+            }]),
+            "deposit" | "withdraw" => Ok(vec![TestArgument {
+                value: self.generate_i128(edge_case_type)?,
+                argument_type: ArgumentType::I128,
+            }]),
             "stake" | "unstake" => Ok(vec![
                 TestArgument {
                     value: self.generate_address(edge_case_type)?,
@@ -220,24 +234,18 @@ impl InputGenerator {
                     argument_type: ArgumentType::String,
                 },
             ]),
-            "upgrade" => Ok(vec![
-                TestArgument {
-                    value: self.generate_bytes(edge_case_type)?,
-                    argument_type: ArgumentType::Bytes,
-                },
-            ]),
-            "pause" | "unpause" => Ok(vec![
-                TestArgument {
-                    value: ArgumentValue::Bool(self.rng.gen()),
-                    argument_type: ArgumentType::Bool,
-                },
-            ]),
-            "set_admin" => Ok(vec![
-                TestArgument {
-                    value: self.generate_address(edge_case_type)?,
-                    argument_type: ArgumentType::Address,
-                },
-            ]),
+            "upgrade" => Ok(vec![TestArgument {
+                value: self.generate_bytes(edge_case_type)?,
+                argument_type: ArgumentType::Bytes,
+            }]),
+            "pause" | "unpause" => Ok(vec![TestArgument {
+                value: ArgumentValue::Bool(self.rng.gen()),
+                argument_type: ArgumentType::Bool,
+            }]),
+            "set_admin" => Ok(vec![TestArgument {
+                value: self.generate_address(edge_case_type)?,
+                argument_type: ArgumentType::Address,
+            }]),
             "get_info" => Ok(vec![]),
             _ => Ok(vec![]),
         }
@@ -254,11 +262,11 @@ impl InputGenerator {
                 // Generate values near boundaries
                 let boundaries = vec![i128::MAX - 1, i128::MIN + 1, 1, -1];
                 boundaries[self.rng.gen_range(0..boundaries.len())]
-            },
+            }
             EdgeCaseType::RandomValue => self.rng.gen_range(-1000000..1000000),
             _ => self.rng.gen_range(-1000..1000),
         };
-        
+
         Ok(ArgumentValue::I128(value))
     }
 
@@ -271,11 +279,11 @@ impl InputGenerator {
             EdgeCaseType::BoundaryValue => {
                 let boundaries = vec![u64::MAX - 1, 1];
                 boundaries[self.rng.gen_range(0..boundaries.len())]
-            },
+            }
             EdgeCaseType::RandomValue => self.rng.gen_range(0..1000000),
             _ => self.rng.gen_range(0..1000),
         };
-        
+
         Ok(ArgumentValue::U64(value))
     }
 
@@ -290,7 +298,7 @@ impl InputGenerator {
                 addr
             }
         };
-        
+
         Ok(ArgumentValue::Address(address))
     }
 
@@ -303,7 +311,7 @@ impl InputGenerator {
                 let mut bytes = vec![0u8; size];
                 self.rng.fill(&mut bytes);
                 bytes
-            },
+            }
             EdgeCaseType::ZeroValue => vec![0u8; 32],
             _ => {
                 let size = self.rng.gen_range(32..1024);
@@ -312,7 +320,7 @@ impl InputGenerator {
                 bytes
             }
         };
-        
+
         Ok(ArgumentValue::Bytes(bytes))
     }
 
@@ -322,45 +330,57 @@ impl InputGenerator {
             EdgeCaseType::EmptyString => String::new(),
             EdgeCaseType::LongString => {
                 let size = self.rng.gen_range(1000..10000);
-                self.rng.sample_iter(&rand::distributions::Alphanumeric)
+                self.rng
+                    .sample_iter(&rand::distributions::Alphanumeric)
                     .take(size)
                     .map(char::from)
                     .collect()
-            },
+            }
             EdgeCaseType::ZeroValue => String::new(),
             _ => {
                 let size = self.rng.gen_range(5..100);
-                self.rng.sample_iter(&rand::distributions::Alphanumeric)
+                self.rng
+                    .sample_iter(&rand::distributions::Alphanumeric)
                     .take(size)
                     .map(char::from)
                     .collect()
             }
         };
-        
+
         Ok(ArgumentValue::String(string))
     }
 
     /// Generate a vector based on edge case type
-    fn generate_vector(&mut self, edge_case_type: &EdgeCaseType, element_type: &ArgumentType) -> Result<ArgumentValue> {
+    fn generate_vector(
+        &mut self,
+        edge_case_type: &EdgeCaseType,
+        element_type: &ArgumentType,
+    ) -> Result<ArgumentValue> {
         let elements = match edge_case_type {
             EdgeCaseType::EmptyVector => vec![],
             EdgeCaseType::LargeVector => {
                 let size = self.rng.gen_range(1000..5000);
-                (0..size).map(|_| self.generate_argument_value(element_type, edge_case_type))
+                (0..size)
+                    .map(|_| self.generate_argument_value(element_type, edge_case_type))
                     .collect::<Result<Vec<_>>>()?
-            },
+            }
             _ => {
                 let size = self.rng.gen_range(1..10);
-                (0..size).map(|_| self.generate_argument_value(element_type, edge_case_type))
+                (0..size)
+                    .map(|_| self.generate_argument_value(element_type, edge_case_type))
                     .collect::<Result<Vec<_>>>()?
             }
         };
-        
+
         Ok(ArgumentValue::Vector(elements))
     }
 
     /// Generate a single argument value
-    fn generate_argument_value(&mut self, arg_type: &ArgumentType, edge_case_type: &EdgeCaseType) -> Result<ArgumentValue> {
+    fn generate_argument_value(
+        &mut self,
+        arg_type: &ArgumentType,
+        edge_case_type: &EdgeCaseType,
+    ) -> Result<ArgumentValue> {
         match arg_type {
             ArgumentType::I128 => self.generate_i128(edge_case_type),
             ArgumentType::U64 => self.generate_u64(edge_case_type),
@@ -369,7 +389,9 @@ impl InputGenerator {
             ArgumentType::Bytes => self.generate_bytes(edge_case_type),
             ArgumentType::String => self.generate_string(edge_case_type),
             ArgumentType::Address => self.generate_address(edge_case_type),
-            ArgumentType::Vector(element_type) => self.generate_vector(edge_case_type, element_type),
+            ArgumentType::Vector(element_type) => {
+                self.generate_vector(edge_case_type, element_type)
+            }
             ArgumentType::Map => self.generate_map(edge_case_type),
             ArgumentType::Option(inner_type) => {
                 if self.rng.gen_bool(0.3) {
@@ -377,7 +399,7 @@ impl InputGenerator {
                 } else {
                     self.generate_argument_value(inner_type, edge_case_type)
                 }
-            },
+            }
         }
     }
 
@@ -388,38 +410,42 @@ impl InputGenerator {
             EdgeCaseType::LargeVector => self.rng.gen_range(100..500),
             _ => self.rng.gen_range(1..10),
         };
-        
+
         let mut map = HashMap::new();
         for i in 0..size {
             let key = format!("key_{}", i);
             let value = self.generate_argument_value(&ArgumentType::String, edge_case_type)?;
             map.insert(key, value);
         }
-        
+
         Ok(ArgumentValue::Map(map))
     }
 
     /// Generate inputs specifically for cross-contract call testing
     pub fn generate_cross_contract_inputs(&mut self, count: usize) -> Result<Vec<TestInput>> {
         let mut inputs = Vec::new();
-        
+
         for _ in 0..count {
             let input = self.generate_cross_contract_input()?;
             inputs.push(input);
         }
-        
+
         Ok(inputs)
     }
 
     /// Generate a single input for cross-contract testing
     fn generate_cross_contract_input(&mut self) -> Result<TestInput> {
         let function_names = vec![
-            "transfer", "approve", "call_external", "delegate_call", "forward_call"
+            "transfer",
+            "approve",
+            "call_external",
+            "delegate_call",
+            "forward_call",
         ];
-        
+
         let function_name = function_names[self.rng.gen_range(0..function_names.len())].to_string();
         let arguments = self.generate_cross_contract_arguments(&function_name)?;
-        
+
         let metadata = TestInputMetadata {
             edge_case_type: Some(EdgeCaseType::Custom("cross_contract".to_string())),
             generation_method: "cross_contract_testing".to_string(),
@@ -435,7 +461,10 @@ impl InputGenerator {
     }
 
     /// Generate arguments for cross-contract function calls
-    fn generate_cross_contract_arguments(&mut self, function_name: &str) -> Result<Vec<TestArgument>> {
+    fn generate_cross_contract_arguments(
+        &mut self,
+        function_name: &str,
+    ) -> Result<Vec<TestArgument>> {
         match function_name {
             "call_external" | "delegate_call" | "forward_call" => Ok(vec![
                 TestArgument {
@@ -458,7 +487,7 @@ impl InputGenerator {
     /// Generate boundary value inputs for comprehensive testing
     pub fn generate_boundary_inputs(&mut self) -> Result<Vec<TestInput>> {
         let mut inputs = Vec::new();
-        
+
         let boundary_values = vec![
             EdgeCaseType::MaxI128,
             EdgeCaseType::MinI128,
@@ -467,14 +496,15 @@ impl InputGenerator {
             EdgeCaseType::EmptyVector,
             EdgeCaseType::NullAddress,
         ];
-        
+
         for edge_case in boundary_values {
-            for _ in 0..10 { // Generate 10 inputs per boundary case
+            for _ in 0..10 {
+                // Generate 10 inputs per boundary case
                 let input = self.generate_single_input(edge_case.clone())?;
                 inputs.push(input);
             }
         }
-        
+
         Ok(inputs)
     }
 
@@ -587,7 +617,8 @@ impl InputGenerator {
         function_name: &str,
         scenarios: &[CompositeScenario],
     ) -> Result<TestInput> {
-        let primary_scenario = scenarios.first()
+        let primary_scenario = scenarios
+            .first()
             .cloned()
             .unwrap_or(CompositeScenario::SelfTransfer);
 
@@ -596,7 +627,10 @@ impl InputGenerator {
         let _description = primary_scenario.description();
 
         let metadata = TestInputMetadata {
-            edge_case_type: Some(EdgeCaseType::Custom(format!("composite:{:?}", primary_scenario))),
+            edge_case_type: Some(EdgeCaseType::Custom(format!(
+                "composite:{:?}",
+                primary_scenario
+            ))),
             generation_method: "composite_edge_case".to_string(),
             complexity_score,
         };
@@ -667,14 +701,32 @@ impl InputGenerator {
                 let zero_addr = ArgumentValue::Address([0u8; 32]);
                 match function_name {
                     "transfer" | "approve" => Ok(vec![
-                        TestArgument { value: sender, argument_type: ArgumentType::Address },
-                        TestArgument { value: zero_addr, argument_type: ArgumentType::Address },
-                        TestArgument { value: ArgumentValue::I128(self.rng.gen_range(1..1000)), argument_type: ArgumentType::I128 },
+                        TestArgument {
+                            value: sender,
+                            argument_type: ArgumentType::Address,
+                        },
+                        TestArgument {
+                            value: zero_addr,
+                            argument_type: ArgumentType::Address,
+                        },
+                        TestArgument {
+                            value: ArgumentValue::I128(self.rng.gen_range(1..1000)),
+                            argument_type: ArgumentType::I128,
+                        },
                     ]),
                     _ => Ok(vec![
-                        TestArgument { value: sender, argument_type: ArgumentType::Address },
-                        TestArgument { value: zero_addr, argument_type: ArgumentType::Address },
-                        TestArgument { value: ArgumentValue::I128(1), argument_type: ArgumentType::I128 },
+                        TestArgument {
+                            value: sender,
+                            argument_type: ArgumentType::Address,
+                        },
+                        TestArgument {
+                            value: zero_addr,
+                            argument_type: ArgumentType::Address,
+                        },
+                        TestArgument {
+                            value: ArgumentValue::I128(1),
+                            argument_type: ArgumentType::I128,
+                        },
                     ]),
                 }
             }
@@ -684,14 +736,32 @@ impl InputGenerator {
                 let recipient = self.generate_address(&EdgeCaseType::RandomValue)?;
                 match function_name {
                     "transfer" | "approve" => Ok(vec![
-                        TestArgument { value: zero_addr, argument_type: ArgumentType::Address },
-                        TestArgument { value: recipient, argument_type: ArgumentType::Address },
-                        TestArgument { value: ArgumentValue::I128(self.rng.gen_range(1..1000)), argument_type: ArgumentType::I128 },
+                        TestArgument {
+                            value: zero_addr,
+                            argument_type: ArgumentType::Address,
+                        },
+                        TestArgument {
+                            value: recipient,
+                            argument_type: ArgumentType::Address,
+                        },
+                        TestArgument {
+                            value: ArgumentValue::I128(self.rng.gen_range(1..1000)),
+                            argument_type: ArgumentType::I128,
+                        },
                     ]),
                     _ => Ok(vec![
-                        TestArgument { value: zero_addr, argument_type: ArgumentType::Address },
-                        TestArgument { value: recipient, argument_type: ArgumentType::Address },
-                        TestArgument { value: ArgumentValue::I128(1), argument_type: ArgumentType::I128 },
+                        TestArgument {
+                            value: zero_addr,
+                            argument_type: ArgumentType::Address,
+                        },
+                        TestArgument {
+                            value: recipient,
+                            argument_type: ArgumentType::Address,
+                        },
+                        TestArgument {
+                            value: ArgumentValue::I128(1),
+                            argument_type: ArgumentType::I128,
+                        },
                     ]),
                 }
             }
@@ -699,9 +769,18 @@ impl InputGenerator {
                 // Both addresses are null/zero
                 let zero_addr = ArgumentValue::Address([0u8; 32]);
                 Ok(vec![
-                    TestArgument { value: zero_addr.clone(), argument_type: ArgumentType::Address },
-                    TestArgument { value: zero_addr, argument_type: ArgumentType::Address },
-                    TestArgument { value: ArgumentValue::I128(0), argument_type: ArgumentType::I128 },
+                    TestArgument {
+                        value: zero_addr.clone(),
+                        argument_type: ArgumentType::Address,
+                    },
+                    TestArgument {
+                        value: zero_addr,
+                        argument_type: ArgumentType::Address,
+                    },
+                    TestArgument {
+                        value: ArgumentValue::I128(0),
+                        argument_type: ArgumentType::I128,
+                    },
                 ])
             }
             CompositeScenario::NullAddressMaxAmount => {
@@ -709,20 +788,42 @@ impl InputGenerator {
                 let zero_addr = ArgumentValue::Address([0u8; 32]);
                 match function_name {
                     "mint" | "burn" => Ok(vec![
-                        TestArgument { value: zero_addr, argument_type: ArgumentType::Address },
-                        TestArgument { value: ArgumentValue::I128(i128::MAX), argument_type: ArgumentType::I128 },
+                        TestArgument {
+                            value: zero_addr,
+                            argument_type: ArgumentType::Address,
+                        },
+                        TestArgument {
+                            value: ArgumentValue::I128(i128::MAX),
+                            argument_type: ArgumentType::I128,
+                        },
                     ]),
                     "transfer" | "approve" | "stake" => Ok(vec![
-                        TestArgument { value: self.generate_address(&EdgeCaseType::RandomValue)?, argument_type: ArgumentType::Address },
-                        TestArgument { value: zero_addr, argument_type: ArgumentType::Address },
-                        TestArgument { value: ArgumentValue::I128(i128::MAX), argument_type: ArgumentType::I128 },
+                        TestArgument {
+                            value: self.generate_address(&EdgeCaseType::RandomValue)?,
+                            argument_type: ArgumentType::Address,
+                        },
+                        TestArgument {
+                            value: zero_addr,
+                            argument_type: ArgumentType::Address,
+                        },
+                        TestArgument {
+                            value: ArgumentValue::I128(i128::MAX),
+                            argument_type: ArgumentType::I128,
+                        },
                     ]),
-                    "deposit" | "withdraw" => Ok(vec![
-                        TestArgument { value: ArgumentValue::I128(i128::MAX), argument_type: ArgumentType::I128 },
-                    ]),
+                    "deposit" | "withdraw" => Ok(vec![TestArgument {
+                        value: ArgumentValue::I128(i128::MAX),
+                        argument_type: ArgumentType::I128,
+                    }]),
                     _ => Ok(vec![
-                        TestArgument { value: zero_addr, argument_type: ArgumentType::Address },
-                        TestArgument { value: ArgumentValue::I128(i128::MAX), argument_type: ArgumentType::I128 },
+                        TestArgument {
+                            value: zero_addr,
+                            argument_type: ArgumentType::Address,
+                        },
+                        TestArgument {
+                            value: ArgumentValue::I128(i128::MAX),
+                            argument_type: ArgumentType::I128,
+                        },
                     ]),
                 }
             }
@@ -730,16 +831,32 @@ impl InputGenerator {
                 // All i128 params get MaxI128
                 match function_name {
                     "transfer" | "approve" | "mint" | "burn" | "stake" | "unstake" => Ok(vec![
-                        TestArgument { value: self.generate_address(&EdgeCaseType::RandomValue)?, argument_type: ArgumentType::Address },
-                        TestArgument { value: self.generate_address(&EdgeCaseType::RandomValue)?, argument_type: ArgumentType::Address },
-                        TestArgument { value: ArgumentValue::I128(i128::MAX), argument_type: ArgumentType::I128 },
+                        TestArgument {
+                            value: self.generate_address(&EdgeCaseType::RandomValue)?,
+                            argument_type: ArgumentType::Address,
+                        },
+                        TestArgument {
+                            value: self.generate_address(&EdgeCaseType::RandomValue)?,
+                            argument_type: ArgumentType::Address,
+                        },
+                        TestArgument {
+                            value: ArgumentValue::I128(i128::MAX),
+                            argument_type: ArgumentType::I128,
+                        },
                     ]),
-                    "deposit" | "withdraw" => Ok(vec![
-                        TestArgument { value: ArgumentValue::I128(i128::MAX), argument_type: ArgumentType::I128 },
-                    ]),
+                    "deposit" | "withdraw" => Ok(vec![TestArgument {
+                        value: ArgumentValue::I128(i128::MAX),
+                        argument_type: ArgumentType::I128,
+                    }]),
                     _ => Ok(vec![
-                        TestArgument { value: self.generate_address(&EdgeCaseType::RandomValue)?, argument_type: ArgumentType::Address },
-                        TestArgument { value: ArgumentValue::I128(i128::MAX), argument_type: ArgumentType::I128 },
+                        TestArgument {
+                            value: self.generate_address(&EdgeCaseType::RandomValue)?,
+                            argument_type: ArgumentType::Address,
+                        },
+                        TestArgument {
+                            value: ArgumentValue::I128(i128::MAX),
+                            argument_type: ArgumentType::I128,
+                        },
                     ]),
                 }
             }
@@ -747,16 +864,32 @@ impl InputGenerator {
                 // All i128 params get MinI128
                 match function_name {
                     "transfer" | "approve" | "mint" | "burn" | "stake" | "unstake" => Ok(vec![
-                        TestArgument { value: self.generate_address(&EdgeCaseType::RandomValue)?, argument_type: ArgumentType::Address },
-                        TestArgument { value: self.generate_address(&EdgeCaseType::RandomValue)?, argument_type: ArgumentType::Address },
-                        TestArgument { value: ArgumentValue::I128(i128::MIN), argument_type: ArgumentType::I128 },
+                        TestArgument {
+                            value: self.generate_address(&EdgeCaseType::RandomValue)?,
+                            argument_type: ArgumentType::Address,
+                        },
+                        TestArgument {
+                            value: self.generate_address(&EdgeCaseType::RandomValue)?,
+                            argument_type: ArgumentType::Address,
+                        },
+                        TestArgument {
+                            value: ArgumentValue::I128(i128::MIN),
+                            argument_type: ArgumentType::I128,
+                        },
                     ]),
-                    "deposit" | "withdraw" => Ok(vec![
-                        TestArgument { value: ArgumentValue::I128(i128::MIN), argument_type: ArgumentType::I128 },
-                    ]),
+                    "deposit" | "withdraw" => Ok(vec![TestArgument {
+                        value: ArgumentValue::I128(i128::MIN),
+                        argument_type: ArgumentType::I128,
+                    }]),
                     _ => Ok(vec![
-                        TestArgument { value: self.generate_address(&EdgeCaseType::RandomValue)?, argument_type: ArgumentType::Address },
-                        TestArgument { value: ArgumentValue::I128(i128::MIN), argument_type: ArgumentType::I128 },
+                        TestArgument {
+                            value: self.generate_address(&EdgeCaseType::RandomValue)?,
+                            argument_type: ArgumentType::Address,
+                        },
+                        TestArgument {
+                            value: ArgumentValue::I128(i128::MIN),
+                            argument_type: ArgumentType::I128,
+                        },
                     ]),
                 }
             }
@@ -764,21 +897,41 @@ impl InputGenerator {
                 // One i128 param = MaxI128, another = MinI128 (if possible) or just max
                 match function_name {
                     "transfer" | "approve" | "mint" | "burn" | "stake" | "unstake" => Ok(vec![
-                        TestArgument { value: self.generate_address(&EdgeCaseType::RandomValue)?, argument_type: ArgumentType::Address },
-                        TestArgument { value: self.generate_address(&EdgeCaseType::RandomValue)?, argument_type: ArgumentType::Address },
-                        TestArgument { value: ArgumentValue::I128(i128::MAX), argument_type: ArgumentType::I128 },
+                        TestArgument {
+                            value: self.generate_address(&EdgeCaseType::RandomValue)?,
+                            argument_type: ArgumentType::Address,
+                        },
+                        TestArgument {
+                            value: self.generate_address(&EdgeCaseType::RandomValue)?,
+                            argument_type: ArgumentType::Address,
+                        },
+                        TestArgument {
+                            value: ArgumentValue::I128(i128::MAX),
+                            argument_type: ArgumentType::I128,
+                        },
                     ]),
                     "deposit" | "withdraw" => {
                         // Only one i128 param, so we combine MaxI128 + MinI128
                         // by generating two separate inputs, one with each
-                        let val = if self.rng.gen_bool(0.5) { i128::MAX } else { i128::MIN };
-                        Ok(vec![
-                            TestArgument { value: ArgumentValue::I128(val), argument_type: ArgumentType::I128 },
-                        ])
+                        let val = if self.rng.gen_bool(0.5) {
+                            i128::MAX
+                        } else {
+                            i128::MIN
+                        };
+                        Ok(vec![TestArgument {
+                            value: ArgumentValue::I128(val),
+                            argument_type: ArgumentType::I128,
+                        }])
                     }
                     _ => Ok(vec![
-                        TestArgument { value: self.generate_address(&EdgeCaseType::RandomValue)?, argument_type: ArgumentType::Address },
-                        TestArgument { value: ArgumentValue::I128(i128::MAX), argument_type: ArgumentType::I128 },
+                        TestArgument {
+                            value: self.generate_address(&EdgeCaseType::RandomValue)?,
+                            argument_type: ArgumentType::Address,
+                        },
+                        TestArgument {
+                            value: ArgumentValue::I128(i128::MAX),
+                            argument_type: ArgumentType::I128,
+                        },
                     ]),
                 }
             }
@@ -786,50 +939,13 @@ impl InputGenerator {
                 // All i128 params maxed + same address everywhere
                 let same_addr = self.generate_same_address();
                 Ok(vec![
-                    TestArgument { value: same_addr.clone(), argument_type: ArgumentType::Address },
-                    TestArgument { value: same_addr, argument_type: ArgumentType::Address },
-                    TestArgument { value: ArgumentValue::I128(i128::MAX), argument_type: ArgumentType::I128 },
-                ])
-            }
-            CompositeScenario::OverflowAccumulative => {
-                // Simulate overflow through multiple accumulative ops:
-                // Use MaxI128 as the base, then add more via a large amount
-                match function_name {
-                    "deposit" | "withdraw" => Ok(vec![
-                        TestArgument { value: ArgumentValue::I128(i128::MAX), argument_type: ArgumentType::I128 },
-                    ]),
-                    "mint" | "burn" => {
-                        // For mint/burn with same address, MaxI128 on balance + MaxI128 amount = overflow
-                        let addr = self.generate_same_address();
-                        Ok(vec![
-                            TestArgument { value: addr, argument_type: ArgumentType::Address },
-                            TestArgument { value: ArgumentValue::I128(i128::MAX), argument_type: ArgumentType::I128 },
-                        ])
-                    }
-                    _ => Ok(vec![
-                        TestArgument { value: self.generate_address(&EdgeCaseType::RandomValue)?, argument_type: ArgumentType::Address },
-                        TestArgument { value: self.generate_address(&EdgeCaseType::RandomValue)?, argument_type: ArgumentType::Address },
-                        TestArgument { value: ArgumentValue::I128(i128::MAX), argument_type: ArgumentType::I128 },
-                    ]),
-                }
-            }
-            CompositeScenario::EmptyVectorLongString => {
-                Ok(vec![
                     TestArgument {
-                        value: ArgumentValue::Bytes(vec![]),
-                        argument_type: ArgumentType::Bytes,
+                        value: same_addr.clone(),
+                        argument_type: ArgumentType::Address,
                     },
                     TestArgument {
-                        value: ArgumentValue::String("A".repeat(5000)),
-                        argument_type: ArgumentType::String,
-                    },
-                ])
-            }
-            CompositeScenario::LargeVectorMaxI128 => {
-                Ok(vec![
-                    TestArgument {
-                        value: ArgumentValue::Bytes(vec![0u8; 50000]),
-                        argument_type: ArgumentType::Bytes,
+                        value: same_addr,
+                        argument_type: ArgumentType::Address,
                     },
                     TestArgument {
                         value: ArgumentValue::I128(i128::MAX),
@@ -837,18 +953,86 @@ impl InputGenerator {
                     },
                 ])
             }
-            CompositeScenario::MaxMinU64 => {
+            CompositeScenario::OverflowAccumulative => {
+                // Simulate overflow through multiple accumulative ops:
+                // Use MaxI128 as the base, then add more via a large amount
                 match function_name {
-                    "stake" | "unstake" => Ok(vec![
-                        TestArgument { value: self.generate_address(&EdgeCaseType::RandomValue)?, argument_type: ArgumentType::Address },
-                        TestArgument { value: ArgumentValue::U64(u64::MAX), argument_type: ArgumentType::U64 },
-                    ]),
+                    "deposit" | "withdraw" => Ok(vec![TestArgument {
+                        value: ArgumentValue::I128(i128::MAX),
+                        argument_type: ArgumentType::I128,
+                    }]),
+                    "mint" | "burn" => {
+                        // For mint/burn with same address, MaxI128 on balance + MaxI128 amount = overflow
+                        let addr = self.generate_same_address();
+                        Ok(vec![
+                            TestArgument {
+                                value: addr,
+                                argument_type: ArgumentType::Address,
+                            },
+                            TestArgument {
+                                value: ArgumentValue::I128(i128::MAX),
+                                argument_type: ArgumentType::I128,
+                            },
+                        ])
+                    }
                     _ => Ok(vec![
-                        TestArgument { value: self.generate_address(&EdgeCaseType::RandomValue)?, argument_type: ArgumentType::Address },
-                        TestArgument { value: ArgumentValue::U64(u64::MAX), argument_type: ArgumentType::U64 },
+                        TestArgument {
+                            value: self.generate_address(&EdgeCaseType::RandomValue)?,
+                            argument_type: ArgumentType::Address,
+                        },
+                        TestArgument {
+                            value: self.generate_address(&EdgeCaseType::RandomValue)?,
+                            argument_type: ArgumentType::Address,
+                        },
+                        TestArgument {
+                            value: ArgumentValue::I128(i128::MAX),
+                            argument_type: ArgumentType::I128,
+                        },
                     ]),
                 }
             }
+            CompositeScenario::EmptyVectorLongString => Ok(vec![
+                TestArgument {
+                    value: ArgumentValue::Bytes(vec![]),
+                    argument_type: ArgumentType::Bytes,
+                },
+                TestArgument {
+                    value: ArgumentValue::String("A".repeat(5000)),
+                    argument_type: ArgumentType::String,
+                },
+            ]),
+            CompositeScenario::LargeVectorMaxI128 => Ok(vec![
+                TestArgument {
+                    value: ArgumentValue::Bytes(vec![0u8; 50000]),
+                    argument_type: ArgumentType::Bytes,
+                },
+                TestArgument {
+                    value: ArgumentValue::I128(i128::MAX),
+                    argument_type: ArgumentType::I128,
+                },
+            ]),
+            CompositeScenario::MaxMinU64 => match function_name {
+                "stake" | "unstake" => Ok(vec![
+                    TestArgument {
+                        value: self.generate_address(&EdgeCaseType::RandomValue)?,
+                        argument_type: ArgumentType::Address,
+                    },
+                    TestArgument {
+                        value: ArgumentValue::U64(u64::MAX),
+                        argument_type: ArgumentType::U64,
+                    },
+                ]),
+                _ => Ok(vec![
+                    TestArgument {
+                        value: self.generate_address(&EdgeCaseType::RandomValue)?,
+                        argument_type: ArgumentType::Address,
+                    },
+                    TestArgument {
+                        value: ArgumentValue::U64(u64::MAX),
+                        argument_type: ArgumentType::U64,
+                    },
+                ]),
+            },
             CompositeScenario::Custom(_) => {
                 // Fall back to basic generation for custom scenarios
                 self.generate_arguments(function_name, &EdgeCaseType::BoundaryValue)

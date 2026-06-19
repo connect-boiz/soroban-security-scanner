@@ -1,15 +1,15 @@
 //! Notification providers for different channels
 
 use crate::notification_service::types::{
-    NotificationMessage, Recipient, NotificationChannel, DeliveryStatus, 
-    DeliveryTracking, ProviderConfig, NotificationResult, ProviderStats, ProviderError
+    DeliveryStatus, DeliveryTracking, NotificationChannel, NotificationMessage, NotificationResult,
+    ProviderConfig, ProviderError, ProviderStats, Recipient,
 };
 use async_trait::async_trait;
 use chrono::Utc;
-use std::collections::HashMap;
-use uuid::Uuid;
 use lettre::{Message, SmtpTransport, Transport};
 use reqwest::Client;
+use std::collections::HashMap;
+use uuid::Uuid;
 
 /// Trait for notification providers
 #[async_trait]
@@ -40,24 +40,41 @@ pub struct SmtpClient {
 
 impl SmtpClient {
     pub fn new(config: &ProviderConfig) -> Result<Self, ProviderError> {
-        let smtp_host = config.config.get("smtp_host")
+        let smtp_host = config
+            .config
+            .get("smtp_host")
             .ok_or_else(|| ProviderError::InvalidConfiguration("smtp_host missing".to_string()))?;
-        let smtp_port = config.config.get("smtp_port")
+        let smtp_port = config
+            .config
+            .get("smtp_port")
             .and_then(|p| p.parse().ok())
             .unwrap_or(587);
-        let username = config.config.get("username")
+        let username = config
+            .config
+            .get("username")
             .ok_or_else(|| ProviderError::InvalidConfiguration("username missing".to_string()))?;
-        let password = config.config.get("password")
+        let password = config
+            .config
+            .get("password")
             .ok_or_else(|| ProviderError::InvalidConfiguration("password missing".to_string()))?;
-        let from_email = config.config.get("from_email")
+        let from_email = config
+            .config
+            .get("from_email")
             .ok_or_else(|| ProviderError::InvalidConfiguration("from_email missing".to_string()))?;
-        let from_name = config.config.get("from_name")
+        let from_name = config
+            .config
+            .get("from_name")
             .unwrap_or("Soroban Security Scanner");
 
-        let creds = lettre::transport::smtp::authentication::Credentials::new(username.clone(), password.clone());
-        
+        let creds = lettre::transport::smtp::authentication::Credentials::new(
+            username.clone(),
+            password.clone(),
+        );
+
         let transport = SmtpTransport::relay(smtp_host)
-            .map_err(|e| ProviderError::InvalidConfiguration(format!("SMTP configuration error: {}", e)))?
+            .map_err(|e| {
+                ProviderError::InvalidConfiguration(format!("SMTP configuration error: {}", e))
+            })?
             .port(smtp_port)
             .credentials(creds)
             .build();
@@ -69,15 +86,27 @@ impl SmtpClient {
         })
     }
 
-    pub async fn send_email(&self, to: &str, subject: &str, body: &str) -> Result<String, ProviderError> {
+    pub async fn send_email(
+        &self,
+        to: &str,
+        subject: &str,
+        body: &str,
+    ) -> Result<String, ProviderError> {
         let email = Message::builder()
-            .from(format!("{} <{}>", self.from_name, self.from_email).parse().unwrap())
+            .from(
+                format!("{} <{}>", self.from_name, self.from_email)
+                    .parse()
+                    .unwrap(),
+            )
             .to(to.parse().unwrap())
             .subject(subject)
             .body(body.to_string())
-            .map_err(|e| ProviderError::InvalidConfiguration(format!("Email format error: {}", e)))?;
+            .map_err(|e| {
+                ProviderError::InvalidConfiguration(format!("Email format error: {}", e))
+            })?;
 
-        self.transport.send(&email)
+        self.transport
+            .send(&email)
             .map(|_| Uuid::new_v4().to_string())
             .map_err(|e| ProviderError::NetworkError(format!("SMTP send error: {}", e)))
     }
@@ -101,12 +130,16 @@ pub struct SmsClient {
 
 impl SmsClient {
     pub fn new(config: &ProviderConfig) -> Result<Self, ProviderError> {
-        let account_sid = config.config.get("account_sid")
-            .ok_or_else(|| ProviderError::InvalidConfiguration("account_sid missing".to_string()))?;
-        let auth_token = config.config.get("auth_token")
+        let account_sid = config.config.get("account_sid").ok_or_else(|| {
+            ProviderError::InvalidConfiguration("account_sid missing".to_string())
+        })?;
+        let auth_token = config
+            .config
+            .get("auth_token")
             .ok_or_else(|| ProviderError::InvalidConfiguration("auth_token missing".to_string()))?;
-        let from_number = config.config.get("from_number")
-            .ok_or_else(|| ProviderError::InvalidConfiguration("from_number missing".to_string()))?;
+        let from_number = config.config.get("from_number").ok_or_else(|| {
+            ProviderError::InvalidConfiguration("from_number missing".to_string())
+        })?;
 
         Ok(Self {
             client: Client::new(),
@@ -117,15 +150,15 @@ impl SmsClient {
     }
 
     pub async fn send_sms(&self, to: &str, body: &str) -> Result<String, ProviderError> {
-        let url = format!("https://api.twilio.com/2010-04-01/Accounts/{}/Messages.json", self.account_sid);
-        
-        let form_data = HashMap::from([
-            ("To", to),
-            ("From", &self.from_number),
-            ("Body", body),
-        ]);
+        let url = format!(
+            "https://api.twilio.com/2010-04-01/Accounts/{}/Messages.json",
+            self.account_sid
+        );
 
-        let response = self.client
+        let form_data = HashMap::from([("To", to), ("From", &self.from_number), ("Body", body)]);
+
+        let response = self
+            .client
             .post(&url)
             .basic_auth(&self.account_sid, Some(&self.auth_token))
             .form(&form_data)
@@ -136,7 +169,10 @@ impl SmsClient {
         if response.status().is_success() {
             Ok(Uuid::new_v4().to_string())
         } else {
-            Err(ProviderError::NetworkError(format!("SMS API error: {}", response.status())))
+            Err(ProviderError::NetworkError(format!(
+                "SMS API error: {}",
+                response.status()
+            )))
         }
     }
 }
@@ -155,7 +191,10 @@ impl EmailProvider {
             None
         };
 
-        Ok(Self { config, smtp_client })
+        Ok(Self {
+            config,
+            smtp_client,
+        })
     }
 }
 
@@ -170,21 +209,27 @@ impl NotificationProvider for EmailProvider {
             return Err(ProviderError::ProviderDisabled);
         }
 
-        let email = recipient.email.as_ref()
+        let email = recipient
+            .email
+            .as_ref()
             .ok_or_else(|| ProviderError::MissingRecipientData("email".to_string()))?;
 
-        let smtp_client = self.smtp_client.as_ref()
+        let smtp_client = self
+            .smtp_client
+            .as_ref()
             .ok_or_else(|| ProviderError::ProviderNotConfigured)?;
 
         let tracking_id = Uuid::new_v4().to_string();
         let now = Utc::now();
 
         // Send email
-        let result = smtp_client.send_email(
-            email,
-            message.subject.as_deref().unwrap_or("Notification"),
-            &message.body,
-        ).await;
+        let result = smtp_client
+            .send_email(
+                email,
+                message.subject.as_deref().unwrap_or("Notification"),
+                &message.body,
+            )
+            .await;
 
         match result {
             Ok(external_id) => Ok(DeliveryTracking {
@@ -265,10 +310,14 @@ impl NotificationProvider for SMSProvider {
             return Err(ProviderError::ProviderDisabled);
         }
 
-        let phone = recipient.phone.as_ref()
+        let phone = recipient
+            .phone
+            .as_ref()
             .ok_or_else(|| ProviderError::MissingRecipientData("phone".to_string()))?;
 
-        let sms_client = self.sms_client.as_ref()
+        let sms_client = self
+            .sms_client
+            .as_ref()
             .ok_or_else(|| ProviderError::ProviderNotConfigured)?;
 
         let tracking_id = Uuid::new_v4().to_string();
@@ -347,7 +396,10 @@ impl PushProvider {
             None
         };
 
-        Ok(Self { config, push_client })
+        Ok(Self {
+            config,
+            push_client,
+        })
     }
 }
 
@@ -362,22 +414,26 @@ impl NotificationProvider for PushProvider {
             return Err(ProviderError::ProviderDisabled);
         }
 
-        let push_client = self.push_client.as_ref()
+        let push_client = self
+            .push_client
+            .as_ref()
             .ok_or_else(|| ProviderError::ProviderNotConfigured)?;
 
         let tracking_id = Uuid::new_v4().to_string();
         let now = Utc::now();
 
         let mut results = Vec::new();
-        
+
         // Send to all device tokens
         for device_token in &recipient.device_tokens {
-            let result = push_client.send_push(
-                device_token,
-                message.subject.as_deref().unwrap_or("Notification"),
-                &message.body,
-                &message.data,
-            ).await;
+            let result = push_client
+                .send_push(
+                    device_token,
+                    message.subject.as_deref().unwrap_or("Notification"),
+                    &message.body,
+                    &message.data,
+                )
+                .await;
 
             match result {
                 Ok(external_id) => results.push(Ok(external_id)),
@@ -393,10 +449,14 @@ impl NotificationProvider for PushProvider {
         };
 
         let error_message = if results.iter().all(|r| r.is_err()) {
-            Some(results.iter().filter_map(|r| r.as_ref().err())
-                .map(|e| e.to_string())
-                .collect::<Vec<_>>()
-                .join(", "))
+            Some(
+                results
+                    .iter()
+                    .filter_map(|r| r.as_ref().err())
+                    .map(|e| e.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            )
         } else {
             None
         };
@@ -410,7 +470,11 @@ impl NotificationProvider for PushProvider {
             status,
             attempts: 1,
             last_attempt: now,
-            delivered_at: if status == DeliveryStatus::Sent { Some(now) } else { None },
+            delivered_at: if status == DeliveryStatus::Sent {
+                Some(now)
+            } else {
+                None
+            },
             error_message,
             external_id,
         })
@@ -472,8 +536,14 @@ impl NotificationProvider for InAppProvider {
         // Store in-app notification
         let notification = InAppNotification {
             id: tracking_id.clone(),
-            user_id: recipient.user_id.clone().unwrap_or_else(|| recipient.id.clone()),
-            title: message.subject.clone().unwrap_or_else(|| "Notification".to_string()),
+            user_id: recipient
+                .user_id
+                .clone()
+                .unwrap_or_else(|| recipient.id.clone()),
+            title: message
+                .subject
+                .clone()
+                .unwrap_or_else(|| "Notification".to_string()),
             body: message.body.clone(),
             data: message.data.clone(),
             priority: message.priority.clone(),
@@ -529,7 +599,6 @@ impl NotificationProvider for InAppProvider {
         }
     }
 }
-
 
 /// Push notification client
 pub struct PushClient {
@@ -591,7 +660,10 @@ impl InAppStorage {
         }
     }
 
-    pub async fn store_notification(&self, notification: InAppNotification) -> Result<(), ProviderError> {
+    pub async fn store_notification(
+        &self,
+        notification: InAppNotification,
+    ) -> Result<(), ProviderError> {
         let mut notifications = self.notifications.write().await;
         notifications.push(notification);
         Ok(())

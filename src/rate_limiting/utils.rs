@@ -1,10 +1,10 @@
 //! Utility functions for rate limiting
 
+use crate::rate_limiting::types::*;
+use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::Duration;
-use chrono::{DateTime, Utc};
-use crate::rate_limiting::types::*;
 
 /// Utility functions for IP address handling
 pub mod ip_utils {
@@ -102,7 +102,13 @@ pub mod key_utils {
         window: RateLimitWindow,
         tier: RateLimitTier,
     ) -> String {
-        format!("{}:{}:{}:{:?}", identifier, resource, window.as_seconds(), tier)
+        format!(
+            "{}:{}:{}:{:?}",
+            identifier,
+            resource,
+            window.as_seconds(),
+            tier
+        )
     }
 
     /// Generate a user-specific key
@@ -192,9 +198,11 @@ pub mod stats_utils {
         }
 
         let mean = requests.iter().sum::<u64>() as f64 / requests.len() as f64;
-        let variance = requests.iter()
+        let variance = requests
+            .iter()
             .map(|&x| (x as f64 - mean).powi(2))
-            .sum::<f64>() / (requests.len() - 1) as f64;
+            .sum::<f64>()
+            / (requests.len() - 1) as f64;
         let std_dev = variance.sqrt();
 
         // Check if the latest request count is significantly higher than average
@@ -208,12 +216,12 @@ pub mod stats_utils {
         sorted_values.sort_unstable();
 
         let mut percentiles = HashMap::new();
-        
+
         percentiles.insert("p50".to_string(), percentile(&sorted_values, 50.0));
         percentiles.insert("p90".to_string(), percentile(&sorted_values, 90.0));
         percentiles.insert("p95".to_string(), percentile(&sorted_values, 95.0));
         percentiles.insert("p99".to_string(), percentile(&sorted_values, 99.0));
-        
+
         percentiles
     }
 
@@ -247,9 +255,11 @@ pub mod config_utils {
         // Check if Redis configuration is valid when distributed is enabled
         if config.distributed.enabled {
             if config.distributed.redis.url.is_empty() {
-                return Err("Redis URL is required when distributed rate limiting is enabled".to_string());
+                return Err(
+                    "Redis URL is required when distributed rate limiting is enabled".to_string(),
+                );
             }
-            
+
             if config.distributed.redis.pool_size == 0 {
                 return Err("Redis pool size must be greater than 0".to_string());
             }
@@ -356,10 +366,7 @@ pub mod test_utils {
     }
 
     /// Create a test rate limit policy
-    pub fn create_test_policy(
-        max_requests: u64,
-        window: RateLimitWindow,
-    ) -> RateLimitPolicy {
+    pub fn create_test_policy(max_requests: u64, window: RateLimitWindow) -> RateLimitPolicy {
         RateLimitPolicy::new(max_requests, window)
     }
 
@@ -387,8 +394,11 @@ mod tests {
     #[test]
     fn test_ip_extraction() {
         let mut headers = HashMap::new();
-        headers.insert("x-forwarded-for".to_string(), "192.168.1.1, 10.0.0.1".to_string());
-        
+        headers.insert(
+            "x-forwarded-for".to_string(),
+            "192.168.1.1, 10.0.0.1".to_string(),
+        );
+
         let ip = ip_utils::extract_ip_from_headers(&headers);
         assert_eq!(ip, Some("192.168.1.1".parse().unwrap()));
     }
@@ -404,11 +414,11 @@ mod tests {
     fn test_window_calculations() {
         let timestamp = Utc::now();
         let window = RateLimitWindow::Minute;
-        
+
         let start = time_utils::window_start(timestamp, window);
         let end = time_utils::window_end(timestamp, window);
         let remaining = time_utils::remaining_time(timestamp, window);
-        
+
         assert!(end > start);
         assert!(remaining <= Duration::from_secs(60));
     }
@@ -424,7 +434,7 @@ mod tests {
     fn test_percentiles() {
         let values = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
         let percentiles = stats_utils::calculate_percentiles(&values);
-        
+
         assert_eq!(percentiles.get("p50"), Some(&5));
         assert_eq!(percentiles.get("p90"), Some(&9));
     }

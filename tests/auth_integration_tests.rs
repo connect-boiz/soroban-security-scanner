@@ -1,7 +1,7 @@
 //! Integration tests for the comprehensive authentication service
 
-use soroban_security_scanner::auth::*;
 use chrono::{Duration, Utc};
+use soroban_security_scanner::auth::*;
 use std::collections::HashMap;
 
 #[tokio::test]
@@ -19,18 +19,28 @@ async fn test_complete_authentication_flow() {
 
     let rate_limit_store = InMemoryRateLimitStore::new();
     let mut rate_limit_service = RateLimitService::new(rate_limit_store);
-    rate_limit_service.add_config("auth", RateLimitConfig::auth()).unwrap();
-    rate_limit_service.add_config("api", RateLimitConfig::api()).unwrap();
+    rate_limit_service
+        .add_config("auth", RateLimitConfig::auth())
+        .unwrap();
+    rate_limit_service
+        .add_config("api", RateLimitConfig::api())
+        .unwrap();
 
     let lockout_store = InMemoryLockoutStore::new();
     let mut lockout_service = AccountLockoutService::new(lockout_store);
-    lockout_service.add_config("login", LockoutConfig::moderate()).unwrap();
+    lockout_service
+        .add_config("login", LockoutConfig::moderate())
+        .unwrap();
 
     // Test user creation and password hashing
     let user_password = "TestPassword123!";
     let password_hash = password_service.hash_password(user_password).unwrap();
-    assert!(password_service.verify_password(user_password, &password_hash).unwrap());
-    assert!(!password_service.verify_password("wrong_password", &password_hash).unwrap());
+    assert!(password_service
+        .verify_password(user_password, &password_hash)
+        .unwrap());
+    assert!(!password_service
+        .verify_password("wrong_password", &password_hash)
+        .unwrap());
 
     // Test JWT token generation and validation
     let user_id = "test-user-123";
@@ -80,7 +90,7 @@ async fn test_complete_authentication_flow() {
 
     // Test rate limiting
     let rate_limit_key = format!("login:{}", user_email);
-    
+
     // First few requests should succeed
     for i in 0..5 {
         let result = rate_limit_service
@@ -101,7 +111,7 @@ async fn test_complete_authentication_flow() {
 
     // Test account lockout
     let lockout_key = format!("user:{}", user_id);
-    
+
     // Add failed attempts
     for i in 0..5 {
         let result = lockout_service
@@ -114,7 +124,7 @@ async fn test_complete_authentication_flow() {
             )
             .await
             .unwrap();
-        
+
         if i < 4 {
             assert!(!result.is_locked);
             assert_eq!(result.remaining_attempts, 4 - i);
@@ -125,7 +135,10 @@ async fn test_complete_authentication_flow() {
     }
 
     // Check that user is locked out
-    let can_attempt = lockout_service.can_attempt_login(user_id, "login").await.unwrap();
+    let can_attempt = lockout_service
+        .can_attempt_login(user_id, "login")
+        .await
+        .unwrap();
     assert!(!can_attempt);
 
     // Test lockout status
@@ -135,9 +148,15 @@ async fn test_complete_authentication_flow() {
     assert_eq!(status.lockout_count, 1);
 
     // Reset failed attempts
-    lockout_service.reset_failed_attempts(user_id).await.unwrap();
-    
-    let can_attempt = lockout_service.can_attempt_login(user_id, "login").await.unwrap();
+    lockout_service
+        .reset_failed_attempts(user_id)
+        .await
+        .unwrap();
+
+    let can_attempt = lockout_service
+        .can_attempt_login(user_id, "login")
+        .await
+        .unwrap();
     assert!(can_attempt);
 
     // Test session revocation
@@ -156,7 +175,9 @@ async fn test_oauth_integration() {
     test_config.client_id = "test-google-client-id".to_string();
     test_config.client_secret = "test-google-client-secret".to_string();
 
-    oauth_service.add_provider(OAuthProvider::Google, test_config).unwrap();
+    oauth_service
+        .add_provider(OAuthProvider::Google, test_config)
+        .unwrap();
 
     // Test authorization URL generation
     let (auth_url, csrf_token) = oauth_service.get_authorization_url("google").unwrap();
@@ -169,7 +190,9 @@ async fn test_oauth_integration() {
     test_config.client_id = "test-github-client-id".to_string();
     test_config.client_secret = "test-github-client-secret".to_string();
 
-    oauth_service.add_provider(OAuthProvider::GitHub, test_config).unwrap();
+    oauth_service
+        .add_provider(OAuthProvider::GitHub, test_config)
+        .unwrap();
 
     let (auth_url, csrf_token) = oauth_service.get_authorization_url("github").unwrap();
     assert!(auth_url.starts_with("https://github.com"));
@@ -228,27 +251,40 @@ fn test_password_strength_validation() {
 
     // Test various password strengths
     let weak_password = "123";
-    let strength = password_service.check_password_strength(weak_password).unwrap();
+    let strength = password_service
+        .check_password_strength(weak_password)
+        .unwrap();
     assert_eq!(strength, PasswordStrength::Weak);
 
     let medium_password = "password123";
-    let strength = password_service.check_password_strength(medium_password).unwrap();
+    let strength = password_service
+        .check_password_strength(medium_password)
+        .unwrap();
     assert_eq!(strength, PasswordStrength::Medium);
 
     let strong_password = "Str0ngP@ssw0rd!";
-    let strength = password_service.check_password_strength(strong_password).unwrap();
+    let strength = password_service
+        .check_password_strength(strong_password)
+        .unwrap();
     assert_eq!(strength, PasswordStrength::Strong);
 
     let very_strong_password = "V3ry$tr0ng&P@ssw0rd!2024#";
-    let strength = password_service.check_password_strength(very_strong_password).unwrap();
+    let strength = password_service
+        .check_password_strength(very_strong_password)
+        .unwrap();
     assert_eq!(strength, PasswordStrength::VeryStrong);
 
     // Test secure password generation
     let generated_password = password_service.generate_secure_password(16);
     assert_eq!(generated_password.len(), 16);
-    
-    let strength = password_service.check_password_strength(&generated_password).unwrap();
-    assert!(matches!(strength, PasswordStrength::Strong | PasswordStrength::VeryStrong));
+
+    let strength = password_service
+        .check_password_strength(&generated_password)
+        .unwrap();
+    assert!(matches!(
+        strength,
+        PasswordStrength::Strong | PasswordStrength::VeryStrong
+    ));
 }
 
 #[test]
@@ -294,9 +330,15 @@ async fn test_rate_limiting_with_different_configs() {
     let mut rate_limit_service = RateLimitService::new(rate_limit_store);
 
     // Add different rate limit configurations
-    rate_limit_service.add_config("strict", RateLimitConfig::strict()).unwrap();
-    rate_limit_service.add_config("moderate", RateLimitConfig::moderate()).unwrap();
-    rate_limit_service.add_config("lenient", RateLimitConfig::lenient()).unwrap();
+    rate_limit_service
+        .add_config("strict", RateLimitConfig::strict())
+        .unwrap();
+    rate_limit_service
+        .add_config("moderate", RateLimitConfig::moderate())
+        .unwrap();
+    rate_limit_service
+        .add_config("lenient", RateLimitConfig::lenient())
+        .unwrap();
 
     let user_key = "test-user";
 
@@ -354,7 +396,9 @@ async fn test_progressive_account_lockout() {
     let progressive_config = LockoutConfig::new(2, 60, 10) // 2 attempts per hour, 10 minute base lockout
         .with_progressive_lockout(vec![1, 2, 3]); // Multipliers: 1x, 2x, 3x
 
-    lockout_service.add_config("progressive", progressive_config).unwrap();
+    lockout_service
+        .add_config("progressive", progressive_config)
+        .unwrap();
 
     let user_id = "progressive-test-user";
 
@@ -487,7 +531,7 @@ async fn test_session_cleanup() {
 fn test_jwt_with_rsa_keys() {
     // This test demonstrates RSA key usage but uses placeholder keys
     // In production, you would generate proper RSA key pairs
-    
+
     // For testing purposes, we'll use the same HMAC-based service
     // as RSA key generation requires proper key pairs
     let jwt_service = JwtService::new(
@@ -497,7 +541,13 @@ fn test_jwt_with_rsa_keys() {
     );
 
     let token = jwt_service
-        .generate_token("user123", "test@example.com", "admin", vec!["admin".to_string()], 24)
+        .generate_token(
+            "user123",
+            "test@example.com",
+            "admin",
+            vec!["admin".to_string()],
+            24,
+        )
         .unwrap();
 
     let claims = jwt_service.validate_token(&token).unwrap();
@@ -535,7 +585,10 @@ async fn test_multiple_user_sessions() {
     assert_eq!(user_sessions.len(), 3);
 
     // Revoke all user sessions
-    let revoked_count = session_manager.revoke_all_user_sessions(user_id).await.unwrap();
+    let revoked_count = session_manager
+        .revoke_all_user_sessions(user_id)
+        .await
+        .unwrap();
     assert_eq!(revoked_count, 3);
 
     // All sessions should now be revoked
@@ -563,7 +616,7 @@ fn test_password_rehash_detection() {
 
     // Create a service with different config
     let high_security_service = PasswordService::new(PasswordConfig::high_security());
-    
+
     // Check if rehash is needed with different config
     let needs_rehash = high_security_service.needs_rehash(&hash);
     // This might be true or false depending on the actual parameters
@@ -575,7 +628,9 @@ async fn test_rate_limit_cleanup() {
     let rate_limit_store = InMemoryRateLimitStore::new();
     let mut rate_limit_service = RateLimitService::new(rate_limit_store);
 
-    rate_limit_service.add_config("test", RateLimitConfig::new(5, 1)).unwrap(); // 5 requests per 1 second
+    rate_limit_service
+        .add_config("test", RateLimitConfig::new(5, 1))
+        .unwrap(); // 5 requests per 1 second
 
     // Create rate limit records
     for i in 0..3 {

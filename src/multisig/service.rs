@@ -24,8 +24,14 @@ use crate::multisig::types::{
 pub trait MultiSigStore: Send + Sync {
     async fn create_proposal(&self, proposal: &MultiSigProposal) -> Result<(), MultiSigError>;
     async fn get_proposal(&self, id: Uuid) -> Result<Option<MultiSigProposal>, MultiSigError>;
-    async fn list_proposals_for_user(&self, user_id: Uuid) -> Result<Vec<MultiSigProposal>, MultiSigError>;
-    async fn list_proposals_for_signer(&self, signer_address: &str) -> Result<Vec<MultiSigProposal>, MultiSigError>;
+    async fn list_proposals_for_user(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<MultiSigProposal>, MultiSigError>;
+    async fn list_proposals_for_signer(
+        &self,
+        signer_address: &str,
+    ) -> Result<Vec<MultiSigProposal>, MultiSigError>;
     async fn update_proposal(&self, proposal: &MultiSigProposal) -> Result<(), MultiSigError>;
 }
 
@@ -41,7 +47,10 @@ pub struct InMemoryMultiSigStore {
 #[async_trait]
 impl MultiSigStore for InMemoryMultiSigStore {
     async fn create_proposal(&self, proposal: &MultiSigProposal) -> Result<(), MultiSigError> {
-        self.proposals.write().await.insert(proposal.id, proposal.clone());
+        self.proposals
+            .write()
+            .await
+            .insert(proposal.id, proposal.clone());
         Ok(())
     }
 
@@ -49,7 +58,10 @@ impl MultiSigStore for InMemoryMultiSigStore {
         Ok(self.proposals.read().await.get(&id).cloned())
     }
 
-    async fn list_proposals_for_user(&self, user_id: Uuid) -> Result<Vec<MultiSigProposal>, MultiSigError> {
+    async fn list_proposals_for_user(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<MultiSigProposal>, MultiSigError> {
         Ok(self
             .proposals
             .read()
@@ -60,7 +72,10 @@ impl MultiSigStore for InMemoryMultiSigStore {
             .collect())
     }
 
-    async fn list_proposals_for_signer(&self, signer_address: &str) -> Result<Vec<MultiSigProposal>, MultiSigError> {
+    async fn list_proposals_for_signer(
+        &self,
+        signer_address: &str,
+    ) -> Result<Vec<MultiSigProposal>, MultiSigError> {
         Ok(self
             .proposals
             .read()
@@ -72,7 +87,10 @@ impl MultiSigStore for InMemoryMultiSigStore {
     }
 
     async fn update_proposal(&self, proposal: &MultiSigProposal) -> Result<(), MultiSigError> {
-        self.proposals.write().await.insert(proposal.id, proposal.clone());
+        self.proposals
+            .write()
+            .await
+            .insert(proposal.id, proposal.clone());
         Ok(())
     }
 }
@@ -343,7 +361,11 @@ impl MultiSigService {
         info!(
             "Proposal {} executed with {} approved signers. Transaction hash: {}",
             proposal_id,
-            proposal.signers.iter().filter(|s| s.decision == SignerDecision::Approved).count(),
+            proposal
+                .signers
+                .iter()
+                .filter(|s| s.decision == SignerDecision::Approved)
+                .count(),
             transaction_hash
         );
 

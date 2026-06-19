@@ -1,14 +1,14 @@
 //! HTTP middleware for rate limiting
 
+use crate::rate_limiting::{RateLimitContext, RateLimitResult, RateLimitTier, RateLimiter};
+use async_trait::async_trait;
+use chrono::Utc;
 use std::net::IpAddr;
 use std::str::FromStr;
 use std::time::Duration;
-use async_trait::async_trait;
-use chrono::Utc;
 use uuid::Uuid;
-use crate::rate_limiting::{RateLimiter, RateLimitContext, RateLimitResult, RateLimitTier};
 
-use tracing::{debug, warn, error};
+use tracing::{debug, error, warn};
 
 /// HTTP middleware trait for rate limiting
 #[async_trait]
@@ -17,7 +17,10 @@ pub trait RateLimitMiddleware: Send + Sync {
     type Request;
     type Response;
 
-    async fn handle_request(&self, request: Self::Request) -> Result<Self::Response, RateLimitError<Self::Error>>;
+    async fn handle_request(
+        &self,
+        request: Self::Request,
+    ) -> Result<Self::Response, RateLimitError<Self::Error>>;
 }
 
 /// Rate limiting middleware for HTTP requests
@@ -92,7 +95,8 @@ impl MiddlewareConfig {
         let ip_restrictions = &config.ip_restrictions;
         Self {
             trusted_proxies: ip_restrictions.trusted_proxies.clone(),
-            trusted_proxy_ranges: ip_restrictions.trusted_proxy_ranges
+            trusted_proxy_ranges: ip_restrictions
+                .trusted_proxy_ranges
                 .iter()
                 .filter_map(|range| range.parse::<IpNetwork>().ok())
                 .collect(),
@@ -179,8 +183,12 @@ impl HttpRateLimitMiddleware {
     /// The rightmost IP that is NOT a trusted proxy is the real client.
     fn parse_forwarded_for(&self, header_value: &str, connection_ip: IpAddr) -> Option<IpAddr> {
         // Split by comma and process from right to left
-        let ips: Vec<&str> = header_value.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
-        
+        let ips: Vec<&str> = header_value
+            .split(',')
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .collect();
+
         if ips.is_empty() {
             return None;
         }
@@ -216,7 +224,10 @@ impl HttpRateLimitMiddleware {
         // This happens when there are more proxies than expected (e.g., internal networks)
         if let Some(leftmost_str) = ips.first() {
             if let Ok(ip) = leftmost_str.trim().parse::<IpAddr>() {
-                debug!("All proxies in X-Forwarded-For chain are trusted, using leftmost: {}", ip);
+                debug!(
+                    "All proxies in X-Forwarded-For chain are trusted, using leftmost: {}",
+                    ip
+                );
                 return Some(ip);
             }
         }
@@ -248,12 +259,16 @@ impl HttpRateLimitMiddleware {
 
     /// Extract user information from request
     fn extract_user_info(&self, request: &dyn HttpRequest) -> (Option<Uuid>, RateLimitTier) {
-        let user_id = self.config.user_id_header
+        let user_id = self
+            .config
+            .user_id_header
             .as_ref()
             .and_then(|header| request.get_header(header))
             .and_then(|id_str| Uuid::parse_str(id_str).ok());
 
-        let tier = self.config.user_tier_header
+        let tier = self
+            .config
+            .user_tier_header
             .as_ref()
             .and_then(|header| request.get_header(header))
             .map(|tier_str| RateLimitTier::from_role(tier_str))
@@ -268,7 +283,8 @@ impl HttpRateLimitMiddleware {
 
     /// Extract API key from request
     fn extract_api_key(&self, request: &dyn HttpRequest) -> Option<String> {
-        self.config.api_key_header
+        self.config
+            .api_key_header
             .as_ref()
             .and_then(|header| request.get_header(header))
             .map(|s| s.to_string())
@@ -293,12 +309,22 @@ impl HttpRateLimitMiddleware {
 
         // Add IP resolution metadata for debugging and auditing
         context = context
-            .with_metadata("connection_ip".to_string(), resolved.connection_ip.to_string())
-            .with_metadata("ip_resolution_source".to_string(), resolved.resolution_source.clone())
-            .with_metadata("resolved_client_ip".to_string(), resolved.client_ip.to_string());
+            .with_metadata(
+                "connection_ip".to_string(),
+                resolved.connection_ip.to_string(),
+            )
+            .with_metadata(
+                "ip_resolution_source".to_string(),
+                resolved.resolution_source.clone(),
+            )
+            .with_metadata(
+                "resolved_client_ip".to_string(),
+                resolved.client_ip.to_string(),
+            );
 
         if let Some(forwarded_for) = request.get_header("X-Forwarded-For") {
-            context = context.with_metadata("forwarded_for_chain".to_string(), forwarded_for.to_string());
+            context =
+                context.with_metadata("forwarded_for_chain".to_string(), forwarded_for.to_string());
         }
 
         if let Some(referer) = request.get_header("Referer") {
@@ -315,11 +341,19 @@ impl HttpRateLimitMiddleware {
         }
 
         match result {
-            RateLimitResult::Allowed { remaining, reset_time, .. } => {
+            RateLimitResult::Allowed {
+                remaining,
+                reset_time,
+                ..
+            } => {
                 response.set_header("X-RateLimit-Remaining", remaining.to_string());
                 response.set_header("X-RateLimit-Reset", reset_time.timestamp().to_string());
             }
-            RateLimitResult::Blocked { retry_after, max_requests, .. } => {
+            RateLimitResult::Blocked {
+                retry_after,
+                max_requests,
+                ..
+            } => {
                 response.set_header("X-RateLimit-Limit", max_requests.to_string());
                 response.set_header("Retry-After", retry_after.as_secs().to_string());
             }
@@ -364,9 +398,9 @@ pub mod axum {
     use super::*;
     use axum::{
         extract::{Request, State},
-        http::{StatusCode, HeaderMap, HeaderValue},
-        response::{Response, IntoResponse},
+        http::{HeaderMap, HeaderValue, StatusCode},
         middleware::Next,
+        response::{IntoResponse, Response},
     };
     use std::net::SocketAddr;
 
@@ -399,7 +433,8 @@ pub mod axum {
         }
 
         fn set_status(&mut self, status: u16) {
-            *self.0.status_mut() = StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+            *self.0.status_mut() =
+                StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
         }
 
         fn set_body(&mut self, body: String) {
@@ -429,7 +464,11 @@ pub mod axum {
                 middleware.apply_rate_limit_headers(&mut AxumResponse(response), &result);
                 Ok(response)
             }
-            RateLimitResult::Blocked { reason, retry_after, .. } => {
+            RateLimitResult::Blocked {
+                reason,
+                retry_after,
+                ..
+            } => {
                 let error_response = axum::Json(serde_json::json!({
                     "error": "Rate limit exceeded",
                     "message": reason,
@@ -470,7 +509,8 @@ pub mod actix {
         }
 
         fn remote_addr(&self) -> IpAddr {
-            self.connection_info().realip_remote_addr()
+            self.connection_info()
+                .realip_remote_addr()
                 .and_then(|addr| addr.parse().ok())
                 .unwrap_or_else(|| "127.0.0.1".parse().unwrap())
         }
@@ -507,12 +547,14 @@ pub mod actix {
     {
         type Response = ServiceResponse<B>;
         type Error = Error;
-        type Future = futures_util::future::LocalBoxFuture<'static, Result<Self::Response, Self::Error>>;
+        type Future =
+            futures_util::future::LocalBoxFuture<'static, Result<Self::Response, Self::Error>>;
 
         actix_web::dev::forward_ready!(service);
 
         fn call(&self, req: ServiceRequest) -> Self::Future {
-            let limiter = req.app_data::<RateLimiter>()
+            let limiter = req
+                .app_data::<RateLimiter>()
                 .expect("RateLimiter must be registered in app data")
                 .clone();
 
@@ -533,12 +575,17 @@ pub mod actix {
                         let response = self.service.call(req).await?;
                         Ok(response)
                     }
-                    RateLimitResult::Blocked { reason, retry_after, .. } => {
-                        let error_response = HttpResponse::TooManyRequests().json(serde_json::json!({
-                            "error": "Rate limit exceeded",
-                            "message": reason,
-                            "retry_after": retry_after.as_secs()
-                        }));
+                    RateLimitResult::Blocked {
+                        reason,
+                        retry_after,
+                        ..
+                    } => {
+                        let error_response =
+                            HttpResponse::TooManyRequests().json(serde_json::json!({
+                                "error": "Rate limit exceeded",
+                                "message": reason,
+                                "retry_after": retry_after.as_secs()
+                            }));
 
                         let mut response = error_response.respond_to(&req);
                         middleware.apply_rate_limit_headers(&mut response, &result);
@@ -559,7 +606,10 @@ impl RateLimitMiddleware for CustomRateLimitMiddleware {
     type Request = CustomRequest;
     type Response = CustomResponse;
 
-    async fn handle_request(&self, request: Self::Request) -> Result<Self::Response, RateLimitError<Self::Error>> {
+    async fn handle_request(
+        &self,
+        request: Self::Request,
+    ) -> Result<Self::Response, RateLimitError<Self::Error>> {
         // Implementation for custom framework
         todo!("Implement for your specific framework")
     }
@@ -658,19 +708,15 @@ mod tests {
         let limiter = RateLimiter::new(
             crate::rate_limiting::config::RateLimitConfig::default(),
             Box::new(crate::rate_limiting::storage::MemoryStorage::new()),
-        ).await.unwrap();
+        )
+        .await
+        .unwrap();
         HttpRateLimitMiddleware::new(limiter, config)
     }
 
     #[tokio::test]
-    async    fn test_spoofed_xff_from_untrusted_connection() {
-        let middleware = make_proxy_request(
-            "",
-            "203.0.113.5",
-            vec![],
-            vec![],
-            None,
-        ).await;
+    async fn test_spoofed_xff_from_untrusted_connection() {
+        let middleware = make_proxy_request("", "203.0.113.5", vec![], vec![], None).await;
 
         let mut headers = std::collections::HashMap::new();
         headers.insert("X-Forwarded-For".to_string(), "198.51.100.1".to_string());
@@ -690,13 +736,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_single_trusted_proxy_xff() {
-        let middleware = make_proxy_request(
-            "",
-            "10.0.0.1",
-            vec!["10.0.0.1"],
-            vec![],
-            None,
-        ).await;
+        let middleware = make_proxy_request("", "10.0.0.1", vec!["10.0.0.1"], vec![], None).await;
 
         let mut headers = std::collections::HashMap::new();
         headers.insert("X-Forwarded-For".to_string(), "198.51.100.1".to_string());
@@ -709,7 +749,10 @@ mod tests {
         };
 
         let resolved = middleware.resolve_client_ip(&request);
-        assert_eq!(resolved.client_ip, "198.51.100.1".parse::<IpAddr>().unwrap());
+        assert_eq!(
+            resolved.client_ip,
+            "198.51.100.1".parse::<IpAddr>().unwrap()
+        );
         assert_eq!(resolved.resolution_source, "X-Forwarded-For");
     }
 
@@ -718,15 +761,19 @@ mod tests {
         // Real client -> Proxy1 (10.0.0.1) -> Proxy2 (10.0.0.2) -> App
         let middleware = make_proxy_request(
             "",
-            "10.0.0.2", // connection comes from Proxy2
+            "10.0.0.2",                   // connection comes from Proxy2
             vec!["10.0.0.1", "10.0.0.2"], // both proxies trusted
             vec![],
             None,
-        ).await;
+        )
+        .await;
 
         let mut headers = std::collections::HashMap::new();
         // X-Forwarded-For: <client>, <proxy1>
-        headers.insert("X-Forwarded-For".to_string(), "198.51.100.1, 10.0.0.1".to_string());
+        headers.insert(
+            "X-Forwarded-For".to_string(),
+            "198.51.100.1, 10.0.0.1".to_string(),
+        );
 
         let request = TestRequest {
             path: "/api/test".to_string(),
@@ -737,7 +784,10 @@ mod tests {
 
         let resolved = middleware.resolve_client_ip(&request);
         // Rightmost untrusted IP is 198.51.100.1 (proxy1 is trusted)
-        assert_eq!(resolved.client_ip, "198.51.100.1".parse::<IpAddr>().unwrap());
+        assert_eq!(
+            resolved.client_ip,
+            "198.51.100.1".parse::<IpAddr>().unwrap()
+        );
         assert_eq!(resolved.resolution_source, "X-Forwarded-For");
     }
 
@@ -745,13 +795,8 @@ mod tests {
     async fn test_all_proxies_trusted_uses_leftmost() {
         // Client -> Proxy1 -> Proxy2 -> App
         // Both proxies are trusted, so all IPs in chain are trusted
-        let middleware = make_proxy_request(
-            "",
-            "10.0.0.2",
-            vec!["10.0.0.1", "10.0.0.2"],
-            vec![],
-            None,
-        ).await;
+        let middleware =
+            make_proxy_request("", "10.0.0.2", vec!["10.0.0.1", "10.0.0.2"], vec![], None).await;
 
         let mut headers = std::collections::HashMap::new();
         // All IPs in chain are trusted proxies
@@ -772,13 +817,7 @@ mod tests {
     #[tokio::test]
     async fn test_cidr_trusted_proxy() {
         // Use CIDR range 10.0.0.0/8 to trust all 10.x.x.x IPs
-        let middleware = make_proxy_request(
-            "",
-            "10.1.2.3",
-            vec![],
-            vec!["10.0.0.0/8"],
-            None,
-        ).await;
+        let middleware = make_proxy_request("", "10.1.2.3", vec![], vec!["10.0.0.0/8"], None).await;
 
         let mut headers = std::collections::HashMap::new();
         headers.insert("X-Forwarded-For".to_string(), "198.51.100.1".to_string());
@@ -792,19 +831,17 @@ mod tests {
 
         let resolved = middleware.resolve_client_ip(&request);
         // 10.1.2.3 is in 10.0.0.0/8, so it's trusted
-        assert_eq!(resolved.client_ip, "198.51.100.1".parse::<IpAddr>().unwrap());
+        assert_eq!(
+            resolved.client_ip,
+            "198.51.100.1".parse::<IpAddr>().unwrap()
+        );
     }
 
     #[tokio::test]
     async fn test_cidr_outside_range_not_trusted() {
         // CIDR range 10.0.0.0/8 — only 10.x.x.x should be trusted
-        let middleware = make_proxy_request(
-            "",
-            "192.168.1.1",
-            vec![],
-            vec!["10.0.0.0/8"],
-            None,
-        ).await;
+        let middleware =
+            make_proxy_request("", "192.168.1.1", vec![], vec!["10.0.0.0/8"], None).await;
 
         let mut headers = std::collections::HashMap::new();
         headers.insert("X-Forwarded-For".to_string(), "198.51.100.1".to_string());
@@ -830,7 +867,8 @@ mod tests {
             vec!["10.0.0.1"],
             vec![],
             Some("198.51.100.1"),
-        ).await;
+        )
+        .await;
 
         // No X-Forwarded-For, only X-Real-IP header
         let mut headers = std::collections::HashMap::new();
@@ -845,7 +883,10 @@ mod tests {
 
         let resolved = middleware.resolve_client_ip(&request);
         // X-Real-IP is trusted via X-Real-IP header from trusted proxy
-        assert_eq!(resolved.client_ip, "198.51.100.1".parse::<IpAddr>().unwrap());
+        assert_eq!(
+            resolved.client_ip,
+            "198.51.100.1".parse::<IpAddr>().unwrap()
+        );
         assert_eq!(resolved.resolution_source, "X-Real-IP");
     }
 
@@ -857,7 +898,8 @@ mod tests {
             vec!["10.0.0.1"],
             vec![],
             Some("203.0.113.1"),
-        ).await;
+        )
+        .await;
 
         let mut headers = std::collections::HashMap::new();
         headers.insert("X-Forwarded-For".to_string(), "198.51.100.1".to_string());
@@ -871,7 +913,10 @@ mod tests {
 
         let resolved = middleware.resolve_client_ip(&request);
         // X-Forwarded-For should take priority
-        assert_eq!(resolved.client_ip, "198.51.100.1".parse::<IpAddr>().unwrap());
+        assert_eq!(
+            resolved.client_ip,
+            "198.51.100.1".parse::<IpAddr>().unwrap()
+        );
         assert_eq!(resolved.resolution_source, "X-Forwarded-For");
     }
 
@@ -884,7 +929,8 @@ mod tests {
             vec!["10.0.0.1"],
             vec![],
             None,
-        ).await;
+        )
+        .await;
 
         let mut headers = std::collections::HashMap::new();
         // Attacker sets X-Forwarded-For: 127.0.0.1 (trying to spoof as localhost)
@@ -913,11 +959,15 @@ mod tests {
             vec![],
             vec!["10.0.0.0/8", "172.16.0.0/12"], // both ranges trusted
             None,
-        ).await;
+        )
+        .await;
 
         let mut headers = std::collections::HashMap::new();
         // X-Forwarded-For: <client>, <proxy1>
-        headers.insert("X-Forwarded-For".to_string(), "198.51.100.1, 10.0.0.1".to_string());
+        headers.insert(
+            "X-Forwarded-For".to_string(),
+            "198.51.100.1, 10.0.0.1".to_string(),
+        );
 
         let request = TestRequest {
             path: "/api/test".to_string(),
@@ -930,7 +980,10 @@ mod tests {
         // 172.16.0.1 is in 172.16.0.0/12 — trusted
         // 10.0.0.1 is in 10.0.0.0/8 — trusted
         // Rightmost untrusted: 198.51.100.1
-        assert_eq!(resolved.client_ip, "198.51.100.1".parse::<IpAddr>().unwrap());
+        assert_eq!(
+            resolved.client_ip,
+            "198.51.100.1".parse::<IpAddr>().unwrap()
+        );
         assert_eq!(resolved.resolution_source, "X-Forwarded-For");
     }
 
@@ -941,11 +994,16 @@ mod tests {
         let limiter = RateLimiter::new(
             crate::rate_limiting::config::RateLimitConfig::default(),
             Box::new(crate::rate_limiting::storage::MemoryStorage::new()),
-        ).await.unwrap();
+        )
+        .await
+        .unwrap();
         let middleware = HttpRateLimitMiddleware::new(limiter, config);
 
         let mut headers = std::collections::HashMap::new();
-        headers.insert("X-User-ID".to_string(), "550e8400-e29b-41d4-a716-446655440000".to_string());
+        headers.insert(
+            "X-User-ID".to_string(),
+            "550e8400-e29b-41d4-a716-446655440000".to_string(),
+        );
         headers.insert("X-User-Tier".to_string(), "premium".to_string());
 
         let request = TestRequest {
@@ -962,13 +1020,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_ip_metadata_in_context() {
-        let middleware = make_proxy_request(
-            "",
-            "10.0.0.1",
-            vec!["10.0.0.1"],
-            vec![],
-            None,
-        ).await;
+        let middleware = make_proxy_request("", "10.0.0.1", vec!["10.0.0.1"], vec![], None).await;
 
         let mut headers = std::collections::HashMap::new();
         headers.insert("X-Forwarded-For".to_string(), "198.51.100.1".to_string());
@@ -985,10 +1037,7 @@ mod tests {
             context.metadata.get("resolved_client_ip").unwrap(),
             "198.51.100.1"
         );
-        assert_eq!(
-            context.metadata.get("connection_ip").unwrap(),
-            "10.0.0.1"
-        );
+        assert_eq!(context.metadata.get("connection_ip").unwrap(), "10.0.0.1");
         assert_eq!(
             context.metadata.get("ip_resolution_source").unwrap(),
             "X-Forwarded-For"
@@ -1011,7 +1060,9 @@ mod tests {
         let limiter = RateLimiter::new(
             crate::rate_limiting::config::RateLimitConfig::default(),
             Box::new(crate::rate_limiting::storage::MemoryStorage::new()),
-        ).await.unwrap();
+        )
+        .await
+        .unwrap();
         let middleware = HttpRateLimitMiddleware::new(limiter, config);
 
         assert!(middleware.is_trusted_proxy("10.0.0.1".parse().unwrap()));
@@ -1035,22 +1086,24 @@ mod tests {
         let limiter = RateLimiter::new(
             crate::rate_limiting::config::RateLimitConfig::default(),
             Box::new(crate::rate_limiting::storage::MemoryStorage::new()),
-        ).await.unwrap();
+        )
+        .await
+        .unwrap();
         let middleware = HttpRateLimitMiddleware::new(limiter, config);
 
-        assert!(middleware.is_trusted_proxy("10.1.2.3".parse().unwrap()));  // in 10.0.0.0/8
-        assert!(middleware.is_trusted_proxy("10.255.255.255".parse().unwrap()));  // in 10.0.0.0/8
-        assert!(middleware.is_trusted_proxy("172.16.0.1".parse().unwrap()));  // in 172.16.0.0/12
-        assert!(middleware.is_trusted_proxy("172.31.255.255".parse().unwrap()));  // in 172.16.0.0/12
-        assert!(!middleware.is_trusted_proxy("192.168.1.1".parse().unwrap()));  // not in any range
-        assert!(!middleware.is_trusted_proxy("8.8.8.8".parse().unwrap()));  // public DNS, not trusted
+        assert!(middleware.is_trusted_proxy("10.1.2.3".parse().unwrap())); // in 10.0.0.0/8
+        assert!(middleware.is_trusted_proxy("10.255.255.255".parse().unwrap())); // in 10.0.0.0/8
+        assert!(middleware.is_trusted_proxy("172.16.0.1".parse().unwrap())); // in 172.16.0.0/12
+        assert!(middleware.is_trusted_proxy("172.31.255.255".parse().unwrap())); // in 172.16.0.0/12
+        assert!(!middleware.is_trusted_proxy("192.168.1.1".parse().unwrap())); // not in any range
+        assert!(!middleware.is_trusted_proxy("8.8.8.8".parse().unwrap())); // public DNS, not trusted
     }
 
     #[test]
     #[tokio::test]
     async fn test_is_trusted_proxy_exact_overrides_cidr() {
         let config = MiddlewareConfig {
-            trusted_proxies: vec!["10.0.0.5".parse().unwrap()],  // explicitly trusted
+            trusted_proxies: vec!["10.0.0.5".parse().unwrap()], // explicitly trusted
             trusted_proxy_ranges: vec!["10.0.0.0/8".parse().unwrap()],
             log_ip_resolution: false,
             ..MiddlewareConfig::default()
@@ -1058,11 +1111,13 @@ mod tests {
         let limiter = RateLimiter::new(
             crate::rate_limiting::config::RateLimitConfig::default(),
             Box::new(crate::rate_limiting::storage::MemoryStorage::new()),
-        ).await.unwrap();
+        )
+        .await
+        .unwrap();
         let middleware = HttpRateLimitMiddleware::new(limiter, config);
 
-        assert!(middleware.is_trusted_proxy("10.0.0.5".parse().unwrap()));  // exact match
-        assert!(middleware.is_trusted_proxy("10.0.0.6".parse().unwrap()));  // CIDR match
-        assert!(!middleware.is_trusted_proxy("11.0.0.1".parse().unwrap()));  // not in range
+        assert!(middleware.is_trusted_proxy("10.0.0.5".parse().unwrap())); // exact match
+        assert!(middleware.is_trusted_proxy("10.0.0.6".parse().unwrap())); // CIDR match
+        assert!(!middleware.is_trusted_proxy("11.0.0.1".parse().unwrap())); // not in range
     }
 }

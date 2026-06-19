@@ -1,12 +1,12 @@
 //! Decentralized Audit "Proof of Scan" Contract
-//! 
-//! This contract allows the scanner to issue "Security Certificates" on-chain 
-//! after a contract passes all security invariants. Certificates are non-transferable 
+//!
+//! This contract allows the scanner to issue "Security Certificates" on-chain
+//! after a contract passes all security invariants. Certificates are non-transferable
 //! SBTs (Soulbound Tokens) that provide proof of security clearance.
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, Address, Env, Symbol, panic_with_error, 
-    Map, Vec, String, u64, i128
+    contract, contractimpl, contracttype, i128, panic_with_error, u64, Address, Env, Map, String,
+    Symbol, Vec,
 };
 
 // Contract state keys
@@ -73,7 +73,7 @@ impl RiskScore {
             RiskScore::Critical => 4,
         }
     }
-    
+
     pub fn is_acceptable(&self) -> bool {
         match self {
             RiskScore::Low | RiskScore::Medium => true,
@@ -150,7 +150,7 @@ pub struct AuditProofOfScan;
 #[contractimpl]
 impl AuditProofOfScan {
     /// Initialize the contract with admin and scanner public key
-    /// 
+    ///
     /// # Arguments
     /// * `admin` - The contract administrator
     /// * `scanner_public_key` - The scanner's authorized public key
@@ -167,24 +167,32 @@ impl AuditProofOfScan {
 
         // Set admin and scanner
         env.storage().instance().set(&ADMIN, &admin);
-        env.storage().instance().set(&SCANNER_PUBLIC_KEY, &scanner_public_key);
-        
+        env.storage()
+            .instance()
+            .set(&SCANNER_PUBLIC_KEY, &scanner_public_key);
+
         // Initialize certificate counter
         env.storage().instance().set(&CERTIFICATE_COUNTER, &0u64);
-        
+
         // Initialize empty storage maps
-        env.storage().instance().set(&CERTIFICATES, &Map::<u64, SecurityCertificate>::new(&env));
-        env.storage().instance().set(&CONTRACT_CERTIFICATES, &Map::<Address, u64>::new(&env));
-        env.storage().instance().set(&CLEANUP_TIMESTAMP, &env.ledger().timestamp());
+        env.storage()
+            .instance()
+            .set(&CERTIFICATES, &Map::<u64, SecurityCertificate>::new(&env));
+        env.storage()
+            .instance()
+            .set(&CONTRACT_CERTIFICATES, &Map::<Address, u64>::new(&env));
+        env.storage()
+            .instance()
+            .set(&CLEANUP_TIMESTAMP, &env.ledger().timestamp());
     }
 
     /// Mint a security certificate (scanner only)
-    /// 
+    ///
     /// # Arguments
     /// * `contract_id` - The contract being certified
     /// * `report` - Security report with scan results
     /// * `validity_days` - Custom validity period (optional, defaults to 30 days)
-    /// 
+    ///
     /// # Events
     /// Emits CERTIFICATE_MINTED event with certificate details
     pub fn mint_certificate(
@@ -214,19 +222,26 @@ impl AuditProofOfScan {
         let contract_certs = Self::get_contract_certificates(&env);
         if let Some(&existing_cert_id) = contract_certs.get(&contract_id) {
             let existing_cert = Self::get_certificate(&env, existing_cert_id);
-            if existing_cert.status == CertificateStatus::Active && !Self::is_expired(&env, existing_cert) {
+            if existing_cert.status == CertificateStatus::Active
+                && !Self::is_expired(&env, existing_cert)
+            {
                 panic_with_error!(&env, AuditError::AlreadyCertified);
             }
         }
 
         // Calculate validity period
         let validity_period = validity_days.unwrap_or(30) * 24 * 60 * 60; // Convert days to seconds
-        if validity_period == 0 || validity_period > 365 * 24 * 60 * 60 { // Max 1 year
+        if validity_period == 0 || validity_period > 365 * 24 * 60 * 60 {
+            // Max 1 year
             panic_with_error!(&env, AuditError::InvalidValidityPeriod);
         }
 
         // Generate certificate ID
-        let mut counter = env.storage().instance().get(&CERTIFICATE_COUNTER).unwrap_or(0u64);
+        let mut counter = env
+            .storage()
+            .instance()
+            .get(&CERTIFICATE_COUNTER)
+            .unwrap_or(0u64);
         counter += 1;
         let certificate_id = counter;
 
@@ -252,7 +267,9 @@ impl AuditProofOfScan {
         // Update contract certificates mapping
         let mut contract_certs = Self::get_contract_certificates(&env);
         contract_certs.set(contract_id, certificate_id);
-        env.storage().instance().set(&CONTRACT_CERTIFICATES, &contract_certs);
+        env.storage()
+            .instance()
+            .set(&CONTRACT_CERTIFICATES, &contract_certs);
 
         // Update counter
         env.storage().instance().set(&CERTIFICATE_COUNTER, &counter);
@@ -260,25 +277,30 @@ impl AuditProofOfScan {
         // Emit event
         env.events().publish(
             (CERTIFICATE_MINTED, certificate_id),
-            (contract_id, report.risk_score.as_number(), now, now + validity_period),
+            (
+                contract_id,
+                report.risk_score.as_number(),
+                now,
+                now + validity_period,
+            ),
         );
 
         certificate_id
     }
 
     /// Revoke a certificate (admin or scanner only)
-    /// 
+    ///
     /// # Arguments
     /// * `certificate_id` - The certificate to revoke
     /// * `reason` - Reason for revocation
-    /// 
+    ///
     /// # Events
     /// Emits CERTIFICATE_REVOKED event
     pub fn revoke_certificate(env: Env, certificate_id: u64, reason: RevocationReason) {
         // Check authorization — caller must be admin or scanner
         let admin = Self::get_admin(&env);
         let scanner = Self::get_scanner_public_key(&env);
-        
+
         // Use require_auth() for proper Soroban authorization
         // We check if the caller authorized as admin or scanner
         // The caller must be one of the authorized addresses
@@ -335,7 +357,12 @@ impl AuditProofOfScan {
         // Emit event
         env.events().publish(
             (CERTIFICATE_REVOKED, certificate_id),
-            (certificate.contract_id, reason.as_str(), env.ledger().timestamp(), revoked_by),
+            (
+                certificate.contract_id,
+                reason.as_str(),
+                env.ledger().timestamp(),
+                revoked_by,
+            ),
         );
     }
 
@@ -343,7 +370,7 @@ impl AuditProofOfScan {
     /// Returns true if the certificate is active and not in the CRL.
     pub fn verify_certificate_not_revoked(env: Env, certificate_id: u64) -> bool {
         let certificate = Self::get_certificate(&env, certificate_id);
-        
+
         // If the certificate status itself is Revoked, it's revoked
         if certificate.status == CertificateStatus::Revoked {
             return false;
@@ -379,15 +406,15 @@ impl AuditProofOfScan {
     }
 
     /// Check if a contract is "Cleared" (has active certificate)
-    /// 
+    ///
     /// # Arguments
     /// * `contract_id` - The contract to check
-    /// 
+    ///
     /// # Returns
     /// Boolean indicating if the contract is cleared
     pub fn is_contract_cleared(env: Env, contract_id: Address) -> bool {
         let contract_certs = Self::get_contract_certificates(&env);
-        
+
         if let Some(&cert_id) = contract_certs.get(&contract_id) {
             let certificate = Self::get_certificate(&env, cert_id);
             certificate.status == CertificateStatus::Active && !Self::is_expired(&env, certificate)
@@ -397,35 +424,37 @@ impl AuditProofOfScan {
     }
 
     /// Get certificate details for a contract
-    /// 
+    ///
     /// # Arguments
     /// * `contract_id` - The contract to query
-    /// 
+    ///
     /// # Returns
     /// SecurityCertificate if found and active
     pub fn get_contract_certificate(env: Env, contract_id: Address) -> SecurityCertificate {
         let contract_certs = Self::get_contract_certificates(&env);
-        
+
         if let Some(&cert_id) = contract_certs.get(&contract_id) {
             let certificate = Self::get_certificate(&env, cert_id);
-            
+
             // Check if certificate is still valid
-            if certificate.status == CertificateStatus::Active && !Self::is_expired(&env, certificate) {
+            if certificate.status == CertificateStatus::Active
+                && !Self::is_expired(&env, certificate)
+            {
                 return certificate;
             } else if Self::is_expired(&env, certificate) {
                 // Auto-expire certificate
                 Self::expire_certificate(&env, cert_id);
             }
         }
-        
+
         panic_with_error!(&env, AuditError::NotCertified);
     }
 
     /// Get certificate by ID
-    /// 
+    ///
     /// # Arguments
     /// * `certificate_id` - The certificate ID
-    /// 
+    ///
     /// # Returns
     /// SecurityCertificate details
     pub fn get_certificate_by_id(env: Env, certificate_id: u64) -> SecurityCertificate {
@@ -433,15 +462,18 @@ impl AuditProofOfScan {
     }
 
     /// Get all certificates for a contract (including historical)
-    /// 
+    ///
     /// # Arguments
     /// * `contract_id` - The contract to query
-    /// 
+    ///
     /// # Returns
     /// Vector of all certificates for the contract
-    pub fn get_contract_certificate_history(env: Env, contract_id: Address) -> Vec<SecurityCertificate> {
+    pub fn get_contract_certificate_history(
+        env: Env,
+        contract_id: Address,
+    ) -> Vec<SecurityCertificate> {
         let mut history = Vec::new(&env);
-        
+
         // For now, we'll search through all certificates
         // In a production system, you might want a more efficient indexing
         let certificates = Self::get_certificates(&env);
@@ -450,12 +482,12 @@ impl AuditProofOfScan {
                 history.push_back(cert);
             }
         }
-        
+
         history
     }
 
     /// Get certificate statistics
-    /// 
+    ///
     /// # Returns
     /// Tuple of (total_certificates, active_certificates, revoked_certificates, expired_certificates)
     pub fn get_certificate_stats(env: Env) -> (u64, u64, u64, u64) {
@@ -467,7 +499,7 @@ impl AuditProofOfScan {
 
         for (_, cert) in certificates.iter() {
             total += 1;
-            
+
             match cert.status {
                 CertificateStatus::Active => {
                     if Self::is_expired(&env, cert) {
@@ -475,7 +507,7 @@ impl AuditProofOfScan {
                     } else {
                         active += 1;
                     }
-                },
+                }
                 CertificateStatus::Revoked => revoked += 1,
                 CertificateStatus::Expired => expired += 1,
             }
@@ -485,7 +517,7 @@ impl AuditProofOfScan {
     }
 
     /// Update scanner public key (admin only)
-    /// 
+    ///
     /// # Arguments
     /// * `new_scanner_public_key` - New scanner public key
     pub fn update_scanner_public_key(env: Env, new_scanner_public_key: Address) {
@@ -496,11 +528,13 @@ impl AuditProofOfScan {
             panic_with_error!(&env, AuditError::InvalidContract);
         }
 
-        env.storage().instance().set(&SCANNER_PUBLIC_KEY, &new_scanner_public_key);
+        env.storage()
+            .instance()
+            .set(&SCANNER_PUBLIC_KEY, &new_scanner_public_key);
     }
 
     /// Transfer admin rights (admin only)
-    /// 
+    ///
     /// # Arguments
     /// * `new_admin` - Address of the new admin
     pub fn transfer_admin(env: Env, new_admin: Address) {
@@ -515,11 +549,11 @@ impl AuditProofOfScan {
     }
 
     /// Attempt to transfer certificate (should always fail - SBT logic)
-    /// 
+    ///
     /// # Arguments
     /// * `certificate_id` - The certificate to "transfer"
     /// * `to` - The recipient address
-    /// 
+    ///
     /// # Note
     /// This function always panics as certificates are non-transferable
     pub fn transfer_certificate(env: Env, certificate_id: u64, to: Address) {
@@ -559,7 +593,8 @@ impl AuditProofOfScan {
 
     fn get_certificate(env: &Env, certificate_id: u64) -> SecurityCertificate {
         let certificates = Self::get_certificates(env);
-        certificates.get(certificate_id)
+        certificates
+            .get(certificate_id)
             .unwrap_or_else(|| panic_with_error!(env, AuditError::CertificateNotFound))
     }
 
@@ -570,7 +605,7 @@ impl AuditProofOfScan {
     fn expire_certificate(env: &Env, certificate_id: u64) {
         let mut certificate = Self::get_certificate(env, certificate_id);
         certificate.status = CertificateStatus::Expired;
-        
+
         let mut certificates = Self::get_certificates(env);
         certificates.set(certificate_id, certificate);
         env.storage().instance().set(&CERTIFICATES, &certificates);
@@ -585,7 +620,7 @@ impl AuditProofOfScan {
         if admin_check.is_ok() {
             return admin;
         }
-        
+
         let scanner_check = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             scanner.require_auth();
         }));
@@ -621,40 +656,41 @@ impl AuditProofOfScan {
         let now = env.ledger().timestamp();
         let retention_seconds = CERTIFICATE_RETENTION_DAYS * 24 * 60 * 60;
         let cutoff_time = now.saturating_sub(retention_seconds);
-        
+
         let mut cleaned_count = 0u64;
-        
+
         // Get all certificates
         let mut certificates = Self::get_certificates(&env);
         let mut contract_certs = Self::get_contract_certificates(&env);
-        
+
         // Find expired and old certificates
-        let expired_certificates: Vec<u64> = certificates.iter()
+        let expired_certificates: Vec<u64> = certificates
+            .iter()
             .filter(|(_, cert)| {
-                cert.status == CertificateStatus::Expired || 
-                cert.status == CertificateStatus::Revoked ||
-                cert.report.timestamp < cutoff_time
+                cert.status == CertificateStatus::Expired
+                    || cert.status == CertificateStatus::Revoked
+                    || cert.report.timestamp < cutoff_time
             })
             .map(|(cert_id, _)| cert_id)
             .collect();
-        
+
         // Remove expired/old certificates
         for cert_id in expired_certificates {
             let certificate = certificates.get(cert_id).unwrap();
-            
+
             // Remove from certificates map
             certificates.remove(cert_id);
-            
+
             // Remove from contract certificates mapping if this was the current certificate
             if let Some(&current_cert_id) = contract_certs.get(&certificate.contract_id) {
                 if current_cert_id == cert_id {
                     contract_certs.remove(certificate.contract_id);
                 }
             }
-            
+
             cleaned_count += 1;
         }
-        
+
         // Enforce maximum certificates per contract
         let mut contract_cert_counts: Map<Address, u64> = Map::new(&env);
         for cert in certificates.iter() {
@@ -662,19 +698,20 @@ impl AuditProofOfScan {
             let count = contract_cert_counts.get(contract_id).unwrap_or(0) + 1;
             contract_cert_counts.set(contract_id, count);
         }
-        
+
         // Remove excess certificates per contract
         for (contract_id, count) in contract_cert_counts.iter() {
             if count > MAX_CERTIFICATES_PER_CONTRACT {
                 // Get all certificates for this contract
-                let contract_certs_list: Vec<(u64, &SecurityCertificate)> = certificates.iter()
+                let contract_certs_list: Vec<(u64, &SecurityCertificate)> = certificates
+                    .iter()
                     .filter(|(_, cert)| cert.contract_id == contract_id)
                     .collect();
-                
+
                 // Sort by timestamp (oldest first)
                 let mut sorted_certs = contract_certs_list;
                 sorted_certs.sort_by_key(|(_, cert)| cert.timestamp);
-                
+
                 // Keep only the most recent ones
                 let excess_count = count - MAX_CERTIFICATES_PER_CONTRACT;
                 for i in 0..excess_count {
@@ -684,12 +721,14 @@ impl AuditProofOfScan {
                 }
             }
         }
-        
+
         // Update storage
         env.storage().instance().set(&CERTIFICATES, &certificates);
-        env.storage().instance().set(&CONTRACT_CERTIFICATES, &contract_certs);
+        env.storage()
+            .instance()
+            .set(&CONTRACT_CERTIFICATES, &contract_certs);
         env.storage().instance().set(&CLEANUP_TIMESTAMP, &now);
-        
+
         cleaned_count
     }
 
@@ -697,11 +736,11 @@ impl AuditProofOfScan {
     pub fn get_storage_stats(env: Env) -> CertificateStorageStats {
         let certificates = Self::get_certificates(&env);
         let contract_certs = Self::get_contract_certificates(&env);
-        
+
         let mut active_count = 0u64;
         let mut expired_count = 0u64;
         let mut revoked_count = 0u64;
-        
+
         for cert in certificates.iter() {
             match cert.1.status {
                 CertificateStatus::Active => active_count += 1,
@@ -709,14 +748,18 @@ impl AuditProofOfScan {
                 CertificateStatus::Revoked => revoked_count += 1,
             }
         }
-        
+
         CertificateStorageStats {
             total_certificates: certificates.len(),
             active_certificates: active_count,
             expired_certificates: expired_count,
             revoked_certificates: revoked_count,
             contracts_with_certificates: contract_certs.len(),
-            last_cleanup: env.storage().instance().get(&CLEANUP_TIMESTAMP).unwrap_or(0),
+            last_cleanup: env
+                .storage()
+                .instance()
+                .get(&CLEANUP_TIMESTAMP)
+                .unwrap_or(0),
         }
     }
 
@@ -725,7 +768,7 @@ impl AuditProofOfScan {
         if ipfs_cid.is_empty() || ipfs_cid.len() < 10 {
             panic_with_error!(soroban_sdk::Env::default(), AuditError::InvalidIPFSCID);
         }
-        
+
         // Check if it starts with "Qm" (CIDv0) or "b" (CIDv1)
         let chars = ipfs_cid.chars().collect::<Vec<char>>();
         if !(chars[0] == 'Q' && chars[1] == 'm') && chars[0] != 'b' {

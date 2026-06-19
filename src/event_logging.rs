@@ -1,15 +1,15 @@
 //! Event Logging System for Critical Operations
-//! 
+//!
 //! This module provides comprehensive event logging for critical operations
 //! like fund transfers, vulnerability verification, and escrow operations.
 
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
 use anyhow::Result;
+use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
-use log::{info, warn, error, debug};
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
 /// Event logging configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -163,7 +163,10 @@ impl EventLogger {
 
         // Validate that this is a critical operation
         if !self.config.critical_operations.contains(&event.operation) {
-            debug!("Operation {:?} is not configured for critical logging", event.operation);
+            debug!(
+                "Operation {:?} is not configured for critical logging",
+                event.operation
+            );
             return Ok(());
         }
 
@@ -213,7 +216,10 @@ impl EventLogger {
 
     /// Compute the previous event hash (hash of the last event in the chain)
     fn compute_previous_event_hash(events: &[CriticalEvent]) -> String {
-        events.last().map(|e| e.event_hash.clone()).unwrap_or_default()
+        events
+            .last()
+            .map(|e| e.event_hash.clone())
+            .unwrap_or_default()
     }
 
     /// Rebuild the hash chain for all events (used after eviction)
@@ -228,9 +234,10 @@ impl EventLogger {
 
     /// Store event in memory with hash chaining
     fn store_event(&self, event: CriticalEvent) -> Result<()> {
-        let mut events = self.events.lock().map_err(|e| {
-            anyhow::anyhow!("Failed to acquire events lock: {}", e)
-        })?;
+        let mut events = self
+            .events
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire events lock: {}", e))?;
 
         // Build the event with hash chaining
         let previous_hash = Self::compute_previous_event_hash(&events);
@@ -251,24 +258,35 @@ impl EventLogger {
     }
 
     /// Get events by operation type
-    pub fn get_events_by_operation(&self, operation: &CriticalOperation) -> Result<Vec<CriticalEvent>> {
-        let events = self.events.lock().map_err(|e| {
-            anyhow::anyhow!("Failed to acquire events lock: {}", e)
-        })?;
+    pub fn get_events_by_operation(
+        &self,
+        operation: &CriticalOperation,
+    ) -> Result<Vec<CriticalEvent>> {
+        let events = self
+            .events
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire events lock: {}", e))?;
 
-        Ok(events.iter()
+        Ok(events
+            .iter()
             .filter(|event| &event.operation == operation)
             .cloned()
             .collect())
     }
 
     /// Get events by time range
-    pub fn get_events_by_time_range(&self, start_time: u64, end_time: u64) -> Result<Vec<CriticalEvent>> {
-        let events = self.events.lock().map_err(|e| {
-            anyhow::anyhow!("Failed to acquire events lock: {}", e)
-        })?;
+    pub fn get_events_by_time_range(
+        &self,
+        start_time: u64,
+        end_time: u64,
+    ) -> Result<Vec<CriticalEvent>> {
+        let events = self
+            .events
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire events lock: {}", e))?;
 
-        Ok(events.iter()
+        Ok(events
+            .iter()
             .filter(|event| event.timestamp >= start_time && event.timestamp <= end_time)
             .cloned()
             .collect())
@@ -276,11 +294,13 @@ impl EventLogger {
 
     /// Get events by actor
     pub fn get_events_by_actor(&self, actor: &str) -> Result<Vec<CriticalEvent>> {
-        let events = self.events.lock().map_err(|e| {
-            anyhow::anyhow!("Failed to acquire events lock: {}", e)
-        })?;
+        let events = self
+            .events
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire events lock: {}", e))?;
 
-        Ok(events.iter()
+        Ok(events
+            .iter()
             .filter(|event| event.actor == actor)
             .cloned()
             .collect())
@@ -288,7 +308,9 @@ impl EventLogger {
 
     /// Generate event ID
     fn generate_event_id(&self) -> String {
-        let counter = self.event_counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let counter = self
+            .event_counter
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         format!("evt_{}_{}", chrono::Utc::now().timestamp(), counter)
     }
 
@@ -297,9 +319,10 @@ impl EventLogger {
         let current_time = chrono::Utc::now().timestamp() as u64;
         let cutoff_time = current_time - self.config.retention_period_seconds;
 
-        let mut events = self.events.lock().map_err(|e| {
-            anyhow::anyhow!("Failed to acquire events lock: {}", e)
-        })?;
+        let mut events = self
+            .events
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire events lock: {}", e))?;
 
         let initial_count = events.len();
         events.retain(|event| event.timestamp >= cutoff_time);
@@ -314,21 +337,25 @@ impl EventLogger {
 
     /// Get event statistics
     pub fn get_event_statistics(&self) -> Result<EventStatistics> {
-        let events = self.events.lock().map_err(|e| {
-            anyhow::anyhow!("Failed to acquire events lock: {}", e)
-        })?;
+        let events = self
+            .events
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire events lock: {}", e))?;
 
         let mut stats = EventStatistics::default();
-        
+
         for event in events.iter() {
             stats.total_events += 1;
-            
+
             // Count by operation type
-            *stats.by_operation.entry(event.operation.clone()).or_insert(0) += 1;
-            
+            *stats
+                .by_operation
+                .entry(event.operation.clone())
+                .or_insert(0) += 1;
+
             // Count by severity
             *stats.by_severity.entry(event.severity.clone()).or_insert(0) += 1;
-            
+
             // Count by status
             *stats.by_status.entry(event.status.clone()).or_insert(0) += 1;
         }
@@ -373,7 +400,12 @@ impl EventLogger {
     }
 
     /// Internal: apply offset/limit to a filtered list
-    fn apply_pagination(&self, mut events: Vec<CriticalEvent>, offset: usize, limit: usize) -> PageResult<CriticalEvent> {
+    fn apply_pagination(
+        &self,
+        mut events: Vec<CriticalEvent>,
+        offset: usize,
+        limit: usize,
+    ) -> PageResult<CriticalEvent> {
         let total = events.len();
         if offset >= total {
             return PageResult {
@@ -441,10 +473,15 @@ impl EventLogger {
 
     /// Verify the integrity of the event hash chain from `from_index` to `to_index`.
     /// Returns a map of indices where hash mismatches were found.
-    pub fn verify_chain(&self, from_index: usize, to_index: usize) -> Result<ChainVerificationResult> {
-        let events = self.events.lock().map_err(|e| {
-            anyhow::anyhow!("Failed to acquire events lock: {}", e)
-        })?;
+    pub fn verify_chain(
+        &self,
+        from_index: usize,
+        to_index: usize,
+    ) -> Result<ChainVerificationResult> {
+        let events = self
+            .events
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire events lock: {}", e))?;
 
         let total = events.len();
         let actual_to = to_index.min(total.saturating_sub(1));
@@ -494,9 +531,10 @@ impl EventLogger {
 
     /// Verify the entire event chain from the first event to the last
     pub fn verify_full_chain(&self) -> Result<ChainVerificationResult> {
-        let events = self.events.lock().map_err(|e| {
-            anyhow::anyhow!("Failed to acquire events lock: {}", e)
-        })?;
+        let events = self
+            .events
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire events lock: {}", e))?;
         if events.is_empty() {
             return Ok(ChainVerificationResult {
                 chain_integrity: true,
@@ -557,8 +595,11 @@ impl EventBuilder {
     /// Create a new event builder
     pub fn new(operation: CriticalOperation, actor: String) -> Self {
         let counter = std::sync::atomic::AtomicU64::new(0);
-        let event_id = format!("evt_{}_{}", chrono::Utc::now().timestamp(), 
-            counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst));
+        let event_id = format!(
+            "evt_{}_{}",
+            chrono::Utc::now().timestamp(),
+            counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+        );
 
         Self {
             event: CriticalEvent {
@@ -671,33 +712,39 @@ impl EventBuilder {
 #[macro_export]
 macro_rules! log_critical_event {
     ($logger:expr, $operation:expr, $actor:expr, $description:expr) => {
-        $logger.log_event(
-            EventBuilder::new($operation, $actor.to_string())
-                .description($description.to_string())
-                .build()
-        ).unwrap_or_else(|e| {
-            log::error!("Failed to log critical event: {}", e);
-        });
+        $logger
+            .log_event(
+                EventBuilder::new($operation, $actor.to_string())
+                    .description($description.to_string())
+                    .build(),
+            )
+            .unwrap_or_else(|e| {
+                log::error!("Failed to log critical event: {}", e);
+            });
     };
     ($logger:expr, $operation:expr, $actor:expr, $description:expr, severity=$severity:expr) => {
-        $logger.log_event(
-            EventBuilder::new($operation, $actor.to_string())
-                .description($description.to_string())
-                .severity($severity)
-                .build()
-        ).unwrap_or_else(|e| {
-            log::error!("Failed to log critical event: {}", e);
-        });
+        $logger
+            .log_event(
+                EventBuilder::new($operation, $actor.to_string())
+                    .description($description.to_string())
+                    .severity($severity)
+                    .build(),
+            )
+            .unwrap_or_else(|e| {
+                log::error!("Failed to log critical event: {}", e);
+            });
     };
     ($logger:expr, $operation:expr, $actor:expr, $description:expr, target=$target:expr) => {
-        $logger.log_event(
-            EventBuilder::new($operation, $actor.to_string())
-                .description($description.to_string())
-                .target($target.to_string())
-                .build()
-        ).unwrap_or_else(|e| {
-            log::error!("Failed to log critical event: {}", e);
-        });
+        $logger
+            .log_event(
+                EventBuilder::new($operation, $actor.to_string())
+                    .description($description.to_string())
+                    .target($target.to_string())
+                    .build(),
+            )
+            .unwrap_or_else(|e| {
+                log::error!("Failed to log critical event: {}", e);
+            });
     };
 }
 
@@ -707,15 +754,12 @@ mod tests {
 
     #[test]
     fn test_event_builder() {
-        let event = EventBuilder::new(
-            CriticalOperation::FundTransfer,
-            "user123".to_string()
-        )
-        .description("Transfer of 100 tokens".to_string())
-        .severity(EventSeverity::High)
-        .target("recipient456".to_string())
-        .metadata("amount".to_string(), "100".to_string())
-        .build();
+        let event = EventBuilder::new(CriticalOperation::FundTransfer, "user123".to_string())
+            .description("Transfer of 100 tokens".to_string())
+            .severity(EventSeverity::High)
+            .target("recipient456".to_string())
+            .metadata("amount".to_string(), "100".to_string())
+            .build();
 
         assert_eq!(event.operation, CriticalOperation::FundTransfer);
         assert_eq!(event.actor, "user123");
@@ -732,7 +776,7 @@ mod tests {
 
         let event = EventBuilder::new(
             CriticalOperation::VulnerabilityVerification,
-            "admin".to_string()
+            "admin".to_string(),
         )
         .description("Verified critical vulnerability".to_string())
         .severity(EventSeverity::Critical)
@@ -741,9 +785,14 @@ mod tests {
         let result = logger.log_event(event);
         assert!(result.is_ok());
 
-        let events = logger.get_events_by_operation(&CriticalOperation::VulnerabilityVerification).unwrap();
+        let events = logger
+            .get_events_by_operation(&CriticalOperation::VulnerabilityVerification)
+            .unwrap();
         assert_eq!(events.len(), 1);
-        assert_eq!(events[0].operation, CriticalOperation::VulnerabilityVerification);
+        assert_eq!(
+            events[0].operation,
+            CriticalOperation::VulnerabilityVerification
+        );
     }
 
     #[test]
@@ -753,18 +802,18 @@ mod tests {
 
         // Log some test events
         for i in 0..5 {
-            let event = EventBuilder::new(
-                CriticalOperation::FundTransfer,
-                format!("user{}", i)
-            )
-            .description(format!("Transfer {}", i))
-            .build();
+            let event = EventBuilder::new(CriticalOperation::FundTransfer, format!("user{}", i))
+                .description(format!("Transfer {}", i))
+                .build();
             logger.log_event(event).unwrap();
         }
 
         let stats = logger.get_event_statistics().unwrap();
         assert_eq!(stats.total_events, 5);
-        assert_eq!(stats.by_operation.get(&CriticalOperation::FundTransfer), Some(&5));
+        assert_eq!(
+            stats.by_operation.get(&CriticalOperation::FundTransfer),
+            Some(&5)
+        );
     }
 
     #[test]
@@ -774,12 +823,9 @@ mod tests {
         let logger = EventLogger::new(config);
 
         // Log an event
-        let event = EventBuilder::new(
-            CriticalOperation::AdminApproval,
-            "admin".to_string()
-        )
-        .description("Test event".to_string())
-        .build();
+        let event = EventBuilder::new(CriticalOperation::AdminApproval, "admin".to_string())
+            .description("Test event".to_string())
+            .build();
         logger.log_event(event).unwrap();
 
         // Wait for retention period to pass (in real scenario)

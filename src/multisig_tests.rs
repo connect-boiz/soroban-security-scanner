@@ -61,7 +61,10 @@ async fn test_threshold_exceeds_total_weight_is_rejected() {
     let result = service.create_proposal(req).await;
     assert!(matches!(
         result,
-        Err(MultiSigError::InvalidThreshold { threshold: 10, total: 3 })
+        Err(MultiSigError::InvalidThreshold {
+            threshold: 10,
+            total: 3
+        })
     ));
 }
 

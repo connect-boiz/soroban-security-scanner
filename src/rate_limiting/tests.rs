@@ -1,10 +1,10 @@
 //! Comprehensive tests for the rate limiting system
 
+use crate::rate_limiting::*;
+use chrono::{DateTime, Utc};
 use std::net::IpAddr;
 use std::time::Duration;
-use chrono::{Utc, DateTime};
 use uuid::Uuid;
-use crate::rate_limiting::*;
 
 /// Test basic rate limiting functionality
 #[tokio::test]
@@ -30,7 +30,7 @@ async fn test_basic_rate_limiting() {
 #[tokio::test]
 async fn test_rate_limit_exceeded() {
     let mut config = RateLimitConfig::default();
-    
+
     // Set very restrictive limits for testing
     config.default_policies.insert(
         RateLimitTier::Unauthenticated,
@@ -88,9 +88,13 @@ async fn test_user_tier_rate_limits() {
         // Should be able to make at least the expected minimum requests
         for i in 0..expected_min_requests {
             let result = limiter.check_rate_limit(&context).await;
-            assert!(result.is_allowed(), 
-                "Tier {:?} should allow at least {} requests, failed at {}", 
-                tier, expected_min_requests, i + 1);
+            assert!(
+                result.is_allowed(),
+                "Tier {:?} should allow at least {} requests, failed at {}",
+                tier,
+                expected_min_requests,
+                i + 1
+            );
         }
     }
 }
@@ -98,8 +102,11 @@ async fn test_user_tier_rate_limits() {
 #[tokio::test]
 async fn test_ip_whitelist() {
     let mut config = RateLimitConfig::default();
-    config.ip_restrictions.whitelisted_ips.push("127.0.0.1".parse().unwrap());
-    
+    config
+        .ip_restrictions
+        .whitelisted_ips
+        .push("127.0.0.1".parse().unwrap());
+
     let storage = Box::new(storage::MemoryStorage::new());
     let limiter = RateLimiter::new(config, storage).await.unwrap();
 
@@ -112,15 +119,22 @@ async fn test_ip_whitelist() {
     // Whitelisted IP should bypass all limits
     for i in 0..1000 {
         let result = limiter.check_rate_limit(&context).await;
-        assert!(result.is_allowed(), "Whitelisted IP request {} should be allowed", i + 1);
+        assert!(
+            result.is_allowed(),
+            "Whitelisted IP request {} should be allowed",
+            i + 1
+        );
     }
 }
 
 #[tokio::test]
 async fn test_ip_blocklist() {
     let mut config = RateLimitConfig::default();
-    config.ip_restrictions.blocked_ips.push("192.168.1.100".parse().unwrap());
-    
+    config
+        .ip_restrictions
+        .blocked_ips
+        .push("192.168.1.100".parse().unwrap());
+
     let storage = Box::new(storage::MemoryStorage::new());
     let limiter = RateLimiter::new(config, storage).await.unwrap();
 
@@ -142,16 +156,15 @@ async fn test_ip_blocklist() {
 #[tokio::test]
 async fn test_ip_range_blocking() {
     let mut config = RateLimitConfig::default();
-    config.ip_restrictions.blocked_ranges.push("192.168.1.0/24".to_string());
-    
+    config
+        .ip_restrictions
+        .blocked_ranges
+        .push("192.168.1.0/24".to_string());
+
     let storage = Box::new(storage::MemoryStorage::new());
     let limiter = RateLimiter::new(config, storage).await.unwrap();
 
-    let test_ips = vec![
-        "192.168.1.50",
-        "192.168.1.100",
-        "192.168.1.200",
-    ];
+    let test_ips = vec!["192.168.1.50", "192.168.1.100", "192.168.1.200"];
 
     for ip in test_ips {
         let context = RateLimitContext::new(
@@ -178,13 +191,12 @@ async fn test_ip_range_blocking() {
 #[tokio::test]
 async fn test_endpoint_specific_limits() {
     let mut config = RateLimitConfig::default();
-    
+
     // Add restrictive endpoint-specific policy
-    let scan_endpoint = EndpointRateLimit::new("/api/scan".to_string())
-        .with_policy(
-            RateLimitTier::Unauthenticated,
-            RateLimitPolicy::new(1, RateLimitWindow::Minute)
-        );
+    let scan_endpoint = EndpointRateLimit::new("/api/scan".to_string()).with_policy(
+        RateLimitTier::Unauthenticated,
+        RateLimitPolicy::new(1, RateLimitWindow::Minute),
+    );
 
     config = config.add_endpoint(scan_endpoint);
 
@@ -213,7 +225,11 @@ async fn test_endpoint_specific_limits() {
 
     for i in 0..5 {
         let result = limiter.check_rate_limit(&status_context).await;
-        assert!(result.is_allowed(), "Status request {} should be allowed", i + 1);
+        assert!(
+            result.is_allowed(),
+            "Status request {} should be allowed",
+            i + 1
+        );
     }
 }
 
@@ -271,13 +287,22 @@ async fn test_violation_recording() {
     let policy = RateLimitPolicy::new(1, RateLimitWindow::Minute);
 
     // Record a violation
-    limiter.record_violation(&context, &policy, "Test violation").await.unwrap();
+    limiter
+        .record_violation(&context, &policy, "Test violation")
+        .await
+        .unwrap();
 
     // Check that violation was recorded
-    let violations = limiter.get_violations(Some(user_id), None, Some(10)).await.unwrap();
+    let violations = limiter
+        .get_violations(Some(user_id), None, Some(10))
+        .await
+        .unwrap();
     assert_eq!(violations.len(), 1);
     assert_eq!(violations[0].context.user_id, Some(user_id));
-    assert_eq!(violations[0].violation_type, ViolationType::RateLimitExceeded);
+    assert_eq!(
+        violations[0].violation_type,
+        ViolationType::RateLimitExceeded
+    );
 }
 
 #[tokio::test]
@@ -302,7 +327,10 @@ async fn test_statistics() {
         // Record some violations
         if i >= 7 {
             let policy = RateLimitPolicy::new(5, RateLimitWindow::Minute);
-            limiter.record_violation(&context, &policy, "Test violation").await.unwrap();
+            limiter
+                .record_violation(&context, &policy, "Test violation")
+                .await
+                .unwrap();
         }
     }
 
@@ -380,12 +408,15 @@ async fn test_cleanup() {
     // Record some violations
     let policy = RateLimitPolicy::new(1, RateLimitWindow::Minute);
     for _ in 0..5 {
-        limiter.record_violation(&context, &policy, "Test violation").await.unwrap();
+        limiter
+            .record_violation(&context, &policy, "Test violation")
+            .await
+            .unwrap();
     }
 
     // Run cleanup
     let cleaned_count = limiter.cleanup().await.unwrap();
-    
+
     // Cleanup should run without errors
     assert!(cleaned_count >= 0);
 }
@@ -419,44 +450,75 @@ async fn test_rate_limit_context() {
 
     assert_eq!(context.user_id, Some(user_id));
     assert_eq!(context.tier, RateLimitTier::Premium);
-    assert_eq!(context.ip_address, "192.168.1.100".parse::<IpAddr>().unwrap());
+    assert_eq!(
+        context.ip_address,
+        "192.168.1.100".parse::<IpAddr>().unwrap()
+    );
     assert_eq!(context.resource, "/api/scan");
     assert_eq!(context.method, "POST");
     assert_eq!(context.user_agent, Some("test-agent/1.0".to_string()));
     assert_eq!(context.country, Some("US".to_string()));
     assert_eq!(context.api_key, Some("test-key-123".to_string()));
-    assert_eq!(context.metadata.get("custom-field"), Some(&"custom-value".to_string()));
+    assert_eq!(
+        context.metadata.get("custom-field"),
+        Some(&"custom-value".to_string())
+    );
 }
 
 #[tokio::test]
 async fn test_rate_limit_tier_conversion() {
     assert_eq!(RateLimitTier::from_role("admin"), RateLimitTier::Admin);
-    assert_eq!(RateLimitTier::from_role("enterprise"), RateLimitTier::Enterprise);
+    assert_eq!(
+        RateLimitTier::from_role("enterprise"),
+        RateLimitTier::Enterprise
+    );
     assert_eq!(RateLimitTier::from_role("premium"), RateLimitTier::Premium);
     assert_eq!(RateLimitTier::from_role("basic"), RateLimitTier::Basic);
-    assert_eq!(RateLimitTier::from_role("unknown"), RateLimitTier::Unauthenticated);
+    assert_eq!(
+        RateLimitTier::from_role("unknown"),
+        RateLimitTier::Unauthenticated
+    );
     assert_eq!(RateLimitTier::from_role("ADMIN"), RateLimitTier::Admin); // Case insensitive
 }
 
 #[tokio::test]
 async fn test_rate_limit_window() {
-    assert_eq!(RateLimitWindow::Second.as_duration(), Duration::from_secs(1));
-    assert_eq!(RateLimitWindow::Minute.as_duration(), Duration::from_secs(60));
-    assert_eq!(RateLimitWindow::Hour.as_duration(), Duration::from_secs(3600));
-    assert_eq!(RateLimitWindow::Day.as_duration(), Duration::from_secs(86400));
-    assert_eq!(RateLimitWindow::Week.as_duration(), Duration::from_secs(604800));
-    assert_eq!(RateLimitWindow::Month.as_duration(), Duration::from_secs(2592000));
+    assert_eq!(
+        RateLimitWindow::Second.as_duration(),
+        Duration::from_secs(1)
+    );
+    assert_eq!(
+        RateLimitWindow::Minute.as_duration(),
+        Duration::from_secs(60)
+    );
+    assert_eq!(
+        RateLimitWindow::Hour.as_duration(),
+        Duration::from_secs(3600)
+    );
+    assert_eq!(
+        RateLimitWindow::Day.as_duration(),
+        Duration::from_secs(86400)
+    );
+    assert_eq!(
+        RateLimitWindow::Week.as_duration(),
+        Duration::from_secs(604800)
+    );
+    assert_eq!(
+        RateLimitWindow::Month.as_duration(),
+        Duration::from_secs(2592000)
+    );
 }
 
 #[cfg(feature = "redis-cache")]
 #[tokio::test]
 async fn test_redis_storage() {
-    use crate::rate_limiting::storage::RedisStorage;
     use crate::rate_limiting::config::DistributedConfig;
+    use crate::rate_limiting::storage::RedisStorage;
 
     // Skip test if Redis is not available
-    let redis_url = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://localhost:6379".to_string());
-    
+    let redis_url =
+        std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://localhost:6379".to_string());
+
     let mut distributed_config = DistributedConfig::default();
     distributed_config.redis.url = redis_url;
     distributed_config.enabled = true;
@@ -512,11 +574,15 @@ async fn benchmark_rate_limiting() {
     let duration = start_time.elapsed();
     let requests_per_second = num_requests as f64 / duration.as_secs_f64();
 
-    println!("Benchmark: {} requests in {:?} ({:.2} req/s)", 
-             num_requests, duration, requests_per_second);
+    println!(
+        "Benchmark: {} requests in {:?} ({:.2} req/s)",
+        num_requests, duration, requests_per_second
+    );
 
     // Should be able to handle at least 1000 requests per second
-    assert!(requests_per_second > 1000.0, 
-            "Rate limiting should handle at least 1000 req/s, got {:.2}", 
-            requests_per_second);
+    assert!(
+        requests_per_second > 1000.0,
+        "Rate limiting should handle at least 1000 req/s, got {:.2}",
+        requests_per_second
+    );
 }

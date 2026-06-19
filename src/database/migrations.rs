@@ -1,6 +1,6 @@
-use sqlx::{PgPool, migrate::MigrateDatabase, Postgres};
 use anyhow::Result;
-use tracing::{info, error, warn};
+use sqlx::{migrate::MigrateDatabase, PgPool, Postgres};
+use tracing::{error, info, warn};
 
 pub struct MigrationManager {
     pool: PgPool,
@@ -28,7 +28,7 @@ impl MigrationManager {
 
     pub async fn run_migrations(&self) -> Result<()> {
         info!("Running database migrations...");
-        
+
         match sqlx::migrate!("./migrations").run(&self.pool).await {
             Ok(_) => {
                 info!("Database migrations completed successfully");
@@ -43,13 +43,13 @@ impl MigrationManager {
 
     pub async fn rollback_migration(&self, version: i64) -> Result<()> {
         info!("Rolling back to migration version {}", version);
-        
+
         // This would require implementing custom rollback logic
         // For now, we'll use sqlx's built-in functionality
         sqlx::migrate!("./migrations")
             .undo(&self.pool, version)
             .await?;
-        
+
         info!("Rollback to version {} completed", version);
         Ok(())
     }
@@ -84,16 +84,31 @@ impl MigrationManager {
 
     pub async fn validate_schema(&self) -> Result<SchemaValidation> {
         let mut validation = SchemaValidation::default();
-        
+
         // Check if all required tables exist
         let required_tables = vec![
-            "users", "wallets", "transactions", "multi_signature_operations",
-            "multi_signature_signers", "transaction_signatures", "user_sessions",
-            "audit_logs", "security_alerts", "rate_limits", "user_devices",
-            "access_patterns", "projects", "bounties", "bounty_applications",
-            "bounty_submissions", "escrow_accounts", "bounty_reviews",
-            "bounty_payments", "bounty_activity_log", "bounty_tags",
-            "bounty_tag_relations"
+            "users",
+            "wallets",
+            "transactions",
+            "multi_signature_operations",
+            "multi_signature_signers",
+            "transaction_signatures",
+            "user_sessions",
+            "audit_logs",
+            "security_alerts",
+            "rate_limits",
+            "user_devices",
+            "access_patterns",
+            "projects",
+            "bounties",
+            "bounty_applications",
+            "bounty_submissions",
+            "escrow_accounts",
+            "bounty_reviews",
+            "bounty_payments",
+            "bounty_activity_log",
+            "bounty_tags",
+            "bounty_tag_relations",
         ];
 
         for table in required_tables {
@@ -113,9 +128,13 @@ impl MigrationManager {
 
         // Check if required indexes exist
         let required_indexes = vec![
-            "idx_users_email", "idx_users_username", "idx_wallets_user_id",
-            "idx_wallets_stellar_address", "idx_transactions_transaction_hash",
-            "idx_transactions_user_id", "idx_multi_sig_user_id"
+            "idx_users_email",
+            "idx_users_username",
+            "idx_wallets_user_id",
+            "idx_wallets_stellar_address",
+            "idx_transactions_transaction_hash",
+            "idx_transactions_user_id",
+            "idx_multi_sig_user_id",
         ];
 
         for index in required_indexes {
@@ -133,7 +152,8 @@ impl MigrationManager {
             }
         }
 
-        validation.is_valid = validation.missing_tables.is_empty() && validation.missing_indexes.is_empty();
+        validation.is_valid =
+            validation.missing_tables.is_empty() && validation.missing_indexes.is_empty();
 
         Ok(validation)
     }
@@ -159,28 +179,28 @@ pub struct SchemaValidation {
 // Migration utilities
 pub async fn backup_database(config: &super::DatabaseConfig, backup_path: &str) -> Result<()> {
     info!("Creating database backup to {}", backup_path);
-    
+
     // This would typically use pg_dump or similar tool
     // For now, we'll just log the intention
     warn!("Database backup functionality not implemented yet");
-    
+
     Ok(())
 }
 
 pub async fn restore_database(config: &super::DatabaseConfig, backup_path: &str) -> Result<()> {
     info!("Restoring database from {}", backup_path);
-    
+
     // This would typically use psql or similar tool
     // For now, we'll just log the intention
     warn!("Database restore functionality not implemented yet");
-    
+
     Ok(())
 }
 
 // Seed data for development/testing
 pub async fn seed_development_data(pool: &PgPool) -> Result<()> {
     info!("Seeding development data...");
-    
+
     // Create test users
     let test_user_id = sqlx::query_scalar!(
         r#"
@@ -210,7 +230,7 @@ pub async fn seed_development_data(pool: &PgPool) -> Result<()> {
 // Database health checks
 pub async fn run_health_checks(pool: &PgPool) -> Result<HealthCheckResults> {
     let mut results = HealthCheckResults::default();
-    
+
     // Check database connectivity
     let start_time = std::time::Instant::now();
     match sqlx::query("SELECT 1").fetch_one(pool).await {
@@ -220,21 +240,25 @@ pub async fn run_health_checks(pool: &PgPool) -> Result<HealthCheckResults> {
         }
         Err(e) => {
             results.connectivity = HealthStatus::Unhealthy;
-            results.errors.push(format!("Database connectivity failed: {}", e));
+            results
+                .errors
+                .push(format!("Database connectivity failed: {}", e));
         }
     }
 
     // Check connection pool
     let pool_size = pool.size();
     let idle_connections = pool.num_idle();
-    
+
     if idle_connections > 0 {
         results.connection_pool = HealthStatus::Healthy;
     } else {
         results.connection_pool = HealthStatus::Warning;
-        results.errors.push("No idle connections in pool".to_string());
+        results
+            .errors
+            .push("No idle connections in pool".to_string());
     }
-    
+
     results.pool_size = pool_size;
     results.idle_connections = idle_connections;
 
@@ -243,20 +267,24 @@ pub async fn run_health_checks(pool: &PgPool) -> Result<HealthCheckResults> {
         .fetch_one(pool)
         .await
         .unwrap_or(0);
-    
+
     let wallet_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM wallets")
         .fetch_one(pool)
         .await
         .unwrap_or(0);
-    
+
     let transaction_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM transactions")
         .fetch_one(pool)
         .await
         .unwrap_or(0);
 
     results.table_counts.insert("users".to_string(), user_count);
-    results.table_counts.insert("wallets".to_string(), wallet_count);
-    results.table_counts.insert("transactions".to_string(), transaction_count);
+    results
+        .table_counts
+        .insert("wallets".to_string(), wallet_count);
+    results
+        .table_counts
+        .insert("transactions".to_string(), transaction_count);
 
     // Overall health
     results.overall_health = match (results.connectivity, results.connection_pool) {

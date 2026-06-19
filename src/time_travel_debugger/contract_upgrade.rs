@@ -1,14 +1,14 @@
 //! Contract Upgrade Simulator
-//! 
+//!
 //! This module simulates contract upgrades to ensure new WASM versions are compatible
 //! with existing state and identifies potential issues.
 
+use crate::time_travel_debugger::{ContractState, TimeTravelConfig};
+use anyhow::{anyhow, Result};
+use serde::{Deserialize, Serialize};
+use soroban_sdk::xdr::{ContractCodeEntry, ContractDataEntry, LedgerEntry, ScVal};
 use std::collections::HashMap;
 use std::time::Duration;
-use anyhow::{Result, anyhow};
-use serde::{Deserialize, Serialize};
-use soroban_sdk::xdr::{ScVal, ContractCodeEntry, ContractDataEntry, LedgerEntry};
-use crate::time_travel_debugger::{ContractState, TimeTravelConfig};
 
 /// Per-key storage compatibility analysis result
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -112,7 +112,10 @@ impl StorageMigrationReport {
         output.push_str("   STORAGE MIGRATION REPORT\n");
         output.push_str("═══════════════════════════════════════════\n");
         output.push_str(&format!("Overall: {}\n", self.summary));
-        output.push_str(&format!("Migration required: {}\n", self.migration_required));
+        output.push_str(&format!(
+            "Migration required: {}\n",
+            self.migration_required
+        ));
         output.push('\n');
 
         if !self.critical_issues.is_empty() {
@@ -156,13 +159,21 @@ impl StorageMigrationReport {
         output.push('\n');
 
         output.push_str(&format!("─── DIFF SUMMARY ───\n"));
-        output.push_str(&format!("  Total old keys: {}\n", self.storage_diff.old_total_keys));
-        output.push_str(&format!("  Total new keys: {}\n", self.storage_diff.new_total_keys));
-        output.push_str(&format!("  Compatible: {} | Orphaned: {} | Type mismatch: {} | Missing in current: {}\n",
+        output.push_str(&format!(
+            "  Total old keys: {}\n",
+            self.storage_diff.old_total_keys
+        ));
+        output.push_str(&format!(
+            "  Total new keys: {}\n",
+            self.storage_diff.new_total_keys
+        ));
+        output.push_str(&format!(
+            "  Compatible: {} | Orphaned: {} | Type mismatch: {} | Missing in current: {}\n",
             self.storage_diff.compatible_count,
             self.storage_diff.orphaned_count,
             self.storage_diff.type_mismatch_count,
-            self.storage_diff.missing_in_current_count));
+            self.storage_diff.missing_in_current_count
+        ));
         output.push('\n');
 
         output.push_str(&format!("Recommendation: {}\n", self.recommendation));
@@ -173,8 +184,7 @@ impl StorageMigrationReport {
 
     /// Generate a concise JSON-serializable report for machine consumption
     pub fn to_json_string(&self) -> Result<String> {
-        serde_json::to_string_pretty(self)
-            .map_err(|e| anyhow!("Failed to serialize report: {}", e))
+        serde_json::to_string_pretty(self).map_err(|e| anyhow!("Failed to serialize report: {}", e))
     }
 }
 
@@ -201,28 +211,25 @@ impl ContractUpgradeSimulator {
 
         // Parse new WASM to extract expected storage layout
         let new_storage_layout = self.parse_wasm_storage_layout(new_wasm).await?;
-        
+
         // Compare with current storage — now generates per-key analysis
-        let compatibility_issues = self.check_storage_compatibility(
-            &current_state.storage,
-            &new_storage_layout,
-        ).await?;
-        
+        let compatibility_issues = self
+            .check_storage_compatibility(&current_state.storage, &new_storage_layout)
+            .await?;
+
         issues.extend(compatibility_issues);
 
         // Check for orphaned state
-        let orphaned = self.find_orphaned_storage_entries(
-            &current_state.storage,
-            &new_storage_layout,
-        ).await?;
-        
+        let orphaned = self
+            .find_orphaned_storage_entries(&current_state.storage, &new_storage_layout)
+            .await?;
+
         orphaned_entries.extend(orphaned);
 
         // Generate the storage migration report
-        let migration_report = self.generate_migration_report(
-            &current_state.storage,
-            &new_storage_layout,
-        ).await?;
+        let migration_report = self
+            .generate_migration_report(&current_state.storage, &new_storage_layout)
+            .await?;
 
         // Validate WASM compatibility
         let wasm_issues = self.validate_wasm_compatibility(new_wasm).await?;
@@ -244,40 +251,52 @@ impl ContractUpgradeSimulator {
     }
 
     /// Parse WASM to extract expected storage layout
-    async fn parse_wasm_storage_layout(&self, wasm: &[u8]) -> Result<HashMap<String, StorageLayoutInfo>> {
+    async fn parse_wasm_storage_layout(
+        &self,
+        wasm: &[u8],
+    ) -> Result<HashMap<String, StorageLayoutInfo>> {
         let mut layout = HashMap::new();
-        
+
         // In a real implementation, this would:
         // 1. Parse the WASM binary
         // 2. Extract storage key patterns from the code
         // 3. Analyze storage access patterns
         // 4. Build a comprehensive layout map
-        
+
         // For now, we'll simulate this with basic WASM inspection
         let wasm_string = String::from_utf8_lossy(wasm);
-        
+
         // Look for common storage patterns in the WASM
         if wasm_string.contains("storage") {
             // Add some mock storage entries for demonstration
-            layout.insert("instance".to_string(), StorageLayoutInfo {
-                storage_type: StorageType::Instance,
-                required: true,
-                description: "Contract instance data".to_string(),
-            });
-            
-            layout.insert("balance".to_string(), StorageLayoutInfo {
-                storage_type: StorageType::Persistent,
-                required: false,
-                description: "Token balance storage".to_string(),
-            });
-            
-            layout.insert("allowance".to_string(), StorageLayoutInfo {
-                storage_type: StorageType::Persistent,
-                required: false,
-                description: "Allowance storage".to_string(),
-            });
+            layout.insert(
+                "instance".to_string(),
+                StorageLayoutInfo {
+                    storage_type: StorageType::Instance,
+                    required: true,
+                    description: "Contract instance data".to_string(),
+                },
+            );
+
+            layout.insert(
+                "balance".to_string(),
+                StorageLayoutInfo {
+                    storage_type: StorageType::Persistent,
+                    required: false,
+                    description: "Token balance storage".to_string(),
+                },
+            );
+
+            layout.insert(
+                "allowance".to_string(),
+                StorageLayoutInfo {
+                    storage_type: StorageType::Persistent,
+                    required: false,
+                    description: "Allowance storage".to_string(),
+                },
+            );
         }
-        
+
         Ok(layout)
     }
 
@@ -309,15 +328,33 @@ impl ContractUpgradeSimulator {
 
                 let (status, desc) = if type_validation.is_ok() && !format_check {
                     compatible_count += 1;
-                    (StorageKeyStatus::Compatible, format!("Key '{}' is fully compatible — "Type {:?} matches expected {:?}", key, actual_type, layout_info.storage_type))
+                    (
+                        StorageKeyStatus::Compatible,
+                        format!(
+                            "Key '{}' is fully compatible — Type {:?} matches expected {:?}",
+                            key, actual_type, layout_info.storage_type
+                        ),
+                    )
                 } else if type_validation.is_err() {
                     type_mismatch_count += 1;
                     let err_msg = format!("{}", type_validation.err().unwrap());
-                    critical_issues.push(format!("Type mismatch for key '{}': expected {:?}, actual {}. {}", key, layout_info.storage_type, actual_type, err_msg));
-                    (StorageKeyStatus::TypeMismatch, format!("Type mismatch: expected {:?}, actual {}. Migration required.", layout_info.storage_type, actual_type))
+                    critical_issues.push(format!(
+                        "Type mismatch for key '{}': expected {:?}, actual {}. {}",
+                        key, layout_info.storage_type, actual_type, err_msg
+                    ));
+                    (
+                        StorageKeyStatus::TypeMismatch,
+                        format!(
+                            "Type mismatch: expected {:?}, actual {}. Migration required.",
+                            layout_info.storage_type, actual_type
+                        ),
+                    )
                 } else {
                     type_mismatch_count += 1;
-                    warnings.push(format!("Format change detected for key '{}' — type {:?} but size/layout differs", key, layout_info.storage_type));
+                    warnings.push(format!(
+                        "Format change detected for key '{}' — type {:?} but size/layout differs",
+                        key, layout_info.storage_type
+                    ));
                     (StorageKeyStatus::FormatChanged, format!("Format changed for key '{}'. Type {:?} matches but structure differs — coercion possible.", key, layout_info.storage_type))
                 };
 
@@ -344,7 +381,10 @@ impl ContractUpgradeSimulator {
 
                 match severity {
                     IssueCategory::Critical => {
-                        critical_issues.push(format!("{} Data loss risk: key '{}' will be orphaned.", desc, key));
+                        critical_issues.push(format!(
+                            "{} Data loss risk: key '{}' will be orphaned.",
+                            desc, key
+                        ));
                     }
                     IssueCategory::Warning => {
                         warnings.push(format!("{} Key '{}' may be orphaned.", desc, key));
@@ -381,7 +421,10 @@ impl ContractUpgradeSimulator {
                 if layout_info.required {
                     critical_issues.push(format!("Required key '{}' is missing from current state — contract may panic on access.", key));
                 } else {
-                    warnings.push(format!("Optional key '{}' is missing — will be initialized with default value.", key));
+                    warnings.push(format!(
+                        "Optional key '{}' is missing — will be initialized with default value.",
+                        key
+                    ));
                 }
 
                 key_compatibilities.push(KeyCompatibility {
@@ -473,16 +516,14 @@ impl ContractUpgradeSimulator {
         for (key, current_value) in current_storage {
             if let Some(layout_info) = new_layout.get(key) {
                 if let Err(e) = self.validate_storage_type(current_value, layout_info) {
-                    issues.push(format!(
-                        "Type mismatch for storage entry '{}': {}",
-                        key, e
-                    ));
+                    issues.push(format!("Type mismatch for storage entry '{}': {}", key, e));
                 }
             }
         }
 
         // Check for incompatible storage format changes
-        self.check_storage_format_changes(current_storage, new_layout, &mut issues).await?;
+        self.check_storage_format_changes(current_storage, new_layout, &mut issues)
+            .await?;
 
         Ok(issues)
     }
@@ -524,7 +565,8 @@ impl ContractUpgradeSimulator {
         let wasm_string = String::from_utf8_lossy(wasm);
         if wasm_string.contains("env.memory") {
             // This might indicate direct memory access which could be problematic
-            issues.push("Direct memory access detected - may cause compatibility issues".to_string());
+            issues
+                .push("Direct memory access detected - may cause compatibility issues".to_string());
         }
 
         // Check size limits
@@ -547,7 +589,7 @@ impl ContractUpgradeSimulator {
         // Check for potential storage bloat
         if current_state.storage.len() > 1000 {
             warnings.push(
-                "Large number of storage entries may cause upgrade performance issues".to_string()
+                "Large number of storage entries may cause upgrade performance issues".to_string(),
             );
         }
 
@@ -564,11 +606,16 @@ impl ContractUpgradeSimulator {
         // Check WASM for patterns that might cause issues
         let wasm_string = String::from_utf8_lossy(new_wasm);
         if wasm_string.contains("recursive") {
-            warnings.push("Recursive functions detected - may cause stack overflow during upgrade".to_string());
+            warnings.push(
+                "Recursive functions detected - may cause stack overflow during upgrade"
+                    .to_string(),
+            );
         }
 
         if wasm_string.contains("loop") && wasm_string.contains("storage") {
-            warnings.push("Storage operations in loops detected - may cause upgrade timeout".to_string());
+            warnings.push(
+                "Storage operations in loops detected - may cause upgrade timeout".to_string(),
+            );
         }
 
         Ok(warnings)
@@ -592,7 +639,11 @@ impl ContractUpgradeSimulator {
             StorageType::Temporary => {
                 // Temporary storage should be simple types
                 match value {
-                    ScVal::U32(_) | ScVal::I32(_) | ScVal::U64(_) | ScVal::I64(_) | ScVal::Bool(_) => {}
+                    ScVal::U32(_)
+                    | ScVal::I32(_)
+                    | ScVal::U64(_)
+                    | ScVal::I64(_)
+                    | ScVal::Bool(_) => {}
                     _ => return Err(anyhow!("Temporary storage should be simple primitive type")),
                 }
             }
@@ -670,14 +721,14 @@ impl ContractUpgradeSimulator {
                 } else {
                     format!("{}... ({} bytes)", hex::encode(&b[..8]), b.len())
                 }
-            },
+            }
             ScVal::String(s) => {
                 if s.len() <= 40 {
                     s.clone()
                 } else {
                     format!("{}... ({} chars)", &s[..37], s.len())
                 }
-            },
+            }
             ScVal::Symbol(s) => s.clone(),
             ScVal::Map(m) => format!("map[{} entries]", m.len()),
             ScVal::Vec(v) => format!("vec[{} elements]", v.len()),
@@ -688,9 +739,18 @@ impl ContractUpgradeSimulator {
 
     /// Assess the importance/criticality of a storage key
     fn assess_key_importance(&self, key: &str) -> IssueCategory {
-        if key.contains("balance") || key.contains("total_supply") || key.contains("owner") || key.contains("admin") {
+        if key.contains("balance")
+            || key.contains("total_supply")
+            || key.contains("owner")
+            || key.contains("admin")
+        {
             IssueCategory::Critical
-        } else if key.contains("allowance") || key.contains("approval") || key.contains("metadata") || key.contains("config") || key.contains("nonce") {
+        } else if key.contains("allowance")
+            || key.contains("approval")
+            || key.contains("metadata")
+            || key.contains("config")
+            || key.contains("nonce")
+        {
             IssueCategory::Warning
         } else {
             IssueCategory::Info
@@ -715,16 +775,18 @@ impl ContractUpgradeSimulator {
         new_wasm: &[u8],
     ) -> Result<UpgradeProcessResult> {
         let start_time = std::time::Instant::now();
-        
+
         // Run the compatibility simulation
         let simulation_result = self.simulate_upgrade(current_state, new_wasm).await?;
-        
+
         // Estimate upgrade time
         let estimated_time = self.estimate_upgrade_time(current_state, new_wasm).await?;
-        
+
         // Calculate resource requirements
-        let resource_requirements = self.calculate_resource_requirements(current_state, new_wasm).await?;
-        
+        let resource_requirements = self
+            .calculate_resource_requirements(current_state, new_wasm)
+            .await?;
+
         let simulation_duration = start_time.elapsed();
 
         Ok(UpgradeProcessResult {
@@ -741,12 +803,16 @@ impl ContractUpgradeSimulator {
         let base_time = Duration::from_millis(100); // Base upgrade time
         let storage_time = Duration::from_millis(state.storage.len() as u64 * 10); // 10ms per storage entry
         let wasm_time = Duration::from_millis(wasm.len() as u64 / 100); // 1ms per 100 bytes
-        
+
         Ok(base_time + storage_time + wasm_time)
     }
 
     /// Calculate resource requirements for the upgrade
-    async fn calculate_resource_requirements(&self, state: &ContractState, wasm: &[u8]) -> Result<ResourceRequirements> {
+    async fn calculate_resource_requirements(
+        &self,
+        state: &ContractState,
+        wasm: &[u8],
+    ) -> Result<ResourceRequirements> {
         Ok(ResourceRequirements {
             memory_mb: (wasm.len() / 1024 / 1024 + state.storage.len() / 100) as u32,
             cpu_units: (wasm.len() / 1000 + state.storage.len() * 5) as u32,
@@ -836,15 +902,21 @@ mod tests {
     async fn test_wasm_validation() {
         let config = crate::time_travel_debugger::TimeTravelConfig::default();
         let simulator = ContractUpgradeSimulator::new(config);
-        
+
         // Test with invalid WASM
         let invalid_wasm = b"not wasm";
-        let result = simulator.validate_wasm_compatibility(invalid_wasm).await.unwrap();
+        let result = simulator
+            .validate_wasm_compatibility(invalid_wasm)
+            .await
+            .unwrap();
         assert!(!result.is_empty());
-        
+
         // Test with valid WASM header (minimal)
         let valid_wasm = b"\0asm\x01\0\0\0";
-        let result = simulator.validate_wasm_compatibility(valid_wasm).await.unwrap();
+        let result = simulator
+            .validate_wasm_compatibility(valid_wasm)
+            .await
+            .unwrap();
         assert!(result.is_empty());
     }
 
@@ -852,19 +924,23 @@ mod tests {
     async fn test_storage_type_validation() {
         let config = crate::time_travel_debugger::TimeTravelConfig::default();
         let simulator = ContractUpgradeSimulator::new(config);
-        
+
         let layout_info = StorageLayoutInfo {
             storage_type: StorageType::Temporary,
             required: false,
             description: "Test storage".to_string(),
         };
-        
+
         // Valid temporary storage
         let valid_value = ScVal::U32(42);
-        assert!(simulator.validate_storage_type(&valid_value, &layout_info).is_ok());
-        
+        assert!(simulator
+            .validate_storage_type(&valid_value, &layout_info)
+            .is_ok());
+
         // Invalid temporary storage
         let invalid_value = ScVal::Void;
-        assert!(simulator.validate_storage_type(&invalid_value, &layout_info).is_err());
+        assert!(simulator
+            .validate_storage_type(&invalid_value, &layout_info)
+            .is_err());
     }
 }

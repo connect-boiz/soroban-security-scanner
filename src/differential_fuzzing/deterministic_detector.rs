@@ -1,14 +1,12 @@
 //! Deterministic Behavior Detector for Differential Fuzzing
-//! 
+//!
 //! Flags non-deterministic behavior as high-priority security vulnerabilities.
 
-use crate::differential_fuzzing::{
-    ExecutionResult, SdkVersion, TestInput, ArgumentValue
-};
+use crate::differential_fuzzing::{ArgumentValue, ExecutionResult, SdkVersion, TestInput};
 use crate::Severity;
-use serde::{Serialize, Deserialize};
-use std::collections::{HashMap, HashSet};
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
 
 /// Types of non-deterministic behavior
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -144,8 +142,8 @@ impl DeterministicDetector {
         let mut behaviors = Vec::new();
 
         // Group results by SDK version
-        let results_by_version: HashMap<String, Vec<&ExecutionResult>> = results.iter()
-            .fold(HashMap::new(), |mut acc, result| {
+        let results_by_version: HashMap<String, Vec<&ExecutionResult>> =
+            results.iter().fold(HashMap::new(), |mut acc, result| {
                 acc.entry(result.sdk_version.version.clone())
                     .or_insert_with(Vec::new)
                     .push(result);
@@ -155,7 +153,8 @@ impl DeterministicDetector {
         // Check for non-determinism within each version
         for (version, version_results) in results_by_version {
             if version_results.len() > 1 {
-                let version_behaviors = self.detect_non_determinism_within_version(&version, version_results)?;
+                let version_behaviors =
+                    self.detect_non_determinism_within_version(&version, version_results)?;
                 behaviors.extend(version_behaviors);
             }
         }
@@ -216,21 +215,33 @@ impl DeterministicDetector {
     }
 
     /// Detect cross-version non-determinism
-    fn detect_cross_version_non_determinism(&self, results: &[ExecutionResult]) -> Result<Vec<NonDeterministicBehavior>> {
+    fn detect_cross_version_non_determinism(
+        &self,
+        results: &[ExecutionResult],
+    ) -> Result<Vec<NonDeterministicBehavior>> {
         let mut behaviors = Vec::new();
 
         // Check if different versions produce different results for the same input
-        let return_values_by_version: HashMap<String, Option<&ArgumentValue>> = results.iter()
-            .map(|result| (result.sdk_version.version.clone(), result.return_value.as_ref()))
+        let return_values_by_version: HashMap<String, Option<&ArgumentValue>> = results
+            .iter()
+            .map(|result| {
+                (
+                    result.sdk_version.version.clone(),
+                    result.return_value.as_ref(),
+                )
+            })
             .collect();
 
-        let unique_return_values: HashSet<Option<&ArgumentValue>> = return_values_by_version.values().cloned().collect();
-        
+        let unique_return_values: HashSet<Option<&ArgumentValue>> =
+            return_values_by_version.values().cloned().collect();
+
         if unique_return_values.len() > 1 {
             let behavior = NonDeterministicBehavior {
                 behavior_type: NonDeterministicType::ExternalStateDependency,
                 severity: Severity::High,
-                description: "Different SDK versions produce different return values for the same input".to_string(),
+                description:
+                    "Different SDK versions produce different return values for the same input"
+                        .to_string(),
                 affected_versions: results.iter().map(|r| r.sdk_version.clone()).collect(),
                 test_input: "cross_version_test".to_string(),
                 detection_method: DetectionMethod::ReturnValueVariation,
@@ -255,18 +266,25 @@ impl DeterministicDetector {
     }
 
     /// Check for return value variations
-    fn check_return_value_variations(&self, version: &str, results: &[&ExecutionResult]) -> Result<Option<NonDeterministicBehavior>> {
-        let return_values: Vec<Option<&ArgumentValue>> = results.iter()
-            .map(|r| r.return_value.as_ref())
-            .collect();
+    fn check_return_value_variations(
+        &self,
+        version: &str,
+        results: &[&ExecutionResult],
+    ) -> Result<Option<NonDeterministicBehavior>> {
+        let return_values: Vec<Option<&ArgumentValue>> =
+            results.iter().map(|r| r.return_value.as_ref()).collect();
 
-        let unique_values: HashSet<Option<&ArgumentValue>> = return_values.iter().cloned().collect();
-        
+        let unique_values: HashSet<Option<&ArgumentValue>> =
+            return_values.iter().cloned().collect();
+
         if unique_values.len() > 1 {
             Ok(Some(NonDeterministicBehavior {
                 behavior_type: NonDeterministicType::RandomValueGeneration,
                 severity: Severity::High,
-                description: format!("Return value varies between executions in SDK version {}", version),
+                description: format!(
+                    "Return value varies between executions in SDK version {}",
+                    version
+                ),
                 affected_versions: vec![SdkVersion::new(version)],
                 test_input: "return_value_test".to_string(),
                 detection_method: DetectionMethod::ReturnValueVariation,
@@ -290,23 +308,32 @@ impl DeterministicDetector {
     }
 
     /// Check for gas consumption variations
-    fn check_gas_variations(&self, version: &str, results: &[&ExecutionResult]) -> Result<Option<NonDeterministicBehavior>> {
+    fn check_gas_variations(
+        &self,
+        version: &str,
+        results: &[&ExecutionResult],
+    ) -> Result<Option<NonDeterministicBehavior>> {
         let gas_values: Vec<u64> = results.iter().map(|r| r.gas_consumed).collect();
-        
+
         if gas_values.len() < 2 {
             return Ok(None);
         }
 
         let avg_gas = gas_values.iter().sum::<u64>() as f64 / gas_values.len() as f64;
-        let variance = gas_values.iter()
+        let variance = gas_values
+            .iter()
             .map(|&gas| ((gas as f64 - avg_gas).powi(2) / avg_gas).abs())
-            .sum::<f64>() / gas_values.len() as f64;
+            .sum::<f64>()
+            / gas_values.len() as f64;
 
         if variance > self.config.gas_variation_threshold {
             Ok(Some(NonDeterministicBehavior {
                 behavior_type: NonDeterministicType::BlockchainStateDependency,
                 severity: Severity::Medium,
-                description: format!("Gas consumption varies significantly (variance: {:.2}) in SDK version {}", version, variance),
+                description: format!(
+                    "Gas consumption varies significantly (variance: {:.2}) in SDK version {}",
+                    version, variance
+                ),
                 affected_versions: vec![SdkVersion::new(version)],
                 test_input: "gas_variation_test".to_string(),
                 detection_method: DetectionMethod::GasVariationAnalysis,
@@ -330,20 +357,29 @@ impl DeterministicDetector {
     }
 
     /// Check for state change variations
-    fn check_state_variations(&self, version: &str, results: &[&ExecutionResult]) -> Result<Option<NonDeterministicBehavior>> {
-        let state_changes_by_execution: Vec<Vec<&crate::differential_fuzzing::StateChange>> = results.iter()
-            .map(|r| r.state_changes.iter().collect())
-            .collect();
+    fn check_state_variations(
+        &self,
+        version: &str,
+        results: &[&ExecutionResult],
+    ) -> Result<Option<NonDeterministicBehavior>> {
+        let state_changes_by_execution: Vec<Vec<&crate::differential_fuzzing::StateChange>> =
+            results
+                .iter()
+                .map(|r| r.state_changes.iter().collect())
+                .collect();
 
         // Check if state changes are consistent across executions
         let first_execution_state = &state_changes_by_execution[0];
-        
+
         for (i, execution_state) in state_changes_by_execution.iter().enumerate().skip(1) {
             if execution_state.len() != first_execution_state.len() {
                 return Ok(Some(NonDeterministicBehavior {
                     behavior_type: NonDeterministicType::ExternalStateDependency,
                     severity: Severity::High,
-                    description: format!("State changes differ between executions in SDK version {}", version),
+                    description: format!(
+                        "State changes differ between executions in SDK version {}",
+                        version
+                    ),
                     affected_versions: vec![SdkVersion::new(version)],
                     test_input: "state_variation_test".to_string(),
                     detection_method: DetectionMethod::StateChangeAnalysis,
@@ -370,7 +406,10 @@ impl DeterministicDetector {
                         return Ok(Some(NonDeterministicBehavior {
                             behavior_type: NonDeterministicType::ExternalStateDependency,
                             severity: Severity::High,
-                            description: format!("State change values differ between executions in SDK version {}", version),
+                            description: format!(
+                                "State change values differ between executions in SDK version {}",
+                                version
+                            ),
                             affected_versions: vec![SdkVersion::new(version)],
                             test_input: "state_value_variation_test".to_string(),
                             detection_method: DetectionMethod::StateChangeAnalysis,
@@ -397,10 +436,13 @@ impl DeterministicDetector {
     }
 
     /// Check for execution trace variations
-    fn check_trace_variations(&self, version: &str, results: &[&ExecutionResult]) -> Result<Option<NonDeterministicBehavior>> {
-        let traces: Vec<&crate::differential_fuzzing::ExecutionTrace> = results.iter()
-            .map(|r| &r.execution_trace)
-            .collect();
+    fn check_trace_variations(
+        &self,
+        version: &str,
+        results: &[&ExecutionResult],
+    ) -> Result<Option<NonDeterministicBehavior>> {
+        let traces: Vec<&crate::differential_fuzzing::ExecutionTrace> =
+            results.iter().map(|r| &r.execution_trace).collect();
 
         if traces.len() < 2 {
             return Ok(None);
@@ -414,7 +456,10 @@ impl DeterministicDetector {
                     return Ok(Some(NonDeterministicBehavior {
                         behavior_type: NonDeterministicType::ConcurrentExecution,
                         severity: Severity::Medium,
-                        description: format!("Execution traces differ (similarity: {:.2}) in SDK version {}", version, similarity),
+                        description: format!(
+                            "Execution traces differ (similarity: {:.2}) in SDK version {}",
+                            version, similarity
+                        ),
                         affected_versions: vec![SdkVersion::new(version)],
                         test_input: "trace_variation_test".to_string(),
                         detection_method: DetectionMethod::TraceDivergenceAnalysis,
@@ -440,18 +485,26 @@ impl DeterministicDetector {
     }
 
     /// Check for error rate variations
-    fn check_error_rate_variations(&self, version: &str, results: &[&ExecutionResult]) -> Result<Option<NonDeterministicBehavior>> {
+    fn check_error_rate_variations(
+        &self,
+        version: &str,
+        results: &[&ExecutionResult],
+    ) -> Result<Option<NonDeterministicBehavior>> {
         let success_count = results.iter().filter(|r| r.success).count();
         let error_count = results.len() - success_count;
-        
+
         if results.len() >= 3 && (success_count > 0 && error_count > 0) {
             let error_rate = error_count as f64 / results.len() as f64;
-            
-            if error_rate > 0.1 && error_rate < 0.9 { // Intermittent errors
+
+            if error_rate > 0.1 && error_rate < 0.9 {
+                // Intermittent errors
                 return Ok(Some(NonDeterministicBehavior {
                     behavior_type: NonDeterministicType::NetworkCallVariation,
                     severity: Severity::Medium,
-                    description: format!("Intermittent errors detected (error rate: {:.2}) in SDK version {}", version, error_rate),
+                    description: format!(
+                        "Intermittent errors detected (error rate: {:.2}) in SDK version {}",
+                        version, error_rate
+                    ),
                     affected_versions: vec![SdkVersion::new(version)],
                     test_input: "error_rate_test".to_string(),
                     detection_method: DetectionMethod::ErrorRateAnalysis,
@@ -476,7 +529,10 @@ impl DeterministicDetector {
     }
 
     /// Analyze random patterns in execution
-    fn analyze_random_patterns(&self, results: &[ExecutionResult]) -> Result<Vec<NonDeterministicBehavior>> {
+    fn analyze_random_patterns(
+        &self,
+        results: &[ExecutionResult],
+    ) -> Result<Vec<NonDeterministicBehavior>> {
         let mut behaviors = Vec::new();
 
         for result in results {
@@ -511,7 +567,10 @@ impl DeterministicDetector {
     }
 
     /// Analyze time-dependent logic
-    fn analyze_time_dependencies(&self, results: &[ExecutionResult]) -> Result<Vec<NonDeterministicBehavior>> {
+    fn analyze_time_dependencies(
+        &self,
+        results: &[ExecutionResult],
+    ) -> Result<Vec<NonDeterministicBehavior>> {
         let mut behaviors = Vec::new();
 
         for result in results {
@@ -546,7 +605,10 @@ impl DeterministicDetector {
     }
 
     /// Analyze external dependencies
-    fn analyze_external_dependencies(&self, results: &[ExecutionResult]) -> Result<Vec<NonDeterministicBehavior>> {
+    fn analyze_external_dependencies(
+        &self,
+        results: &[ExecutionResult],
+    ) -> Result<Vec<NonDeterministicBehavior>> {
         let mut behaviors = Vec::new();
 
         for result in results {
@@ -581,7 +643,10 @@ impl DeterministicDetector {
     }
 
     /// Analyze concurrent execution patterns
-    fn analyze_concurrent_execution(&self, results: &[ExecutionResult]) -> Result<Vec<NonDeterministicBehavior>> {
+    fn analyze_concurrent_execution(
+        &self,
+        results: &[ExecutionResult],
+    ) -> Result<Vec<NonDeterministicBehavior>> {
         let mut behaviors = Vec::new();
 
         for result in results {
@@ -616,14 +681,18 @@ impl DeterministicDetector {
     }
 
     /// Check if execution trace contains random patterns
-    fn contains_random_patterns(&self, trace: &crate::differential_fuzzing::ExecutionTrace) -> bool {
-        let random_indicators = vec![
-            "rand", "random", "rng", "entropy", "nonce", "seed",
-        ];
+    fn contains_random_patterns(
+        &self,
+        trace: &crate::differential_fuzzing::ExecutionTrace,
+    ) -> bool {
+        let random_indicators = vec!["rand", "random", "rng", "entropy", "nonce", "seed"];
 
         for event in &trace.events {
             let description = event.description.to_lowercase();
-            if random_indicators.iter().any(|indicator| description.contains(indicator)) {
+            if random_indicators
+                .iter()
+                .any(|indicator| description.contains(indicator))
+            {
                 return true;
             }
         }
@@ -632,14 +701,25 @@ impl DeterministicDetector {
     }
 
     /// Check if execution trace contains time dependencies
-    fn contains_time_dependencies(&self, trace: &crate::differential_fuzzing::ExecutionTrace) -> bool {
+    fn contains_time_dependencies(
+        &self,
+        trace: &crate::differential_fuzzing::ExecutionTrace,
+    ) -> bool {
         let time_indicators = vec![
-            "time", "timestamp", "now", "blocktime", "deadline", "duration",
+            "time",
+            "timestamp",
+            "now",
+            "blocktime",
+            "deadline",
+            "duration",
         ];
 
         for event in &trace.events {
             let description = event.description.to_lowercase();
-            if time_indicators.iter().any(|indicator| description.contains(indicator)) {
+            if time_indicators
+                .iter()
+                .any(|indicator| description.contains(indicator))
+            {
                 return true;
             }
         }
@@ -648,14 +728,18 @@ impl DeterministicDetector {
     }
 
     /// Check if execution trace contains external dependencies
-    fn contains_external_dependencies(&self, trace: &crate::differential_fuzzing::ExecutionTrace) -> bool {
-        let external_indicators = vec![
-            "external", "oracle", "api", "network", "http", "rpc",
-        ];
+    fn contains_external_dependencies(
+        &self,
+        trace: &crate::differential_fuzzing::ExecutionTrace,
+    ) -> bool {
+        let external_indicators = vec!["external", "oracle", "api", "network", "http", "rpc"];
 
         for event in &trace.events {
             let description = event.description.to_lowercase();
-            if external_indicators.iter().any(|indicator| description.contains(indicator)) {
+            if external_indicators
+                .iter()
+                .any(|indicator| description.contains(indicator))
+            {
                 return true;
             }
         }
@@ -664,14 +748,25 @@ impl DeterministicDetector {
     }
 
     /// Check if execution trace contains concurrent patterns
-    fn contains_concurrent_patterns(&self, trace: &crate::differential_fuzzing::ExecutionTrace) -> bool {
+    fn contains_concurrent_patterns(
+        &self,
+        trace: &crate::differential_fuzzing::ExecutionTrace,
+    ) -> bool {
         let concurrent_indicators = vec![
-            "concurrent", "parallel", "thread", "async", "await", "spawn",
+            "concurrent",
+            "parallel",
+            "thread",
+            "async",
+            "await",
+            "spawn",
         ];
 
         for event in &trace.events {
             let description = event.description.to_lowercase();
-            if concurrent_indicators.iter().any(|indicator| description.contains(indicator)) {
+            if concurrent_indicators
+                .iter()
+                .any(|indicator| description.contains(indicator))
+            {
                 return true;
             }
         }
@@ -682,15 +777,22 @@ impl DeterministicDetector {
     /// Store execution result for historical analysis
     pub fn store_execution_result(&mut self, test_input: &str, result: ExecutionResult) {
         let key = format!("{}:{}", test_input, result.sdk_version.version);
-        self.execution_history.entry(key)
+        self.execution_history
+            .entry(key)
             .or_insert_with(Vec::new)
             .push(result);
     }
 
     /// Get execution history for a specific test input
-    pub fn get_execution_history(&self, test_input: &str, version: &str) -> Option<&[ExecutionResult]> {
+    pub fn get_execution_history(
+        &self,
+        test_input: &str,
+        version: &str,
+    ) -> Option<&[ExecutionResult]> {
         let key = format!("{}:{}", test_input, version);
-        self.execution_history.get(&key).map(|results| results.as_slice())
+        self.execution_history
+            .get(&key)
+            .map(|results| results.as_slice())
     }
 
     /// Clear execution history
@@ -701,7 +803,9 @@ impl DeterministicDetector {
     /// Get detector statistics
     pub fn get_statistics(&self) -> DetectorStats {
         DetectorStats {
-            total_executions_stored: self.execution_history.values()
+            total_executions_stored: self
+                .execution_history
+                .values()
                 .map(|results| results.len())
                 .sum(),
             unique_test_inputs: self.execution_history.len(),

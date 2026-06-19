@@ -3,10 +3,10 @@
 //! This module provides persistent delivery tracking using PostgreSQL.
 //! Available when the `database` feature is enabled.
 
-use crate::database::Database;
 use crate::database::models::{
     CreateDeliveryTrackingRequest, DeliveryDbStatus, UpdateDeliveryStatusRequest,
 };
+use crate::database::Database;
 use crate::notification_service::tracking::StorageBackend;
 use crate::notification_service::types::{
     DeliveryStatus, DeliveryTracking, NotificationChannel, TrackingError,
@@ -77,8 +77,9 @@ impl DatabaseBackend {
     fn db_row_to_delivery_tracking(
         row: &crate::database::models::NotificationDeliveryTracking,
     ) -> Result<DeliveryTracking, TrackingError> {
-        let channel = Self::string_to_channel(&row.channel)
-            .ok_or_else(|| TrackingError::InvalidData(format!("Unknown channel: {}", row.channel)))?;
+        let channel = Self::string_to_channel(&row.channel).ok_or_else(|| {
+            TrackingError::InvalidData(format!("Unknown channel: {}", row.channel))
+        })?;
 
         let status = Self::db_status_to_delivery_status(&row.status);
 
@@ -145,14 +146,22 @@ impl StorageBackend for DatabaseBackend {
         };
 
         self.db
-            .update_delivery_status(&tracking.notification_id, &tracking.recipient_id, &channel_str, update)
+            .update_delivery_status(
+                &tracking.notification_id,
+                &tracking.recipient_id,
+                &channel_str,
+                update,
+            )
             .await
             .map_err(|e| TrackingError::StorageError(e.to_string()))?;
 
         Ok(())
     }
 
-    async fn get_notification_tracking(&self, notification_id: &str) -> Result<Vec<DeliveryTracking>, TrackingError> {
+    async fn get_notification_tracking(
+        &self,
+        notification_id: &str,
+    ) -> Result<Vec<DeliveryTracking>, TrackingError> {
         let rows = self
             .db
             .get_notification_delivery_trackings(notification_id)
@@ -164,7 +173,10 @@ impl StorageBackend for DatabaseBackend {
             .collect()
     }
 
-    async fn get_recipient_tracking(&self, recipient_id: &str) -> Result<Vec<DeliveryTracking>, TrackingError> {
+    async fn get_recipient_tracking(
+        &self,
+        recipient_id: &str,
+    ) -> Result<Vec<DeliveryTracking>, TrackingError> {
         let rows = self
             .db
             .get_recipient_delivery_trackings(recipient_id)
@@ -204,7 +216,10 @@ impl StorageBackend for DatabaseBackend {
             .collect()
     }
 
-    async fn cleanup_old_records(&self, cutoff_date: DateTime<Utc>) -> Result<usize, TrackingError> {
+    async fn cleanup_old_records(
+        &self,
+        cutoff_date: DateTime<Utc>,
+    ) -> Result<usize, TrackingError> {
         // Calculate retention days from the cutoff date
         let now = Utc::now();
         let days = (now - cutoff_date).num_days() as i32;
@@ -228,15 +243,39 @@ mod tests {
     /// Test the channel string conversion helpers
     #[test]
     fn test_channel_conversion() {
-        assert_eq!(DatabaseBackend::channel_to_string(&NotificationChannel::Email), "email");
-        assert_eq!(DatabaseBackend::channel_to_string(&NotificationChannel::SMS), "sms");
-        assert_eq!(DatabaseBackend::channel_to_string(&NotificationChannel::Push), "push");
-        assert_eq!(DatabaseBackend::channel_to_string(&NotificationChannel::InApp), "in_app");
+        assert_eq!(
+            DatabaseBackend::channel_to_string(&NotificationChannel::Email),
+            "email"
+        );
+        assert_eq!(
+            DatabaseBackend::channel_to_string(&NotificationChannel::SMS),
+            "sms"
+        );
+        assert_eq!(
+            DatabaseBackend::channel_to_string(&NotificationChannel::Push),
+            "push"
+        );
+        assert_eq!(
+            DatabaseBackend::channel_to_string(&NotificationChannel::InApp),
+            "in_app"
+        );
 
-        assert_eq!(DatabaseBackend::string_to_channel("email"), Some(NotificationChannel::Email));
-        assert_eq!(DatabaseBackend::string_to_channel("sms"), Some(NotificationChannel::SMS));
-        assert_eq!(DatabaseBackend::string_to_channel("push"), Some(NotificationChannel::Push));
-        assert_eq!(DatabaseBackend::string_to_channel("in_app"), Some(NotificationChannel::InApp));
+        assert_eq!(
+            DatabaseBackend::string_to_channel("email"),
+            Some(NotificationChannel::Email)
+        );
+        assert_eq!(
+            DatabaseBackend::string_to_channel("sms"),
+            Some(NotificationChannel::SMS)
+        );
+        assert_eq!(
+            DatabaseBackend::string_to_channel("push"),
+            Some(NotificationChannel::Push)
+        );
+        assert_eq!(
+            DatabaseBackend::string_to_channel("in_app"),
+            Some(NotificationChannel::InApp)
+        );
         assert_eq!(DatabaseBackend::string_to_channel("unknown"), None);
     }
 

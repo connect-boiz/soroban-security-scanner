@@ -1,17 +1,17 @@
 //! Emergency Stop Mechanism for Security Scanner
-//! 
+//!
 //! Provides graceful shutdown capabilities when critical vulnerabilities are detected
 //! or when user initiates an emergency stop via signals.
 //! Also includes a ScanWatchdog that detects and halts stuck scans automatically.
 
+use anyhow::Result;
+use log::{error, info, warn};
+use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
-use anyhow::Result;
-use log::{info, warn, error};
-use serde::{Serialize, Deserialize};
 
 /// Emergency stop state and control
 #[derive(Debug, Clone)]
@@ -28,7 +28,10 @@ pub enum StopCommand {
     /// User initiated stop (Ctrl+C, SIGTERM)
     UserInitiated { reason: String },
     /// Critical vulnerability detected
-    CriticalVulnerability { file_path: String, vulnerability: String },
+    CriticalVulnerability {
+        file_path: String,
+        vulnerability: String,
+    },
     /// Scanner timeout exceeded
     Timeout { duration: Duration },
     /// Resource exhaustion
@@ -82,7 +85,11 @@ impl EmergencyStop {
     }
 
     /// Trigger stop due to critical vulnerability
-    pub fn stop_on_critical_vulnerability(&self, file_path: &str, vulnerability: &str) -> Result<()> {
+    pub fn stop_on_critical_vulnerability(
+        &self,
+        file_path: &str,
+        vulnerability: &str,
+    ) -> Result<()> {
         self.trigger_stop(StopCommand::CriticalVulnerability {
             file_path: file_path.to_string(),
             vulnerability: vulnerability.to_string(),
@@ -120,9 +127,9 @@ impl EmergencyStop {
     #[cfg(unix)]
     fn setup_signal_handlers(sender: Sender<StopCommand>) -> Result<()> {
         use signal_hook::{consts::SIGTERM, iterator::Signals};
-        
+
         let mut signals = Signals::new(&[SIGTERM, signal_hook::consts::SIGINT])?;
-        
+
         thread::spawn(move || {
             for sig in &mut signals {
                 match sig {
@@ -136,19 +143,22 @@ impl EmergencyStop {
                 }
             }
         });
-        
+
         Ok(())
     }
 
     /// Setup signal handlers for Windows
     #[cfg(windows)]
     fn setup_signal_handlers(sender: Sender<StopCommand>) -> Result<()> {
-        use windows::Win32::System::Console::{SetConsoleCtrlHandler, PHANDLER_ROUTINE, CTRL_C_EVENT, CTRL_BREAK_EVENT, CTRL_CLOSE_EVENT};
         use std::sync::mpsc::channel;
-        
+        use windows::Win32::System::Console::{
+            SetConsoleCtrlHandler, CTRL_BREAK_EVENT, CTRL_CLOSE_EVENT, CTRL_C_EVENT,
+            PHANDLER_ROUTINE,
+        };
+
         let (tx, rx) = channel();
         let sender_clone = sender.clone();
-        
+
         thread::spawn(move || {
             if let Ok(reason) = rx.recv() {
                 let _ = sender_clone.send(StopCommand::UserInitiated { reason });
@@ -166,10 +176,10 @@ impl EmergencyStop {
                 let _ = tx.send(reason);
                 true // Return true to indicate we handled the signal
             }));
-            
+
             SetConsoleCtrlHandler(handler, true)?;
         }
-        
+
         Ok(())
     }
 
@@ -177,7 +187,10 @@ impl EmergencyStop {
     fn emergency_stop_listener(receiver: Receiver<StopCommand>, is_stopped: Arc<AtomicBool>) {
         while let Ok(command) = receiver.recv() {
             match &command {
-                StopCommand::CriticalVulnerability { file_path, vulnerability } => {
+                StopCommand::CriticalVulnerability {
+                    file_path,
+                    vulnerability,
+                } => {
                     error!("🚨 CRITICAL VULNERABILITY DETECTED - EMERGENCY STOP TRIGGERED");
                     error!("File: {}", file_path);
                     error!("Vulnerability: {}", vulnerability);
@@ -195,10 +208,10 @@ impl EmergencyStop {
 
             // Set the stop flag
             is_stopped.store(true, Ordering::Relaxed);
-            
+
             // Give some time for graceful shutdown
             thread::sleep(Duration::from_millis(100));
-            
+
             info!("Emergency stop completed");
             break;
         }
@@ -289,7 +302,8 @@ impl ScanWatchdog {
     /// Record a heartbeat — called after each file is processed.
     /// Updates the last heartbeat timestamp.
     pub fn heartbeat(&self) {
-        self.last_heartbeat.store(Self::now_millis(), Ordering::Relaxed);
+        self.last_heartbeat
+            .store(Self::now_millis(), Ordering::Relaxed);
         self.files_processed.fetch_add(1, Ordering::Relaxed);
     }
 
@@ -340,7 +354,9 @@ impl ScanWatchdog {
     /// If a stall is detected, it triggers the emergency stop and logs the event.
     pub fn start_monitoring(&self) {
         if self.emergency_stop.is_none() {
-            warn!("ScanWatchdog: No EmergencyStop attached — monitoring will log but not auto-stop");
+            warn!(
+                "ScanWatchdog: No EmergencyStop attached — monitoring will log but not auto-stop"
+            );
         }
         if self.monitor_active.load(Ordering::Relaxed) {
             return; // Already running
@@ -419,7 +435,8 @@ impl ScanWatchdog {
 
     /// Reset the watchdog state for a new scan
     pub fn reset(&self) {
-        self.last_heartbeat.store(Self::now_millis(), Ordering::Relaxed);
+        self.last_heartbeat
+            .store(Self::now_millis(), Ordering::Relaxed);
         self.files_processed.store(0, Ordering::Relaxed);
         self.timed_out.store(false, Ordering::Relaxed);
         if let Ok(mut current) = self.current_file.lock() {
@@ -446,4 +463,3 @@ pub struct WatchdogStatus {
     pub millis_since_last_heartbeat: u64,
     pub heartbeat_age_seconds: u64,
 }
-

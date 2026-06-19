@@ -4,9 +4,9 @@
 mod tests {
     use super::*;
     use crate::notification_service::{
-        NotificationService, NotificationTemplate, TemplateVariable, VariableType,
-        NotificationChannel, NotificationPriority, Recipient, NotificationPreferences,
-        NotificationMessage, TemplateContext
+        NotificationChannel, NotificationMessage, NotificationPreferences, NotificationPriority,
+        NotificationService, NotificationTemplate, Recipient, TemplateContext, TemplateVariable,
+        VariableType,
     };
     use chrono::Utc;
     use std::collections::HashMap;
@@ -20,7 +20,7 @@ mod tests {
     #[tokio::test]
     async fn test_template_management() {
         let service = NotificationService::new().unwrap();
-        
+
         // Create a test template
         let template = NotificationTemplate {
             id: "test_template".to_string(),
@@ -77,7 +77,7 @@ mod tests {
     #[tokio::test]
     async fn test_template_rendering() {
         let service = NotificationService::new().unwrap();
-        
+
         let template = NotificationTemplate {
             id: "render_test".to_string(),
             name: "Render Test".to_string(),
@@ -130,13 +130,15 @@ mod tests {
         context.insert("status".to_string(), "completed".to_string());
         context.insert("critical".to_string(), "true".to_string());
 
-        let result = service.send_templated_notification(
-            "render_test",
-            create_test_recipient(),
-            context,
-            vec![NotificationChannel::InApp],
-            NotificationPriority::Normal,
-        ).await;
+        let result = service
+            .send_templated_notification(
+                "render_test",
+                create_test_recipient(),
+                context,
+                vec![NotificationChannel::InApp],
+                NotificationPriority::Normal,
+            )
+            .await;
 
         assert!(result.is_ok());
         let notification_result = result.unwrap();
@@ -146,7 +148,7 @@ mod tests {
     #[tokio::test]
     async fn test_send_notification() {
         let service = NotificationService::new().unwrap();
-        
+
         let message = NotificationMessage {
             id: "test_msg_1".to_string(),
             template_id: None,
@@ -163,17 +165,20 @@ mod tests {
 
         let result = service.send_notification(message, recipient).await;
         assert!(result.is_ok());
-        
+
         let notification_result = result.unwrap();
         assert!(notification_result.success);
         assert_eq!(notification_result.delivered_channels.len(), 1);
-        assert_eq!(notification_result.delivered_channels[0], NotificationChannel::InApp);
+        assert_eq!(
+            notification_result.delivered_channels[0],
+            NotificationChannel::InApp
+        );
     }
 
     #[tokio::test]
     async fn test_multiple_channels() {
         let service = NotificationService::new().unwrap();
-        
+
         let message = NotificationMessage {
             id: "multi_channel_msg".to_string(),
             template_id: None,
@@ -194,17 +199,19 @@ mod tests {
 
         let result = service.send_notification(message, recipient).await;
         assert!(result.is_ok());
-        
+
         let notification_result = result.unwrap();
         // Should succeed for InApp (enabled) but fail for Email/SMS (disabled by default)
         assert!(notification_result.success);
-        assert!(notification_result.delivered_channels.contains(&NotificationChannel::InApp));
+        assert!(notification_result
+            .delivered_channels
+            .contains(&NotificationChannel::InApp));
     }
 
     #[tokio::test]
     async fn test_priority_handling() {
         let service = NotificationService::new().unwrap();
-        
+
         // Test critical priority bypasses quiet hours
         let message = NotificationMessage {
             id: "critical_msg".to_string(),
@@ -228,7 +235,7 @@ mod tests {
 
         let result = service.send_notification(message, recipient).await;
         assert!(result.is_ok());
-        
+
         let notification_result = result.unwrap();
         assert!(notification_result.success); // Critical should bypass quiet hours
     }
@@ -236,13 +243,13 @@ mod tests {
     #[tokio::test]
     async fn test_health_check() {
         let service = NotificationService::new().unwrap();
-        
+
         let health_status = service.health_check().await;
         assert!(!health_status.is_empty());
-        
+
         // InApp should be healthy (enabled by default)
         assert_eq!(health_status.get(&NotificationChannel::InApp), Some(&true));
-        
+
         // Others should be unhealthy (disabled by default)
         assert_eq!(health_status.get(&NotificationChannel::Email), Some(&false));
         assert_eq!(health_status.get(&NotificationChannel::SMS), Some(&false));
@@ -252,10 +259,10 @@ mod tests {
     #[tokio::test]
     async fn test_provider_stats() {
         let service = NotificationService::new().unwrap();
-        
+
         let stats = service.get_provider_stats().await;
         assert_eq!(stats.len(), 4); // All four channels
-        
+
         // Check that all channels are present
         assert!(stats.contains_key(&NotificationChannel::Email));
         assert!(stats.contains_key(&NotificationChannel::SMS));
@@ -266,7 +273,7 @@ mod tests {
     #[tokio::test]
     async fn test_delivery_tracking() {
         let service = NotificationService::new().unwrap();
-        
+
         let message = NotificationMessage {
             id: "tracking_test".to_string(),
             template_id: None,
@@ -286,12 +293,15 @@ mod tests {
         assert!(result.success);
 
         // Check tracking
-        let tracking = service.get_delivery_tracking(
-            "tracking_test",
-            "test_recipient_1",
-            NotificationChannel::InApp,
-        ).await.unwrap();
-        
+        let tracking = service
+            .get_delivery_tracking(
+                "tracking_test",
+                "test_recipient_1",
+                NotificationChannel::InApp,
+            )
+            .await
+            .unwrap();
+
         assert!(tracking.is_some());
         let tracking_info = tracking.unwrap();
         assert_eq!(tracking_info.notification_id, "tracking_test");
@@ -302,7 +312,7 @@ mod tests {
     #[tokio::test]
     async fn test_delivery_stats() {
         let service = NotificationService::new().unwrap();
-        
+
         // Send a few notifications to generate stats
         for i in 0..3 {
             let message = NotificationMessage {
@@ -323,15 +333,18 @@ mod tests {
 
         let start_time = Utc::now() - chrono::Duration::hours(1);
         let end_time = Utc::now() + chrono::Duration::hours(1);
-        
-        let stats = service.get_delivery_stats(start_time, end_time).await.unwrap();
+
+        let stats = service
+            .get_delivery_stats(start_time, end_time)
+            .await
+            .unwrap();
         assert_eq!(stats.total_notifications, 3);
     }
 
     #[tokio::test]
     async fn test_template_validation() {
         let service = NotificationService::new().unwrap();
-        
+
         // Test template with missing required variable
         let invalid_template = NotificationTemplate {
             id: "invalid_template".to_string(),
@@ -341,15 +354,13 @@ mod tests {
             body_template: "This template has {{missing_variable}}".to_string(),
             supported_channels: vec![NotificationChannel::Email],
             default_priority: NotificationPriority::Normal,
-            variables: vec![
-                TemplateVariable {
-                    name: "name".to_string(),
-                    description: None,
-                    required: true,
-                    default_value: None,
-                    variable_type: VariableType::String,
-                },
-            ],
+            variables: vec![TemplateVariable {
+                name: "name".to_string(),
+                description: None,
+                required: true,
+                default_value: None,
+                variable_type: VariableType::String,
+            }],
             created_at: Utc::now(),
             updated_at: Utc::now(),
             version: 1,
@@ -363,7 +374,7 @@ mod tests {
     #[tokio::test]
     async fn test_recipient_preferences() {
         let service = NotificationService::new().unwrap();
-        
+
         let message = NotificationMessage {
             id: "preferences_test".to_string(),
             template_id: None,
@@ -371,10 +382,7 @@ mod tests {
             body: "Testing recipient preferences.".to_string(),
             data: HashMap::new(),
             priority: NotificationPriority::Normal,
-            channels: vec![
-                NotificationChannel::Email,
-                NotificationChannel::InApp,
-            ],
+            channels: vec![NotificationChannel::Email, NotificationChannel::InApp],
             created_at: Utc::now(),
             scheduled_for: None,
         };
@@ -384,14 +392,20 @@ mod tests {
         recipient.preferences.email_enabled = false;
 
         let result = service.send_notification(message, recipient).await.unwrap();
-        
+
         // Should only succeed for InApp (Email is disabled)
         assert!(result.success);
-        assert!(result.delivered_channels.contains(&NotificationChannel::InApp));
-        assert!(!result.delivered_channels.contains(&NotificationChannel::Email));
-        
+        assert!(result
+            .delivered_channels
+            .contains(&NotificationChannel::InApp));
+        assert!(!result
+            .delivered_channels
+            .contains(&NotificationChannel::Email));
+
         // Should have failed channel for Email
-        let email_failed = result.failed_channels.iter()
+        let email_failed = result
+            .failed_channels
+            .iter()
             .any(|(channel, _)| *channel == NotificationChannel::Email);
         assert!(email_failed);
     }
@@ -410,7 +424,7 @@ mod tests {
     #[tokio::test]
     async fn test_template_update() {
         let service = NotificationService::new().unwrap();
-        
+
         // Create initial template
         let mut template = NotificationTemplate {
             id: "update_test".to_string(),
@@ -447,7 +461,7 @@ mod tests {
     #[tokio::test]
     async fn test_template_deletion() {
         let service = NotificationService::new().unwrap();
-        
+
         let template = NotificationTemplate {
             id: "delete_test".to_string(),
             name: "Delete Test".to_string(),

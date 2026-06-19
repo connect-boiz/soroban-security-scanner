@@ -1,30 +1,30 @@
 //! Stellar Ledger State "Time Travel" Debugger
-//! 
-//! This module provides functionality to "fork" the current Stellar Mainnet state at a specific 
+//!
+//! This module provides functionality to "fork" the current Stellar Mainnet state at a specific
 //! ledger sequence to test contracts against live data while maintaining read-only access.
 
+use anyhow::{anyhow, Result};
+use lru::LruCache;
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
+use soroban_sdk::xdr::{ContractCodeLedgerKey, ContractDataEntry, LedgerKey, ScVal};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use anyhow::{Result, anyhow};
-use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
-use lru::LruCache;
-use reqwest::Client;
-use soroban_sdk::xdr::{ScVal, LedgerKey, ContractDataEntry, ContractCodeLedgerKey};
 
-mod state_injection;
+mod cache;
 mod contract_upgrade;
 mod orphaned_state;
-mod cache;
+mod state_injection;
 
 #[cfg(test)]
 mod tests;
 
-pub use state_injection::StateInjector;
+pub use cache::StateCache;
 pub use contract_upgrade::ContractUpgradeSimulator;
 pub use orphaned_state::OrphanedStateTracker;
-pub use cache::StateCache;
+pub use state_injection::StateInjector;
 
 /// Configuration for the Time Travel Debugger
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -142,7 +142,7 @@ impl TimeTravelDebugger {
         let url = format!("{}/ledgers/{}", self.config.rpc_url, sequence);
         let response = self.http_client.get(&url).send().await?;
         let ledger_data: serde_json::Value = response.json().await?;
-        
+
         // Parse the response (this will need to be adapted based on actual RPC response format)
         let snapshot = LedgerSnapshot {
             ledger_sequence: sequence,
@@ -164,9 +164,13 @@ impl TimeTravelDebugger {
     }
 
     /// Get contract state at a specific ledger sequence
-    pub async fn get_contract_state(&self, contract_id: &str, ledger_sequence: u32) -> Result<ContractState> {
+    pub async fn get_contract_state(
+        &self,
+        contract_id: &str,
+        ledger_sequence: u32,
+    ) -> Result<ContractState> {
         let cache_key = format!("{}:{}", contract_id, ledger_sequence);
-        
+
         // Check cache first
         {
             let cache = self.state_cache.read().await;
@@ -176,7 +180,10 @@ impl TimeTravelDebugger {
         }
 
         // Fetch contract data from Stellar RPC via HTTP
-        let url = format!("{}/contracts/{}/data?ledger={}", self.config.rpc_url, contract_id, ledger_sequence);
+        let url = format!(
+            "{}/contracts/{}/data?ledger={}",
+            self.config.rpc_url, contract_id, ledger_sequence
+        );
         let response = self.http_client.get(&url).send().await?;
         let contract_data: serde_json::Value = response.json().await?;
 
@@ -245,7 +252,7 @@ impl TimeTravelDebugger {
     /// Fork the network state at a specific ledger and prepare for testing
     pub async fn fork_at_ledger(&self, ledger_sequence: u32) -> Result<ForkedState> {
         let ledger_info = self.get_ledger_info(ledger_sequence).await?;
-        
+
         Ok(ForkedState {
             ledger_snapshot: ledger_info,
             debugger: self,
@@ -260,8 +267,10 @@ impl TimeTravelDebugger {
         new_wasm: &[u8],
         ledger_sequence: u32,
     ) -> Result<UpgradeSimulationResult> {
-        let current_state = self.get_contract_state(contract_id, ledger_sequence).await?;
-        
+        let current_state = self
+            .get_contract_state(contract_id, ledger_sequence)
+            .await?;
+
         self.upgrade_simulator
             .simulate_upgrade(&current_state, new_wasm)
             .await
@@ -273,7 +282,9 @@ impl TimeTravelDebugger {
         contract_id: &str,
         ledger_sequence: u32,
     ) -> Result<()> {
-        let state = self.get_contract_state(contract_id, ledger_sequence).await?;
+        let state = self
+            .get_contract_state(contract_id, ledger_sequence)
+            .await?;
         self.state_injector.inject_state(&state).await
     }
 
@@ -284,7 +295,9 @@ impl TimeTravelDebugger {
         old_ledger_sequence: u32,
         new_wasm: &[u8],
     ) -> Result<Vec<String>> {
-        let old_state = self.get_contract_state(contract_id, old_ledger_sequence).await?;
+        let old_state = self
+            .get_contract_state(contract_id, old_ledger_sequence)
+            .await?;
         self.orphaned_tracker
             .find_orphaned_entries(&old_state, new_wasm)
             .await
@@ -306,7 +319,7 @@ impl TimeTravelDebugger {
     pub async fn get_cache_stats(&self) -> CacheStats {
         let state_len = self.state_cache.read().await.len();
         let ledger_len = self.ledger_cache.read().await.len();
-        
+
         CacheStats {
             contract_states_cached: state_len,
             ledgers_cached: ledger_len,
@@ -336,16 +349,14 @@ impl ForkedState {
 
     /// Test a contract against this forked state
     pub async fn test_contract(&self, contract_id: &str) -> Result<TestResult> {
-        let state = self.debugger
+        let state = self
+            .debugger
             .get_contract_state(contract_id, self.ledger_sequence())
             .await?;
-        
+
         // Inject state and run tests
-        self.debugger
-            .state_injector
-            .inject_state(&state)
-            .await?;
-        
+        self.debugger.state_injector.inject_state(&state).await?;
+
         // TODO: Implement actual contract testing logic
         Ok(TestResult {
             contract_id: contract_id.to_string(),
@@ -410,7 +421,7 @@ mod tests {
 
         let serialized = serde_json::to_string(&snapshot).unwrap();
         let deserialized: LedgerSnapshot = serde_json::from_str(&serialized).unwrap();
-        
+
         assert_eq!(snapshot, deserialized);
     }
 }

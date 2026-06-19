@@ -1,13 +1,13 @@
 //! Secure ID Generation System
-//! 
+//!
 //! This module provides cryptographically secure ID generation to replace
 //! predictable ledger sequence-based IDs, addressing issue #114.
 
+use anyhow::Result;
+use log::{debug, error, info, warn};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use anyhow::Result;
-use serde::{Deserialize, Serialize};
-use log::{info, warn, error, debug};
 
 /// Secure ID generation configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -92,11 +92,11 @@ impl SecureIdGenerator {
     pub fn generate_bounty_id(&self, creator: &str, timestamp: u64) -> Result<u64> {
         let entropy = self.collect_entropy(creator, timestamp, "bounty")?;
         let id_hash = self.hash_entropy_to_id(&entropy)?;
-        
+
         if self.config.enable_collision_detection {
             self.ensure_no_collision(id_hash, "bounty")?;
         }
-        
+
         Ok(id_hash)
     }
 
@@ -106,10 +106,10 @@ impl SecureIdGenerator {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        
+
         let entropy = self.collect_entropy(user, timestamp, operation)?;
         let nonce_bytes = self.hash_entropy_to_bytes(&entropy)?;
-        
+
         Ok(nonce_bytes)
     }
 
@@ -119,10 +119,17 @@ impl SecureIdGenerator {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        
-        let entropy = format!("{}:{}:{}:{}:{}", from, to, amount, timestamp, self.get_random_entropy());
+
+        let entropy = format!(
+            "{}:{}:{}:{}:{}",
+            from,
+            to,
+            amount,
+            timestamp,
+            self.get_random_entropy()
+        );
         let id_hash = self.hash_entropy_to_id(&entropy)?;
-        
+
         Ok(format!("tx_{}", id_hash))
     }
 
@@ -132,10 +139,10 @@ impl SecureIdGenerator {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        
+
         let entropy = self.collect_entropy(user, timestamp, "session")?;
         let session_bytes = self.hash_entropy_to_bytes(&entropy)?;
-        
+
         Ok(format!("session_{}", hex::encode(session_bytes)))
     }
 
@@ -149,8 +156,11 @@ impl SecureIdGenerator {
                 let time_entropy = timestamp;
                 let context_entropy = self.hash_string(context);
                 let random_entropy = self.get_random_entropy();
-                
-                format!("{}:{}:{}:{}:{}", system_entropy, user_entropy, time_entropy, context_entropy, random_entropy)
+
+                format!(
+                    "{}:{}:{}:{}:{}",
+                    system_entropy, user_entropy, time_entropy, context_entropy, random_entropy
+                )
             }
             EntropySource::LedgerOnly => {
                 // Fallback to ledger-based entropy (weak but compatible)
@@ -177,10 +187,10 @@ impl SecureIdGenerator {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        
+
         let process_id = std::process::id();
         let thread_id = std::thread::current().id();
-        
+
         format!("{}:{}:{}", now, process_id, format!("{:?}", thread_id))
     }
 
@@ -188,16 +198,18 @@ impl SecureIdGenerator {
     fn get_random_entropy(&self) -> String {
         // Use ring's cryptographically secure random number generator
         use ring::rand::{SecureRandom, SystemRandom};
-        
+
         let rng = SystemRandom::new();
         let mut bytes = [0u8; 32];
-        
+
         match rng.fill(&mut bytes) {
             Ok(()) => hex::encode(bytes),
             Err(_) => {
                 // Fallback: should never happen in practice, but log and use counter-based
                 warn!("SystemRandom failed, falling back to time-based entropy");
-                let count = self.id_counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let count = self
+                    .id_counter
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 let now = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
@@ -224,14 +236,14 @@ impl SecureIdGenerator {
     fn hash_entropy_to_id(&self, entropy: &str) -> Result<u64> {
         let digest = ring::digest::digest(&ring::digest::SHA256, entropy.as_bytes());
         let digest_bytes = digest.as_ref();
-        
+
         // Take the first 8 bytes and convert to u64
         let mut id_bytes = [0u8; 8];
         id_bytes.copy_from_slice(&digest_bytes[..8]);
         let hash = u64::from_le_bytes(id_bytes);
-        
+
         let id = hash % u64::MAX / 2; // Keep it in reasonable range
-        
+
         Ok(id)
     }
 
@@ -245,27 +257,35 @@ impl SecureIdGenerator {
 
     /// Ensure no ID collision
     fn ensure_no_collision(&self, id: u64, context: &str) -> Result<()> {
-        let mut generated_ids = self.generated_ids.lock().map_err(|e| {
-            anyhow::anyhow!("Failed to acquire generated IDs lock: {}", e)
-        })?;
+        let mut generated_ids = self
+            .generated_ids
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire generated IDs lock: {}", e))?;
 
         let id_key = format!("{}:{}", context, id);
-        
+
         if generated_ids.contains_key(&id_key) {
-            return Err(anyhow::anyhow!("ID collision detected: {} in context {}", id, context));
+            return Err(anyhow::anyhow!(
+                "ID collision detected: {} in context {}",
+                id,
+                context
+            ));
         }
-        
+
         // Store the ID to prevent future collisions
-        generated_ids.insert(id_key, std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs());
-        
+        generated_ids.insert(
+            id_key,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+        );
+
         // Clean up old entries if cache is full
         if generated_ids.len() > self.config.id_cache_size {
             self.cleanup_old_ids(&mut generated_ids)?;
         }
-        
+
         Ok(())
     }
 
@@ -275,11 +295,11 @@ impl SecureIdGenerator {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        
+
         let cutoff_time = current_time - 3600; // Keep entries for 1 hour
-        
+
         generated_ids.retain(|_, &mut timestamp| timestamp > cutoff_time);
-        
+
         Ok(())
     }
 
@@ -288,10 +308,11 @@ impl SecureIdGenerator {
         if !self.config.enable_uniqueness_validation {
             return Ok(true);
         }
-        
-        let generated_ids = self.generated_ids.lock().map_err(|e| {
-            anyhow::anyhow!("Failed to acquire generated IDs lock: {}", e)
-        })?;
+
+        let generated_ids = self
+            .generated_ids
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire generated IDs lock: {}", e))?;
 
         let id_key = format!("{}:{}", context, id);
         Ok(!generated_ids.contains_key(&id_key))
@@ -303,11 +324,14 @@ impl SecureIdGenerator {
         F: Fn() -> Result<u64>,
     {
         let mut attempts = 0;
-        
+
         while attempts < self.config.max_collision_retries {
             match generator() {
                 Ok(id) => {
-                    if self.validate_id_uniqueness(id, "generated").unwrap_or(false) {
+                    if self
+                        .validate_id_uniqueness(id, "generated")
+                        .unwrap_or(false)
+                    {
                         return Ok(id);
                     }
                     warn!("ID collision detected, retrying (attempt {})", attempts + 1);
@@ -321,15 +345,19 @@ impl SecureIdGenerator {
             }
             attempts += 1;
         }
-        
-        Err(anyhow::anyhow!("Failed to generate unique ID after {} attempts", self.config.max_collision_retries))
+
+        Err(anyhow::anyhow!(
+            "Failed to generate unique ID after {} attempts",
+            self.config.max_collision_retries
+        ))
     }
 
     /// Get statistics about ID generation
     pub fn get_statistics(&self) -> Result<IdGenerationStats> {
-        let generated_ids = self.generated_ids.lock().map_err(|e| {
-            anyhow::anyhow!("Failed to acquire generated IDs lock: {}", e)
-        })?;
+        let generated_ids = self
+            .generated_ids
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire generated IDs lock: {}", e))?;
 
         Ok(IdGenerationStats {
             total_ids_generated: generated_ids.len(),
@@ -410,7 +438,7 @@ mod tests {
     #[test]
     fn test_secure_id_config_default() {
         let config = SecureIdConfig::default();
-        
+
         assert!(config.enabled);
         assert_eq!(config.id_length_bytes, 32);
         assert!(config.enable_collision_detection);
@@ -423,7 +451,7 @@ mod tests {
     fn test_secure_id_generator_creation() {
         let config = SecureIdConfig::default();
         let generator = SecureIdGenerator::new(config);
-        
+
         let stats = generator.get_statistics().unwrap();
         assert_eq!(stats.total_ids_generated, 0);
         assert!(stats.collision_detection_enabled);
@@ -438,7 +466,9 @@ mod tests {
         let timestamp = 1234567890;
 
         let id1 = generator.generate_bounty_id(creator, timestamp).unwrap();
-        let id2 = generator.generate_bounty_id(creator, timestamp + 1).unwrap();
+        let id2 = generator
+            .generate_bounty_id(creator, timestamp + 1)
+            .unwrap();
 
         assert_ne!(id1, id2); // Should be different due to different timestamp
     }
@@ -448,8 +478,12 @@ mod tests {
         let config = SecureIdConfig::default();
         let generator = SecureIdGenerator::new(config);
 
-        let nonce1 = generator.generate_secure_nonce("user1", "operation1").unwrap();
-        let nonce2 = generator.generate_secure_nonce("user1", "operation2").unwrap();
+        let nonce1 = generator
+            .generate_secure_nonce("user1", "operation1")
+            .unwrap();
+        let nonce2 = generator
+            .generate_secure_nonce("user1", "operation2")
+            .unwrap();
 
         assert_ne!(nonce1, nonce2); // Should be different
         assert_eq!(nonce1.len(), 32);
@@ -461,7 +495,9 @@ mod tests {
         let config = SecureIdConfig::default();
         let generator = SecureIdGenerator::new(config);
 
-        let tx_id = generator.generate_transaction_id("alice", "bob", 1000).unwrap();
+        let tx_id = generator
+            .generate_transaction_id("alice", "bob", 1000)
+            .unwrap();
 
         assert!(tx_id.starts_with("tx_"));
         assert!(tx_id.len() > 10); // Should have meaningful length
@@ -488,10 +524,10 @@ mod tests {
         let timestamp = 1234567890;
 
         let id1 = generator.generate_bounty_id(creator, timestamp).unwrap();
-        
+
         // Second generation with same parameters should still work due to additional entropy
         let id2 = generator.generate_bounty_id(creator, timestamp).unwrap();
-        
+
         // They should be different due to random entropy
         assert_ne!(id1, id2);
     }
@@ -502,10 +538,10 @@ mod tests {
         let generator = SecureIdGenerator::new(config);
 
         let id = generator.generate_bounty_id("creator", 1234567890).unwrap();
-        
+
         // First check should be unique
         assert!(generator.validate_id_uniqueness(id, "bounty").unwrap());
-        
+
         // After generating, it should no longer be considered unique
         let _id2 = generator.generate_bounty_id("creator", 1234567891).unwrap();
         // Note: In practice, this test might be flaky due to random nature
@@ -587,7 +623,9 @@ mod tests {
         let mut total_ids = Vec::with_capacity(num_samples);
 
         for i in 0..num_samples {
-            let id = generator.generate_bounty_id(&format!("user{}", i), i as u64).unwrap();
+            let id = generator
+                .generate_bounty_id(&format!("user{}", i), i as u64)
+                .unwrap();
             total_ids.push(id);
         }
 
@@ -609,18 +647,17 @@ mod tests {
             assert!(
                 count >= min_expected && count <= max_expected,
                 "Bit {} has biased distribution: count={}, expected range [{}, {}]",
-                bit, count, min_expected, max_expected
+                bit,
+                count,
+                min_expected,
+                max_expected
             );
         }
 
         // Verify no duplicate IDs across 10,000 samples
         let mut unique_ids = std::collections::HashSet::new();
         for id in &total_ids {
-            assert!(
-                unique_ids.insert(*id),
-                "Duplicate ID found: {}",
-                id
-            );
+            assert!(unique_ids.insert(*id), "Duplicate ID found: {}", id);
         }
         assert_eq!(unique_ids.len(), num_samples);
     }
@@ -646,7 +683,10 @@ mod tests {
 
         let bytes1 = generator.hash_entropy_to_bytes(entropy).unwrap();
         let bytes2 = generator.hash_entropy_to_bytes(entropy).unwrap();
-        assert_eq!(bytes1, bytes2, "hash_entropy_to_bytes should be deterministic");
+        assert_eq!(
+            bytes1, bytes2,
+            "hash_entropy_to_bytes should be deterministic"
+        );
     }
 
     #[test]

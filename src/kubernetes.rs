@@ -1,24 +1,26 @@
 //! Kubernetes integration for isolated scan execution
-//! 
+//!
 //! This module provides functionality to spin up ephemeral Kubernetes pods for each scan,
 //! ensuring complete isolation between different tenants and preventing data leakage.
 
-use crate::{ScanResult, config::ScannerConfig};
-use anyhow::{Result, anyhow};
+use crate::{config::ScannerConfig, ScanResult};
+use anyhow::{anyhow, Result};
+use futures::StreamExt;
+use k8s_openapi::{
+    api::{
+        core::v1::{Container, EnvVar, Pod, PodSpec, ResourceRequirements, Volume, VolumeMount},
+        networking::v1::{
+            NetworkPolicy, NetworkPolicyIngressRule, NetworkPolicyPort, NetworkPolicySpec,
+        },
+        policy::v1::{ResourceQuota, ResourceQuotaSpec, ResourceQuotaStatus},
+    },
+    apimachinery::pkg::api::resource::Quantity,
+};
 use kube::{
     api::{Api, DeleteParams, ListParams, PostParams, WatchEvent},
     client::Client,
     runtime::watcher,
     Config,
-};
-use futures::StreamExt;
-use k8s_openapi::{
-    api::{
-        core::v1::{Pod, PodSpec, Container, VolumeMount, Volume, EnvVar, ResourceRequirements},
-        networking::v1::{NetworkPolicy, NetworkPolicySpec, NetworkPolicyIngressRule, NetworkPolicyPort},
-        policy::v1::{ResourceQuota, ResourceQuotaSpec, ResourceQuotaStatus},
-    },
-    apimachinery::pkg::api::resource::Quantity,
 };
 use serde_json::json;
 use std::{collections::BTreeMap, time::Duration};
@@ -60,9 +62,9 @@ pub struct ScanPodConfig {
 impl Default for ScanPodConfig {
     fn default() -> Self {
         Self {
-            cpu_limit: "1000m".to_string(), // 1 CPU core max
-            memory_limit: "2Gi".to_string(), // 2GB RAM max
-            cpu_request: "100m".to_string(), // 0.1 CPU core min
+            cpu_limit: "1000m".to_string(),      // 1 CPU core max
+            memory_limit: "2Gi".to_string(),     // 2GB RAM max
+            cpu_request: "100m".to_string(),     // 0.1 CPU core min
             memory_request: "256Mi".to_string(), // 256MB RAM min
             scanner_image: "stellar-security-scanner:latest".to_string(),
             timeout: DEFAULT_SCAN_TIMEOUT,
@@ -76,9 +78,8 @@ impl K8sScanManager {
     /// Create a new Kubernetes scan manager
     pub async fn new(config: ScanPodConfig) -> Result<Self> {
         let client = Client::try_default().await?;
-        let namespace = std::env::var("SCAN_NAMESPACE")
-            .unwrap_or_else(|_| "default".to_string());
-        
+        let namespace = std::env::var("SCAN_NAMESPACE").unwrap_or_else(|_| "default".to_string());
+
         Ok(Self {
             client,
             namespace,
@@ -95,34 +96,40 @@ impl K8sScanManager {
     ) -> Result<ScanResult> {
         // Create isolated namespace for this scan
         let scan_namespace = self.create_scan_namespace(scan_id).await?;
-        
+
         // Apply resource quotas for isolation
         self.apply_resource_quota(&scan_namespace).await?;
-        
+
         // Apply network policies to block egress
         if self.config.block_egress {
             self.apply_network_policy(&scan_namespace).await?;
         }
-        
+
         // Create the scan pod
-        let pod_name = self.create_scan_pod(&scan_namespace, scan_id, scanner_config, contract_code).await?;
-        
+        let pod_name = self
+            .create_scan_pod(&scan_namespace, scan_id, scanner_config, contract_code)
+            .await?;
+
         // Wait for scan completion with timeout
-        let result = timeout(self.config.timeout, self.wait_for_scan_completion(&scan_namespace, &pod_name)).await??;
-        
+        let result = timeout(
+            self.config.timeout,
+            self.wait_for_scan_completion(&scan_namespace, &pod_name),
+        )
+        .await??;
+
         // Cleanup resources
         self.cleanup_scan_resources(&scan_namespace).await?;
-        
+
         Ok(result)
     }
 
     /// Create an isolated namespace for the scan
     async fn create_scan_namespace(&self, scan_id: &str) -> Result<String> {
         use k8s_openapi::api::core::v1::Namespace;
-        
+
         let namespace_name = format!("{}{}", SCAN_NAMESPACE_PREFIX, scan_id);
         let namespaces: Api<Namespace> = Api::all(self.client.clone());
-        
+
         let namespace = Namespace {
             metadata: kube::api::ObjectMeta {
                 name: Some(namespace_name.clone()),
@@ -131,22 +138,25 @@ impl K8sScanManager {
                     ("scan-id".to_string(), scan_id.to_string()),
                     ("managed-by".to_string(), "scanner".to_string()),
                 ])),
-                annotations: Some(BTreeMap::from([
-                    ("stellar.scanner/created-at".to_string(), chrono::Utc::now().to_rfc3339()),
-                ])),
+                annotations: Some(BTreeMap::from([(
+                    "stellar.scanner/created-at".to_string(),
+                    chrono::Utc::now().to_rfc3339(),
+                )])),
                 ..Default::default()
             },
             ..Default::default()
         };
-        
-        namespaces.create(&PostParams::default(), &namespace).await?;
+
+        namespaces
+            .create(&PostParams::default(), &namespace)
+            .await?;
         Ok(namespace_name)
     }
 
     /// Apply resource quota to prevent resource exhaustion
     async fn apply_resource_quota(&self, namespace: &str) -> Result<()> {
         let resource_quotas: Api<ResourceQuota> = Api::namespaced(self.client.clone(), namespace);
-        
+
         let quota = ResourceQuota {
             metadata: kube::api::ObjectMeta {
                 name: Some("scan-quota".to_string()),
@@ -155,22 +165,27 @@ impl K8sScanManager {
             spec: Some(ResourceQuotaSpec {
                 hard: BTreeMap::from([
                     ("cpu".to_string(), Quantity(self.config.cpu_limit.clone())),
-                    ("memory".to_string(), Quantity(self.config.memory_limit.clone())),
+                    (
+                        "memory".to_string(),
+                        Quantity(self.config.memory_limit.clone()),
+                    ),
                     ("pods".to_string(), Quantity("2".to_string())), // Allow scanner + sidecar
                 ]),
                 ..Default::default()
             }),
             ..Default::default()
         };
-        
-        resource_quotas.create(&PostParams::default(), &quota).await?;
+
+        resource_quotas
+            .create(&PostParams::default(), &quota)
+            .await?;
         Ok(())
     }
 
     /// Apply network policy to block all egress traffic
     async fn apply_network_policy(&self, namespace: &str) -> Result<()> {
         let network_policies: Api<NetworkPolicy> = Api::namespaced(self.client.clone(), namespace);
-        
+
         let policy = NetworkPolicy {
             metadata: kube::api::ObjectMeta {
                 name: Some("block-egress".to_string()),
@@ -178,15 +193,17 @@ impl K8sScanManager {
             },
             spec: Some(NetworkPolicySpec {
                 pod_selector: BTreeMap::new(), // Apply to all pods in namespace
-                ingress: Some(vec![]), // Allow all ingress (for API communication)
-                egress: Some(vec![]), // Block all egress
+                ingress: Some(vec![]),         // Allow all ingress (for API communication)
+                egress: Some(vec![]),          // Block all egress
                 policy_types: Some(vec!["Ingress".to_string(), "Egress".to_string()]),
                 ..Default::default()
             }),
             ..Default::default()
         };
-        
-        network_policies.create(&PostParams::default(), &policy).await?;
+
+        network_policies
+            .create(&PostParams::default(), &policy)
+            .await?;
         Ok(())
     }
 
@@ -200,34 +217,34 @@ impl K8sScanManager {
     ) -> Result<String> {
         let pods: Api<Pod> = Api::namespaced(self.client.clone(), namespace);
         let pod_name = format!("scanner-{}", scan_id);
-        
+
         // Encode contract code as base64 for environment variable
         let code_b64 = base64::encode(contract_code);
-        
+
         // Create encrypted volume if enabled
         let volumes = if self.config.encrypt_volumes {
-            vec![
-                Volume {
-                    name: "encrypted-data".to_string(),
-                    empty_dir: Some(k8s_openapi::api::core::v1::EmptyDirVolumeSource {
-                        medium: Some("Memory".to_string()), // Use tmpfs for in-memory encryption
-                        size_limit: Some(Quantity("1Gi".to_string())),
-                    }),
-                    ..Default::default()
-                }
-            ]
+            vec![Volume {
+                name: "encrypted-data".to_string(),
+                empty_dir: Some(k8s_openapi::api::core::v1::EmptyDirVolumeSource {
+                    medium: Some("Memory".to_string()), // Use tmpfs for in-memory encryption
+                    size_limit: Some(Quantity("1Gi".to_string())),
+                }),
+                ..Default::default()
+            }]
         } else {
             vec![]
         };
-        
+
         // Main scanner container
         let scanner_container = Container {
             name: "scanner".to_string(),
             image: Some(self.config.scanner_image.clone()),
             command: Some(vec!["stellar-scanner".to_string(), "security".to_string()]),
             args: Some(vec![
-                "--path".to_string(), "/scan".to_string(),
-                "--format".to_string(), "json".to_string(),
+                "--path".to_string(),
+                "/scan".to_string(),
+                "--format".to_string(),
+                "json".to_string(),
                 "--verbose".to_string(),
             ]),
             env: Some(vec![
@@ -250,28 +267,32 @@ impl K8sScanManager {
             resources: Some(ResourceRequirements {
                 limits: Some(BTreeMap::from([
                     ("cpu".to_string(), Quantity(self.config.cpu_limit.clone())),
-                    ("memory".to_string(), Quantity(self.config.memory_limit.clone())),
+                    (
+                        "memory".to_string(),
+                        Quantity(self.config.memory_limit.clone()),
+                    ),
                 ])),
                 requests: Some(BTreeMap::from([
                     ("cpu".to_string(), Quantity(self.config.cpu_request.clone())),
-                    ("memory".to_string(), Quantity(self.config.memory_request.clone())),
+                    (
+                        "memory".to_string(),
+                        Quantity(self.config.memory_request.clone()),
+                    ),
                 ])),
                 ..Default::default()
             }),
             volume_mounts: if self.config.encrypt_volumes {
-                vec![
-                    VolumeMount {
-                        name: "encrypted-data".to_string(),
-                        mount_path: "/scan".to_string(),
-                        ..Default::default()
-                    }
-                ]
+                vec![VolumeMount {
+                    name: "encrypted-data".to_string(),
+                    mount_path: "/scan".to_string(),
+                    ..Default::default()
+                }]
             } else {
                 vec![]
             },
             ..Default::default()
         };
-        
+
         // Log streaming sidecar
         let log_sidecar = Container {
             name: "log-streamer".to_string(),
@@ -286,7 +307,8 @@ impl K8sScanManager {
                     name: "API_ENDPOINT".to_string(),
                     value_from: Some(k8s_openapi::api::core::v1::EnvVarSource {
                         field_ref: Some(k8s_openapi::api::core::v1::ObjectFieldSelector {
-                            field_path: "metadata.annotations['stellar.scanner/api-endpoint']".to_string(),
+                            field_path: "metadata.annotations['stellar.scanner/api-endpoint']"
+                                .to_string(),
                             ..Default::default()
                         }),
                         ..Default::default()
@@ -294,17 +316,15 @@ impl K8sScanManager {
                     ..Default::default()
                 },
             ]),
-            volume_mounts: vec![
-                VolumeMount {
-                    name: "var-log".to_string(),
-                    mount_path: "/var/log".to_string(),
-                    read_only: Some(true),
-                    ..Default::default()
-                }
-            ],
+            volume_mounts: vec![VolumeMount {
+                name: "var-log".to_string(),
+                mount_path: "/var/log".to_string(),
+                read_only: Some(true),
+                ..Default::default()
+            }],
             ..Default::default()
         };
-        
+
         let pod = Pod {
             metadata: kube::api::ObjectMeta {
                 name: Some(pod_name.clone()),
@@ -324,22 +344,26 @@ impl K8sScanManager {
             }),
             ..Default::default()
         };
-        
+
         pods.create(&PostParams::default(), &pod).await?;
         Ok(pod_name)
     }
 
     /// Wait for scan completion and collect results
-    async fn wait_for_scan_completion(&self, namespace: &str, pod_name: &str) -> Result<ScanResult> {
+    async fn wait_for_scan_completion(
+        &self,
+        namespace: &str,
+        pod_name: &str,
+    ) -> Result<ScanResult> {
         let pods: Api<Pod> = Api::namespaced(self.client.clone(), namespace);
-        
+
         // Watch pod events
         let lp = ListParams::default()
             .fields(&format!("metadata.name={}", pod_name))
             .timeout(10);
-        
+
         let mut stream = watcher(pods, lp);
-        
+
         while let Some(event) = stream.try_next().await? {
             match event {
                 WatchEvent::Modified(pod) => {
@@ -364,23 +388,23 @@ impl K8sScanManager {
                 _ => continue,
             }
         }
-        
+
         Err(anyhow!("Scan completion watcher ended unexpectedly"))
     }
 
     /// Extract scan results from pod logs
     async fn extract_scan_results(&self, namespace: &str, pod_name: &str) -> Result<ScanResult> {
         let pods: Api<Pod> = Api::namespaced(self.client.clone(), namespace);
-        
+
         // Get pod logs
         let logs = pods
             .log_stream(&pod_name, &kube::api::LogParams::default())
             .await?;
-        
+
         // Parse JSON results from logs
         let mut result_json = String::new();
         let lines = tokio::io::BufReader::new(logs).lines();
-        
+
         for line in lines {
             let line = line?;
             if line.starts_with("{") && line.ends_with("}") {
@@ -388,11 +412,11 @@ impl K8sScanManager {
                 break;
             }
         }
-        
+
         if result_json.is_empty() {
             return Err(anyhow!("No scan results found in pod logs"));
         }
-        
+
         // Parse the scan result
         let scan_result: ScanResult = serde_json::from_str(&result_json)?;
         Ok(scan_result)
@@ -401,11 +425,11 @@ impl K8sScanManager {
     /// Cleanup all resources for a scan
     async fn cleanup_scan_resources(&self, namespace: &str) -> Result<()> {
         use k8s_openapi::api::core::v1::Namespace;
-        
+
         // Delete the entire namespace
         let namespaces: Api<Namespace> = Api::all(self.client.clone());
         let dp = DeleteParams::default();
-        
+
         namespaces.delete(namespace, &dp).await?;
         Ok(())
     }
@@ -413,13 +437,12 @@ impl K8sScanManager {
     /// List active scans
     pub async fn list_active_scans(&self) -> Result<Vec<String>> {
         use k8s_openapi::api::core::v1::Namespace;
-        
+
         let namespaces: Api<Namespace> = Api::all(self.client.clone());
-        let lp = ListParams::default()
-            .labels("app=stellar-security-scanner,managed-by=scanner");
-        
+        let lp = ListParams::default().labels("app=stellar-security-scanner,managed-by=scanner");
+
         let list = namespaces.list(&lp).await?;
-        
+
         let mut scan_ids = Vec::new();
         for ns in list.items {
             if let Some(name) = ns.metadata.name {
@@ -430,21 +453,20 @@ impl K8sScanManager {
                 }
             }
         }
-        
+
         Ok(scan_ids)
     }
 
     /// Force cleanup of stuck scans
     pub async fn cleanup_stuck_scans(&self, max_age: Duration) -> Result<usize> {
         use k8s_openapi::api::core::v1::Namespace;
-        
+
         let namespaces: Api<Namespace> = Api::all(self.client.clone());
-        let lp = ListParams::default()
-            .labels("app=stellar-security-scanner,managed-by=scanner");
-        
+        let lp = ListParams::default().labels("app=stellar-security-scanner,managed-by=scanner");
+
         let list = namespaces.list(&lp).await?;
         let cutoff_time = chrono::Utc::now() - chrono::Duration::from_std(max_age)?;
-        
+
         let mut cleaned_count = 0;
         for ns in list.items {
             if let Some(created_at) = ns.metadata.creation_timestamp {
@@ -457,7 +479,7 @@ impl K8sScanManager {
                 }
             }
         }
-        
+
         Ok(cleaned_count)
     }
 }
@@ -486,26 +508,38 @@ impl ScanAutoScaler {
         contract_code: &[u8],
     ) -> Result<ScanResult> {
         // Check if we can accept more scans
-        let current = self.current_scans.load(std::sync::atomic::Ordering::Relaxed);
+        let current = self
+            .current_scans
+            .load(std::sync::atomic::Ordering::Relaxed);
         if current >= self.max_concurrent_scans {
-            return Err(anyhow!("Maximum concurrent scans ({}) reached", self.max_concurrent_scans));
+            return Err(anyhow!(
+                "Maximum concurrent scans ({}) reached",
+                self.max_concurrent_scans
+            ));
         }
 
         // Increment counter
-        self.current_scans.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.current_scans
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         // Execute scan with cleanup
-        let result = self.manager.execute_scan(scan_id, scanner_config, contract_code).await;
+        let result = self
+            .manager
+            .execute_scan(scan_id, scanner_config, contract_code)
+            .await;
 
         // Decrement counter
-        self.current_scans.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+        self.current_scans
+            .fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
 
         result
     }
 
     /// Get current load metrics
     pub fn get_load_metrics(&self) -> (usize, usize) {
-        let current = self.current_scans.load(std::sync::atomic::Ordering::Relaxed);
+        let current = self
+            .current_scans
+            .load(std::sync::atomic::Ordering::Relaxed);
         (current, self.max_concurrent_scans)
     }
 }

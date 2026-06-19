@@ -1,13 +1,13 @@
 //! Storage backends for rate limiting data
 
+use crate::rate_limiting::config::DistributedConfig;
+use crate::rate_limiting::types::*;
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::Duration;
-use chrono::{DateTime, Utc};
 use uuid::Uuid;
-use crate::rate_limiting::types::*;
-use crate::rate_limiting::config::DistributedConfig;
 
 /// Storage backend trait for rate limiting data
 #[async_trait]
@@ -24,20 +24,13 @@ pub trait RateLimitStorage: Send + Sync {
     ) -> Result<u64, Self::Error>;
 
     /// Get current request count for a key and window
-    async fn get_request_count(
-        &self,
-        key: &str,
-        window: Duration,
-    ) -> Result<u64, Self::Error>;
+    async fn get_request_count(&self, key: &str, window: Duration) -> Result<u64, Self::Error>;
 
     /// Reset request count for a key
     async fn reset_request_count(&self, key: &str) -> Result<(), Self::Error>;
 
     /// Record a rate limit violation
-    async fn record_violation(
-        &self,
-        violation: &RateLimitViolation,
-    ) -> Result<(), Self::Error>;
+    async fn record_violation(&self, violation: &RateLimitViolation) -> Result<(), Self::Error>;
 
     /// Get violations for a user or IP
     async fn get_violations(
@@ -112,11 +105,7 @@ impl RateLimitStorage for MemoryStorage {
         Ok(storage_data.requests.len() as u64)
     }
 
-    async fn get_request_count(
-        &self,
-        key: &str,
-        window: Duration,
-    ) -> Result<u64, Self::Error> {
+    async fn get_request_count(&self, key: &str, window: Duration) -> Result<u64, Self::Error> {
         let mut data = self.data.write().await;
         if let Some(storage_data) = data.get_mut(key) {
             self.cleanup_old_requests(storage_data, window);
@@ -132,29 +121,26 @@ impl RateLimitStorage for MemoryStorage {
         Ok(())
     }
 
-    async fn record_violation(
-        &self,
-        violation: &RateLimitViolation,
-    ) -> Result<(), Self::Error> {
+    async fn record_violation(&self, violation: &RateLimitViolation) -> Result<(), Self::Error> {
         let mut violations = self.violations.write().await;
         violations.push(violation.clone());
 
         let mut stats = self.stats.write().await;
         stats.blocked_requests += 1;
-        
-        let entry = stats.violations_by_type
+
+        let entry = stats
+            .violations_by_type
             .entry(violation.violation_type.clone())
             .or_insert(0);
         *entry += 1;
 
         if let Some(user_id) = violation.context.user_id {
-            let entry = stats.top_violators_by_user
-                .entry(user_id)
-                .or_insert(0);
+            let entry = stats.top_violators_by_user.entry(user_id).or_insert(0);
             *entry += 1;
         }
 
-        let entry = stats.top_violators_by_ip
+        let entry = stats
+            .top_violators_by_ip
             .entry(violation.context.ip_address)
             .or_insert(0);
         *entry += 1;
@@ -190,7 +176,7 @@ impl RateLimitStorage for MemoryStorage {
 
     async fn cleanup(&self, retention: Duration) -> Result<u64, Self::Error> {
         let cutoff = Utc::now() - chrono::Duration::from_std(retention).unwrap();
-        
+
         let mut violations = self.violations.write().await;
         let initial_count = violations.len();
         violations.retain(|v| v.timestamp > cutoff);
@@ -310,11 +296,7 @@ impl RateLimitStorage for RedisStorage {
         Ok(new_count)
     }
 
-    async fn get_request_count(
-        &self,
-        key: &str,
-        window: Duration,
-    ) -> Result<u64, Self::Error> {
+    async fn get_request_count(&self, key: &str, window: Duration) -> Result<u64, Self::Error> {
         let mut conn = self.get_connection().await?;
         let redis_key = self.build_key("requests", key);
         let window_secs = window.as_secs();
@@ -352,10 +334,7 @@ impl RateLimitStorage for RedisStorage {
         Ok(())
     }
 
-    async fn record_violation(
-        &self,
-        violation: &RateLimitViolation,
-    ) -> Result<(), Self::Error> {
+    async fn record_violation(&self, violation: &RateLimitViolation) -> Result<(), Self::Error> {
         let mut conn = self.get_connection().await?;
         let violation_json = serde_json::to_string(violation)
             .map_err(|e| RedisStorageError::Serialization(e.to_string()))?;
@@ -484,7 +463,10 @@ pub struct StorageFactory;
 impl StorageFactory {
     pub async fn create_storage(
         config: &crate::rate_limiting::config::RateLimitConfig,
-    ) -> Result<Box<dyn RateLimitStorage<Error = Box<dyn std::error::Error + Send + Sync>>>, Box<dyn std::error::Error>> {
+    ) -> Result<
+        Box<dyn RateLimitStorage<Error = Box<dyn std::error::Error + Send + Sync>>>,
+        Box<dyn std::error::Error>,
+    > {
         if config.distributed.enabled {
             #[cfg(feature = "redis-cache")]
             {

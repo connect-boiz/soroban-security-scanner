@@ -1,19 +1,19 @@
 //! Test Runner for Differential Fuzzing
-//! 
+//!
 //! Executes the same test input across multiple Soroban SDK versions and collects results.
 
 use crate::differential_fuzzing::{
-    SdkVersion, TestInput, ExecutionResult, DifferentialFuzzingConfig,
-    StateChange, StateChangeType, ArgumentValue
+    ArgumentValue, DifferentialFuzzingConfig, ExecutionResult, SdkVersion, StateChange,
+    StateChangeType, TestInput,
 };
-use soroban_sdk::{BytesN, Address, Vec as SorobanVec};
+use anyhow::{anyhow, Result};
+use serde::{Deserialize, Serialize};
+use soroban_sdk::{Address, BytesN, Vec as SorobanVec};
 use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
 use std::time::{Duration, Instant};
-use anyhow::{Result, anyhow};
 use tokio::task::JoinSet;
-use serde::{Serialize, Deserialize};
 
 /// Configuration for individual test execution
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,8 +46,14 @@ pub struct TestEnvironment {
 
 impl TestEnvironment {
     pub fn new(sdk_version: SdkVersion, wasm_path: &str, contract_id: [u8; 32]) -> Result<Self> {
-        let sandbox_path = format!("/tmp/soroban_sandbox_{}", contract_id.iter().map(|b| format!("{:02x}", b)).collect::<String>());
-        
+        let sandbox_path = format!(
+            "/tmp/soroban_sandbox_{}",
+            contract_id
+                .iter()
+                .map(|b| format!("{:02x}", b))
+                .collect::<String>()
+        );
+
         Ok(Self {
             sdk_version,
             wasm_path: wasm_path.to_string(),
@@ -60,13 +66,13 @@ impl TestEnvironment {
     pub async fn setup(&self) -> Result<()> {
         // Create sandbox directory
         std::fs::create_dir_all(&self.sandbox_path)?;
-        
+
         // Install specific SDK version if needed
         self.install_sdk_version().await?;
-        
+
         // Initialize contract in sandbox
         self.initialize_contract().await?;
-        
+
         Ok(())
     }
 
@@ -83,13 +89,23 @@ impl TestEnvironment {
             .args(&[
                 "contract",
                 "deploy",
-                "--wasm", &self.wasm_path,
-                "--source", &format!("{:x}", self.contract_id.iter().fold(String::new(), |acc, &b| format!("{}{:02x}", acc, b))),
+                "--wasm",
+                &self.wasm_path,
+                "--source",
+                &format!(
+                    "{:x}",
+                    self.contract_id
+                        .iter()
+                        .fold(String::new(), |acc, &b| format!("{}{:02x}", acc, b))
+                ),
             ])
             .output()?;
 
         if !output.status.success() {
-            return Err(anyhow!("Failed to initialize contract: {}", String::from_utf8_lossy(&output.stderr)));
+            return Err(anyhow!(
+                "Failed to initialize contract: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
         }
 
         Ok(())
@@ -113,12 +129,12 @@ pub struct DifferentialTestRunner {
 impl DifferentialTestRunner {
     pub fn new(sdk_versions: Vec<SdkVersion>) -> Result<Self> {
         let mut environments = HashMap::new();
-        
+
         for version in sdk_versions {
             // In a real implementation, we would locate the appropriate WASM file for each version
             let wasm_path = "./target/wasm32-unknown-unknown/release/contract.wasm".to_string();
             let contract_id = generate_contract_id(&version);
-            
+
             let env = TestEnvironment::new(version, &wasm_path, contract_id)?;
             environments.insert(version, env);
         }
@@ -169,7 +185,7 @@ impl DifferentialTestRunner {
         wasm_path: String,
     ) -> Result<ExecutionResult> {
         let start_time = Instant::now();
-        
+
         // Setup environment
         env.setup().await?;
 
@@ -179,13 +195,20 @@ impl DifferentialTestRunner {
         // Execute the function
         let execution_result = tokio::time::timeout(
             config.timeout,
-            Self::execute_function(&env, &input.function_name, &soroban_args, &config)
-        ).await;
+            Self::execute_function(&env, &input.function_name, &soroban_args, &config),
+        )
+        .await;
 
         let (success, return_value, gas_consumed, state_changes, error) = match execution_result {
             Ok(Ok(result)) => result,
             Ok(Err(e)) => (false, None, 0, Vec::new(), Some(e.to_string())),
-            Err(_) => (false, None, 0, Vec::new(), Some("Execution timeout".to_string())),
+            Err(_) => (
+                false,
+                None,
+                0,
+                Vec::new(),
+                Some("Execution timeout".to_string()),
+            ),
         };
 
         let execution_time = start_time.elapsed();
@@ -224,8 +247,15 @@ impl DifferentialTestRunner {
         cmd.args(&[
             "contract",
             "invoke",
-            "--id", &format!("{:x}", env.contract_id.iter().fold(String::new(), |acc, &b| format!("{}{:02x}", acc, b))),
-            "--function", function_name,
+            "--id",
+            &format!(
+                "{:x}",
+                env.contract_id
+                    .iter()
+                    .fold(String::new(), |acc, &b| format!("{}{:02x}", acc, b))
+            ),
+            "--function",
+            function_name,
         ]);
 
         // Add arguments
@@ -238,7 +268,10 @@ impl DifferentialTestRunner {
         let output = cmd.output()?;
 
         if !output.status.success() {
-            return Err(anyhow!("Function execution failed: {}", String::from_utf8_lossy(&output.stderr)));
+            return Err(anyhow!(
+                "Function execution failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
         }
 
         // Parse the output
@@ -262,12 +295,12 @@ impl DifferentialTestRunner {
         fuzzing_config: &DifferentialFuzzingConfig,
     ) -> Result<Vec<Vec<ExecutionResult>>> {
         let mut all_results = Vec::new();
-        
+
         for (index, input) in inputs.iter().enumerate() {
             if index % 100 == 0 {
                 println!("Executing test {}/{}", index + 1, inputs.len());
             }
-            
+
             let results = self.execute_test(input, fuzzing_config).await?;
             all_results.push(results);
         }
@@ -280,26 +313,28 @@ impl DifferentialTestRunner {
 fn generate_contract_id(version: &SdkVersion) -> [u8; 32] {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
-    
+
     let mut hasher = DefaultHasher::new();
     version.version.hash(&mut hasher);
-    
+
     let hash = hasher.finish();
     let mut contract_id = [0u8; 32];
-    
+
     for (i, byte) in hash.to_be_bytes().iter().enumerate() {
         if i < 32 {
             contract_id[i] = *byte;
         }
     }
-    
+
     contract_id
 }
 
 /// Convert test arguments to Soroban format
-fn convert_arguments_to_soroban(arguments: &[crate::differential_fuzzing::TestArgument]) -> Result<Vec<String>> {
+fn convert_arguments_to_soroban(
+    arguments: &[crate::differential_fuzzing::TestArgument],
+) -> Result<Vec<String>> {
     let mut soroban_args = Vec::new();
-    
+
     for arg in arguments {
         let soroban_arg = match &arg.value {
             ArgumentValue::I128(val) => format!("i128:{}", val),
@@ -310,23 +345,31 @@ fn convert_arguments_to_soroban(arguments: &[crate::differential_fuzzing::TestAr
             ArgumentValue::String(val) => format!("string:{}", val),
             ArgumentValue::Address(val) => format!("address:{}", hex::encode(val)),
             ArgumentValue::Vector(vals) => {
-                let vector_args: Result<Vec<String>> = vals.iter()
+                let vector_args: Result<Vec<String>> = vals
+                    .iter()
                     .map(|v| convert_single_argument_to_soroban(v))
                     .collect();
                 format!("vector:[{}]", vector_args?.join(","))
-            },
+            }
             ArgumentValue::Map(map) => {
-                let map_args: Vec<String> = map.iter()
-                    .map(|(k, v)| format!("{}:{}", k, convert_single_argument_to_soroban(v).unwrap_or_default()))
+                let map_args: Vec<String> = map
+                    .iter()
+                    .map(|(k, v)| {
+                        format!(
+                            "{}:{}",
+                            k,
+                            convert_single_argument_to_soroban(v).unwrap_or_default()
+                        )
+                    })
                     .collect();
                 format!("map:{{{}}}", map_args.join(","))
-            },
+            }
             ArgumentValue::None => "null".to_string(),
         };
-        
+
         soroban_args.push(soroban_arg);
     }
-    
+
     Ok(soroban_args)
 }
 
@@ -339,7 +382,9 @@ fn convert_single_argument_to_soroban(value: &ArgumentValue) -> Result<String> {
         ArgumentValue::Bytes(val) => Ok(format!("bytes:{}", hex::encode(val))),
         ArgumentValue::String(val) => Ok(format!("string:{}", val)),
         ArgumentValue::Address(val) => Ok(format!("address:{}", hex::encode(val))),
-        _ => Err(anyhow!("Complex types not supported in single argument conversion")),
+        _ => Err(anyhow!(
+            "Complex types not supported in single argument conversion"
+        )),
     }
 }
 
@@ -347,10 +392,10 @@ fn convert_single_argument_to_soroban(value: &ArgumentValue) -> Result<String> {
 fn parse_execution_output(output: &str) -> Result<(Option<ArgumentValue>, u64)> {
     // In a real implementation, this would parse the actual soroban output
     // For now, we'll simulate the parsing
-    
+
     let gas_consumed = extract_gas_from_output(output)?;
     let return_value = extract_return_value_from_output(output)?;
-    
+
     Ok((return_value, gas_consumed))
 }
 
@@ -359,11 +404,13 @@ fn extract_gas_from_output(output: &str) -> Result<u64> {
     // Example: "Gas consumed: 12345"
     if let Some(line) = output.lines().find(|line| line.contains("Gas consumed")) {
         if let Some(gas_str) = line.split(':').nth(1) {
-            return gas_str.trim().parse()
+            return gas_str
+                .trim()
+                .parse()
                 .map_err(|_| anyhow!("Failed to parse gas consumption"));
         }
     }
-    
+
     // Default gas consumption if not found
     Ok(1000)
 }
@@ -377,21 +424,24 @@ fn extract_return_value_from_output(output: &str) -> Result<Option<ArgumentValue
             return parse_argument_value(value_str);
         }
     }
-    
+
     Ok(None)
 }
 
 fn parse_argument_value(value_str: &str) -> Result<Option<ArgumentValue>> {
     if value_str.starts_with("i128:") {
-        let val: i128 = value_str[5..].parse()
+        let val: i128 = value_str[5..]
+            .parse()
             .map_err(|_| anyhow!("Failed to parse i128 value"))?;
         Ok(Some(ArgumentValue::I128(val)))
     } else if value_str.starts_with("u64:") {
-        let val: u64 = value_str[4..].parse()
+        let val: u64 = value_str[4..]
+            .parse()
             .map_err(|_| anyhow!("Failed to parse u64 value"))?;
         Ok(Some(ArgumentValue::U64(val)))
     } else if value_str.starts_with("bool:") {
-        let val: bool = value_str[5..].parse()
+        let val: bool = value_str[5..]
+            .parse()
             .map_err(|_| anyhow!("Failed to parse bool value"))?;
         Ok(Some(ArgumentValue::Bool(val)))
     } else if value_str.starts_with("string:") {
@@ -412,11 +462,11 @@ async fn generate_execution_trace(
 ) -> Result<crate::differential_fuzzing::ExecutionTrace> {
     // In a real implementation, this would generate a detailed execution trace
     // For now, we'll create a basic trace
-    
+
     use crate::differential_fuzzing::{ExecutionTrace, TraceEvent, TraceEventType};
-    
+
     let mut trace = ExecutionTrace::new();
-    
+
     trace.add_event(TraceEvent {
         event_type: TraceEventType::FunctionEntry,
         function_name: function_name.to_string(),
@@ -424,7 +474,7 @@ async fn generate_execution_trace(
         description: format!("Entering function {}", function_name),
         timestamp: std::time::SystemTime::now(),
     });
-    
+
     if success {
         trace.add_event(TraceEvent {
             event_type: TraceEventType::FunctionExit,
@@ -442,7 +492,7 @@ async fn generate_execution_trace(
             timestamp: std::time::SystemTime::now(),
         });
     }
-    
+
     Ok(trace)
 }
 
@@ -450,6 +500,6 @@ async fn generate_execution_trace(
 async fn capture_state_changes(env: &TestEnvironment) -> Result<Vec<StateChange>> {
     // In a real implementation, this would query the contract state before and after execution
     // For now, we'll return an empty vector
-    
+
     Ok(Vec::new())
 }

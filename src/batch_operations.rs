@@ -1,13 +1,13 @@
 //! Batch Operations Module
-//! 
+//!
 //! This module provides batch processing capabilities for escrow releases and verifications
 //! to improve efficiency and reduce transaction costs when handling multiple operations.
 
+use crate::contracts::lib::{ContractError, EscrowEntry, VulnerabilityReport};
 use soroban_sdk::{
-    contract, contractimpl, contracttype, Address, Env, Symbol, panic_with_error, 
-    Map, Vec, i128, u64, BytesN
+    contract, contractimpl, contracttype, i128, panic_with_error, u64, Address, BytesN, Env, Map,
+    Symbol, Vec,
 };
-use crate::contracts::lib::{EscrowEntry, VulnerabilityReport, ContractError};
 
 // Batch operation status
 #[derive(Clone, Debug, PartialEq, Eq, contracttype)]
@@ -80,25 +80,32 @@ impl BatchOperations {
         if env.storage().instance().has(&BATCH_COUNTER) {
             return; // Already initialized
         }
-        
+
         env.storage().instance().set(&BATCH_COUNTER, &0u64);
-        env.storage().instance().set(&BATCH_ESCROW_RELEASES, &Map::<u64, BatchEscrowReleaseRequest>::new(&env));
-        env.storage().instance().set(&BATCH_VERIFICATIONS, &Map::<u64, BatchVerificationRequest>::new(&env));
-        env.storage().instance().set(&BATCH_RESULTS, &Map::<u64, BatchOperationSummary>::new(&env));
-        env.storage().instance().set(&BATCH_CLEANUP_TIMESTAMP, &env.ledger().timestamp());
+        env.storage().instance().set(
+            &BATCH_ESCROW_RELEASES,
+            &Map::<u64, BatchEscrowReleaseRequest>::new(&env),
+        );
+        env.storage().instance().set(
+            &BATCH_VERIFICATIONS,
+            &Map::<u64, BatchVerificationRequest>::new(&env),
+        );
+        env.storage().instance().set(
+            &BATCH_RESULTS,
+            &Map::<u64, BatchOperationSummary>::new(&env),
+        );
+        env.storage()
+            .instance()
+            .set(&BATCH_CLEANUP_TIMESTAMP, &env.ledger().timestamp());
     }
 
     /// Create a batch escrow release request
-    pub fn create_batch_escrow_release(
-        env: Env,
-        escrow_ids: Vec<u64>,
-        requester: Address,
-    ) -> u64 {
+    pub fn create_batch_escrow_release(env: Env, escrow_ids: Vec<u64>, requester: Address) -> u64 {
         // Validate input
         if escrow_ids.is_empty() {
             panic_with_error!(&env, "Escrow IDs cannot be empty");
         }
-        
+
         if escrow_ids.len() > 100 {
             panic_with_error!(&env, "Batch size cannot exceed 100 items");
         }
@@ -120,11 +127,15 @@ impl BatchOperations {
         };
 
         // Store batch request
-        let mut batch_escrow_releases: Map<u64, BatchEscrowReleaseRequest> = env.storage().instance()
+        let mut batch_escrow_releases: Map<u64, BatchEscrowReleaseRequest> = env
+            .storage()
+            .instance()
             .get(&BATCH_ESCROW_RELEASES)
             .unwrap_or_else(|| Map::new(&env));
         batch_escrow_releases.set(batch_counter, batch_request);
-        env.storage().instance().set(&BATCH_ESCROW_RELEASES, &batch_escrow_releases);
+        env.storage()
+            .instance()
+            .set(&BATCH_ESCROW_RELEASES, &batch_escrow_releases);
 
         // Initialize batch summary
         let batch_summary = BatchOperationSummary {
@@ -140,7 +151,9 @@ impl BatchOperations {
             timestamp: env.ledger().timestamp(),
         };
 
-        let mut batch_results: Map<u64, BatchOperationSummary> = env.storage().instance()
+        let mut batch_results: Map<u64, BatchOperationSummary> = env
+            .storage()
+            .instance()
             .get(&BATCH_RESULTS)
             .unwrap_or_else(|| Map::new(&env));
         batch_results.set(batch_counter, batch_summary);
@@ -165,21 +178,29 @@ impl BatchOperations {
         executor.require_auth();
 
         // Get batch request
-        let batch_escrow_releases: Map<u64, BatchEscrowReleaseRequest> = env.storage().instance()
+        let batch_escrow_releases: Map<u64, BatchEscrowReleaseRequest> = env
+            .storage()
+            .instance()
             .get(&BATCH_ESCROW_RELEASES)
             .unwrap_or_else(|| Map::new(&env));
-        
-        let batch_request = batch_escrow_releases.get(batch_id)
+
+        let batch_request = batch_escrow_releases
+            .get(batch_id)
             .unwrap_or_else(|| panic_with_error!(&env, "Batch request not found"));
 
         // Check if batch is already processed
-        let batch_results: Map<u64, BatchOperationSummary> = env.storage().instance()
+        let batch_results: Map<u64, BatchOperationSummary> = env
+            .storage()
+            .instance()
             .get(&BATCH_RESULTS)
             .unwrap_or_else(|| Map::new(&env));
-        
+
         let existing_summary = batch_results.get(batch_id);
         if let Some(summary) = existing_summary {
-            if matches!(summary.status, BatchOperationStatus::Completed | BatchOperationStatus::InProgress) {
+            if matches!(
+                summary.status,
+                BatchOperationStatus::Completed | BatchOperationStatus::InProgress
+            ) {
                 return summary;
             }
         }
@@ -206,7 +227,7 @@ impl BatchOperations {
 
         for escrow_id in batch_request.escrow_ids.iter() {
             let start_gas = env.ledger().sequence();
-            
+
             match Self::release_single_escrow(&env, *escrow_id, executor.clone()) {
                 Ok(_) => {
                     let gas_used = env.ledger().sequence() - start_gas;
@@ -247,11 +268,15 @@ impl BatchOperations {
         };
 
         // Store updated summary
-        let mut batch_results_mut: Map<u64, BatchOperationSummary> = env.storage().instance()
+        let mut batch_results_mut: Map<u64, BatchOperationSummary> = env
+            .storage()
+            .instance()
             .get(&BATCH_RESULTS)
             .unwrap_or_else(|| Map::new(&env));
         batch_results_mut.set(batch_id, summary.clone());
-        env.storage().instance().set(&BATCH_RESULTS, &batch_results_mut);
+        env.storage()
+            .instance()
+            .set(&BATCH_RESULTS, &batch_results_mut);
 
         // Emit event
         env.events().publish(
@@ -272,7 +297,7 @@ impl BatchOperations {
         if vulnerability_ids.is_empty() {
             panic_with_error!(&env, "Vulnerability IDs cannot be empty");
         }
-        
+
         if vulnerability_ids.len() > 100 {
             panic_with_error!(&env, "Batch size cannot exceed 100 items");
         }
@@ -294,11 +319,15 @@ impl BatchOperations {
         };
 
         // Store batch request
-        let mut batch_verifications: Map<u64, BatchVerificationRequest> = env.storage().instance()
+        let mut batch_verifications: Map<u64, BatchVerificationRequest> = env
+            .storage()
+            .instance()
             .get(&BATCH_VERIFICATIONS)
             .unwrap_or_else(|| Map::new(&env));
         batch_verifications.set(batch_counter, batch_request);
-        env.storage().instance().set(&BATCH_VERIFICATIONS, &batch_verifications);
+        env.storage()
+            .instance()
+            .set(&BATCH_VERIFICATIONS, &batch_verifications);
 
         // Initialize batch summary
         let batch_summary = BatchOperationSummary {
@@ -314,7 +343,9 @@ impl BatchOperations {
             timestamp: env.ledger().timestamp(),
         };
 
-        let mut batch_results: Map<u64, BatchOperationSummary> = env.storage().instance()
+        let mut batch_results: Map<u64, BatchOperationSummary> = env
+            .storage()
+            .instance()
             .get(&BATCH_RESULTS)
             .unwrap_or_else(|| Map::new(&env));
         batch_results.set(batch_counter, batch_summary);
@@ -339,21 +370,29 @@ impl BatchOperations {
         executor.require_auth();
 
         // Get batch request
-        let batch_verifications: Map<u64, BatchVerificationRequest> = env.storage().instance()
+        let batch_verifications: Map<u64, BatchVerificationRequest> = env
+            .storage()
+            .instance()
             .get(&BATCH_VERIFICATIONS)
             .unwrap_or_else(|| Map::new(&env));
-        
-        let batch_request = batch_verifications.get(batch_id)
+
+        let batch_request = batch_verifications
+            .get(batch_id)
             .unwrap_or_else(|| panic_with_error!(&env, "Batch request not found"));
 
         // Check if batch is already processed
-        let batch_results: Map<u64, BatchOperationSummary> = env.storage().instance()
+        let batch_results: Map<u64, BatchOperationSummary> = env
+            .storage()
+            .instance()
             .get(&BATCH_RESULTS)
             .unwrap_or_else(|| Map::new(&env));
-        
+
         let existing_summary = batch_results.get(batch_id);
         if let Some(summary) = existing_summary {
-            if matches!(summary.status, BatchOperationStatus::Completed | BatchOperationStatus::InProgress) {
+            if matches!(
+                summary.status,
+                BatchOperationStatus::Completed | BatchOperationStatus::InProgress
+            ) {
                 return summary;
             }
         }
@@ -380,7 +419,7 @@ impl BatchOperations {
 
         for vuln_id in batch_request.vulnerability_ids.iter() {
             let start_gas = env.ledger().sequence();
-            
+
             match Self::verify_single_vulnerability(&env, *vuln_id, executor.clone()) {
                 Ok(_) => {
                     let gas_used = env.ledger().sequence() - start_gas;
@@ -421,11 +460,15 @@ impl BatchOperations {
         };
 
         // Store updated summary
-        let mut batch_results_mut: Map<u64, BatchOperationSummary> = env.storage().instance()
+        let mut batch_results_mut: Map<u64, BatchOperationSummary> = env
+            .storage()
+            .instance()
             .get(&BATCH_RESULTS)
             .unwrap_or_else(|| Map::new(&env));
         batch_results_mut.set(batch_id, summary.clone());
-        env.storage().instance().set(&BATCH_RESULTS, &batch_results_mut);
+        env.storage()
+            .instance()
+            .set(&BATCH_RESULTS, &batch_results_mut);
 
         // Emit event
         env.events().publish(
@@ -438,21 +481,28 @@ impl BatchOperations {
 
     /// Get batch operation summary
     pub fn get_batch_summary(env: Env, batch_id: u64) -> BatchOperationSummary {
-        let batch_results: Map<u64, BatchOperationSummary> = env.storage().instance()
+        let batch_results: Map<u64, BatchOperationSummary> = env
+            .storage()
+            .instance()
             .get(&BATCH_RESULTS)
             .unwrap_or_else(|| Map::new(&env));
-        
-        batch_results.get(batch_id)
+
+        batch_results
+            .get(batch_id)
             .unwrap_or_else(|| panic_with_error!(&env, "Batch summary not found"))
     }
 
     /// Get all batch operations for a user
     pub fn get_user_batches(env: Env, user: Address) -> Vec<u64> {
-        let batch_escrow_releases: Map<u64, BatchEscrowReleaseRequest> = env.storage().instance()
+        let batch_escrow_releases: Map<u64, BatchEscrowReleaseRequest> = env
+            .storage()
+            .instance()
             .get(&BATCH_ESCROW_RELEASES)
             .unwrap_or_else(|| Map::new(&env));
-        
-        let batch_verifications: Map<u64, BatchVerificationRequest> = env.storage().instance()
+
+        let batch_verifications: Map<u64, BatchVerificationRequest> = env
+            .storage()
+            .instance()
             .get(&BATCH_VERIFICATIONS)
             .unwrap_or_else(|| Map::new(&env));
 
@@ -476,18 +526,26 @@ impl BatchOperations {
     }
 
     /// Internal helper: Release single escrow
-    fn release_single_escrow(env: &Env, escrow_id: u64, executor: Address) -> Result<(), ContractError> {
+    fn release_single_escrow(
+        env: &Env,
+        escrow_id: u64,
+        executor: Address,
+    ) -> Result<(), ContractError> {
         // This would integrate with the existing escrow release logic
         // For now, we'll simulate the operation
         let escrow_key = Symbol::short(&format!("ESCROW_{}", escrow_id));
-        
-        if let Some(_escrow) = env.storage().instance().get::<Symbol, EscrowEntry>(&escrow_key) {
+
+        if let Some(_escrow) = env
+            .storage()
+            .instance()
+            .get::<Symbol, EscrowEntry>(&escrow_key)
+        {
             // In a real implementation, this would:
             // 1. Verify escrow conditions are met
             // 2. Check authorization
             // 3. Transfer funds to beneficiary
             // 4. Update escrow status
-            
+
             // Simulate successful release
             Ok(())
         } else {
@@ -500,113 +558,145 @@ impl BatchOperations {
         let now = env.ledger().timestamp();
         let retention_seconds = BATCH_RETENTION_DAYS * 24 * 60 * 60;
         let cutoff_time = now.saturating_sub(retention_seconds);
-        
+
         let mut cleaned_count = 0u64;
-        
+
         // Clean up old batch results
-        let mut batch_results: Map<u64, BatchOperationSummary> = env.storage().instance()
+        let mut batch_results: Map<u64, BatchOperationSummary> = env
+            .storage()
+            .instance()
             .get(&BATCH_RESULTS)
             .unwrap_or_else(|| Map::new(&env));
-        
-        let expired_batches: Vec<u64> = batch_results.iter()
+
+        let expired_batches: Vec<u64> = batch_results
+            .iter()
             .filter(|(_, summary)| summary.timestamp < cutoff_time)
             .map(|(batch_id, _)| batch_id)
             .collect();
-        
+
         for batch_id in expired_batches {
             batch_results.remove(batch_id);
             cleaned_count += 1;
         }
-        
+
         // Also enforce maximum history limit
         if batch_results.len() > MAX_BATCH_HISTORY {
-            let mut sorted_batches: Vec<(u64, u64)> = batch_results.iter()
+            let mut sorted_batches: Vec<(u64, u64)> = batch_results
+                .iter()
                 .map(|(batch_id, summary)| (*batch_id, summary.timestamp))
                 .collect();
-            
+
             sorted_batches.sort_by_key(|&(_, timestamp)| timestamp);
-            
+
             let excess_count = batch_results.len() - MAX_BATCH_HISTORY;
             for i in 0..excess_count {
                 batch_results.remove(sorted_batches[i].0);
                 cleaned_count += 1;
             }
         }
-        
+
         env.storage().instance().set(&BATCH_RESULTS, &batch_results);
-        
+
         // Clean up old escrow release requests
-        let mut escrow_releases: Map<u64, BatchEscrowReleaseRequest> = env.storage().instance()
+        let mut escrow_releases: Map<u64, BatchEscrowReleaseRequest> = env
+            .storage()
+            .instance()
             .get(&BATCH_ESCROW_RELEASES)
             .unwrap_or_else(|| Map::new(&env));
-        
-        let expired_escrow: Vec<u64> = escrow_releases.iter()
+
+        let expired_escrow: Vec<u64> = escrow_releases
+            .iter()
             .filter(|(_, request)| request.timestamp < cutoff_time)
             .map(|(batch_id, _)| batch_id)
             .collect();
-        
+
         for batch_id in expired_escrow {
             escrow_releases.remove(batch_id);
         }
-        
-        env.storage().instance().set(&BATCH_ESCROW_RELEASES, &escrow_releases);
-        
+
+        env.storage()
+            .instance()
+            .set(&BATCH_ESCROW_RELEASES, &escrow_releases);
+
         // Clean up old verification requests
-        let mut verifications: Map<u64, BatchVerificationRequest> = env.storage().instance()
+        let mut verifications: Map<u64, BatchVerificationRequest> = env
+            .storage()
+            .instance()
             .get(&BATCH_VERIFICATIONS)
             .unwrap_or_else(|| Map::new(&env));
-        
-        let expired_verifications: Vec<u64> = verifications.iter()
+
+        let expired_verifications: Vec<u64> = verifications
+            .iter()
             .filter(|(_, request)| request.timestamp < cutoff_time)
             .map(|(batch_id, _)| batch_id)
             .collect();
-        
+
         for batch_id in expired_verifications {
             verifications.remove(batch_id);
         }
-        
-        env.storage().instance().set(&BATCH_VERIFICATIONS, &verifications);
-        
+
+        env.storage()
+            .instance()
+            .set(&BATCH_VERIFICATIONS, &verifications);
+
         // Update cleanup timestamp
         env.storage().instance().set(&BATCH_CLEANUP_TIMESTAMP, &now);
-        
+
         cleaned_count
     }
 
     /// Get storage usage statistics
     pub fn get_storage_stats(env: Env) -> StorageStats {
-        let batch_results: Map<u64, BatchOperationSummary> = env.storage().instance()
+        let batch_results: Map<u64, BatchOperationSummary> = env
+            .storage()
+            .instance()
             .get(&BATCH_RESULTS)
             .unwrap_or_else(|| Map::new(&env));
-        
-        let escrow_releases: Map<u64, BatchEscrowReleaseRequest> = env.storage().instance()
+
+        let escrow_releases: Map<u64, BatchEscrowReleaseRequest> = env
+            .storage()
+            .instance()
             .get(&BATCH_ESCROW_RELEASES)
             .unwrap_or_else(|| Map::new(&env));
-        
-        let verifications: Map<u64, BatchVerificationRequest> = env.storage().instance()
+
+        let verifications: Map<u64, BatchVerificationRequest> = env
+            .storage()
+            .instance()
             .get(&BATCH_VERIFICATIONS)
             .unwrap_or_else(|| Map::new(&env));
-        
+
         StorageStats {
             total_batch_results: batch_results.len(),
             total_escrow_releases: escrow_releases.len(),
             total_verifications: verifications.len(),
-            last_cleanup: env.storage().instance().get(&BATCH_CLEANUP_TIMESTAMP).unwrap_or(0),
+            last_cleanup: env
+                .storage()
+                .instance()
+                .get(&BATCH_CLEANUP_TIMESTAMP)
+                .unwrap_or(0),
         }
     }
 
     /// Internal helper: Verify single vulnerability
-    fn verify_single_vulnerability(env: &Env, vuln_id: u64, verifier: Address) -> Result<(), ContractError> {
+    fn verify_single_vulnerability(
+        env: &Env,
+        vuln_id: u64,
+        verifier: Address,
+    ) -> Result<(), ContractError> {
         // This would integrate with the existing vulnerability verification logic
         let vuln_key = Symbol::short(&vuln_id.to_string());
-        
-        if let Some(_vulnerability) = env.storage().instance().get::<Symbol, VulnerabilityReport>(&vuln_key) {
+
+        if let Some(_vulnerability) = env
+            .storage()
+            .instance()
+            .get::<Symbol, VulnerabilityReport>(&vuln_key)
+        {
             // In a real implementation, this would:
             // 1. Verify vulnerability exists
             // 2. Check verifier authorization
             // 3. Update vulnerability status to verified
             // 4. Calculate and award bounty
-            
+
             // Simulate successful verification
             Ok(())
         } else {

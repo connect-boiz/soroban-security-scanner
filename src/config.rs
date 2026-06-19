@@ -1,10 +1,10 @@
 //! Configuration management for the security scanner
 
+use crate::event_logging::EventLoggingConfig as EventLoggingConfigType;
+use crate::gas_limits::GasLimitConfig as GasLimitConfigType;
+use crate::secure_id_generation::SecureIdConfig as SecureIdConfigType;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use crate::gas_limits::GasLimitConfig as GasLimitConfigType;
-use crate::event_logging::EventLoggingConfig as EventLoggingConfigType;
-use crate::secure_id_generation::SecureIdConfig as SecureIdConfigType;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScannerConfig {
@@ -182,18 +182,28 @@ impl ScannerConfig {
     }
 
     pub fn should_ignore_path(&self, path: &PathBuf) -> bool {
-        self.ignore_paths.iter().any(|ignore| {
-            path.starts_with(ignore) || path.file_name() == ignore.file_name()
-        })
+        self.ignore_paths
+            .iter()
+            .any(|ignore| path.starts_with(ignore) || path.file_name() == ignore.file_name())
     }
 
     pub fn is_vulnerability_enabled(&self, check_name: &str) -> bool {
-        self.vulnerability_checks.enabled_checks.contains(&check_name.to_string()) &&
-        !self.vulnerability_checks.disabled_checks.contains(&check_name.to_string())
+        self.vulnerability_checks
+            .enabled_checks
+            .contains(&check_name.to_string())
+            && !self
+                .vulnerability_checks
+                .disabled_checks
+                .contains(&check_name.to_string())
     }
 
     pub fn is_invariant_enabled(&self, rule_name: &str) -> bool {
-        self.invariant_checks.enabled_rules.contains(&rule_name.to_string()) &&
-        !self.invariant_checks.disabled_rules.contains(&rule_name.to_string())
+        self.invariant_checks
+            .enabled_rules
+            .contains(&rule_name.to_string())
+            && !self
+                .invariant_checks
+                .disabled_rules
+                .contains(&rule_name.to_string())
     }
 }

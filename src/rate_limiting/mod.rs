@@ -1,5 +1,5 @@
 //! Sophisticated rate limiting system with multiple tiers and distributed support
-//! 
+//!
 //! Features:
 //! - User-based tiers (authenticated/unauthenticated)
 //! - IP-based rate limiting

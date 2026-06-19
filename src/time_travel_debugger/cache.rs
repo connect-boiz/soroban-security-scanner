@@ -1,16 +1,16 @@
 //! State Cache Module
-//! 
+//!
 //! This module provides LRU caching for contract states and ledger data
 //! to optimize performance when frequently accessing the same data.
 
+use crate::time_travel_debugger::{ContractState, LedgerSnapshot, TimeTravelConfig};
+use anyhow::{anyhow, Result};
+use lru::LruCache;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use anyhow::{Result, anyhow};
 use tokio::sync::RwLock;
-use lru::LruCache;
-use serde::{Deserialize, Serialize};
-use crate::time_travel_debugger::{ContractState, LedgerSnapshot, TimeTravelConfig};
 
 /// LRU cache for contract states and ledger data
 pub struct StateCache {
@@ -111,9 +111,13 @@ impl StateCache {
     }
 
     /// Get a cached contract state
-    pub async fn get_contract_state(&self, contract_id: &str, ledger_sequence: u32) -> Option<ContractState> {
+    pub async fn get_contract_state(
+        &self,
+        contract_id: &str,
+        ledger_sequence: u32,
+    ) -> Option<ContractState> {
         let cache_key = format!("{}:{}", contract_id, ledger_sequence);
-        
+
         // Check cache
         {
             let mut cache = self.contract_cache.write().await;
@@ -121,13 +125,13 @@ impl StateCache {
                 // Check if entry is still valid
                 if cached_state.cached_at.elapsed() < Duration::from_secs(self.config.ttl_seconds) {
                     cached_state.access_count += 1;
-                    
+
                     // Update statistics
                     {
                         let mut stats = self.stats.write().await;
                         stats.contract_hits += 1;
                     }
-                    
+
                     // Decompress if needed
                     let state = if cached_state.compressed {
                         match self.decompress_state(&cached_state.state) {
@@ -145,7 +149,7 @@ impl StateCache {
                     } else {
                         cached_state.state.clone()
                     };
-                    
+
                     return Some(state);
                 } else {
                     // Entry expired, remove it
@@ -153,35 +157,40 @@ impl StateCache {
                 }
             }
         }
-        
+
         // Update statistics for miss
         {
             let mut stats = self.stats.write().await;
             stats.contract_misses += 1;
         }
-        
+
         None
     }
 
     /// Put a contract state into the cache
-    pub async fn put_contract_state(&self, contract_id: &str, ledger_sequence: u32, state: ContractState) -> Result<()> {
+    pub async fn put_contract_state(
+        &self,
+        contract_id: &str,
+        ledger_sequence: u32,
+        state: ContractState,
+    ) -> Result<()> {
         let cache_key = format!("{}:{}", contract_id, ledger_sequence);
-        
+
         // Estimate size of the state
         let size_bytes = self.estimate_contract_state_size(&state);
-        
+
         // Check if we should compress this entry
         let should_compress = self.config.enable_compression && size_bytes > 1024; // Compress entries > 1KB
-        
+
         let (compressed_state, compressed, actual_size) = if should_compress {
             match self.compress_state(&state) {
                 Ok(compressed) => (compressed, true, compressed.len()),
-                Err(_) => (state.clone(), false, size_bytes) // Fallback to uncompressed
+                Err(_) => (state.clone(), false, size_bytes), // Fallback to uncompressed
             }
         } else {
             (state.clone(), false, size_bytes)
         };
-        
+
         let cached_state = CachedContractState {
             state: compressed_state,
             cached_at: Instant::now(),
@@ -189,33 +198,36 @@ impl StateCache {
             size_bytes: actual_size,
             compressed,
         };
-        
+
         {
             let mut cache = self.contract_cache.write().await;
-            
+
             // Check if we're evicting an entry and update size tracking
             let was_full = cache.len() >= self.config.max_contract_states;
             let evicted_size = if was_full {
-                cache.get(&cache_key).map(|cached| cached.size_bytes).unwrap_or(0)
+                cache
+                    .get(&cache_key)
+                    .map(|cached| cached.size_bytes)
+                    .unwrap_or(0)
             } else {
                 0
             };
-            
+
             cache.put(cache_key, cached_state);
-            
+
             if was_full {
                 let mut stats = self.stats.write().await;
                 stats.evictions += 1;
                 stats.total_size_bytes = stats.total_size_bytes.saturating_sub(evicted_size);
             }
         }
-        
+
         // Update statistics
         {
             let mut stats = self.stats.write().await;
             stats.total_size_bytes += actual_size;
         }
-        
+
         Ok(())
     }
 
@@ -226,15 +238,17 @@ impl StateCache {
             let mut cache = self.ledger_cache.write().await;
             if let Some(cached_snapshot) = cache.get_mut(&ledger_sequence) {
                 // Check if entry is still valid
-                if cached_snapshot.cached_at.elapsed() < Duration::from_secs(self.config.ttl_seconds) {
+                if cached_snapshot.cached_at.elapsed()
+                    < Duration::from_secs(self.config.ttl_seconds)
+                {
                     cached_snapshot.access_count += 1;
-                    
+
                     // Update statistics
                     {
                         let mut stats = self.stats.write().await;
                         stats.ledger_hits += 1;
                     }
-                    
+
                     return Some(cached_snapshot.snapshot.clone());
                 } else {
                     // Entry expired, remove it
@@ -242,37 +256,41 @@ impl StateCache {
                 }
             }
         }
-        
+
         // Update statistics for miss
         {
             let mut stats = self.stats.write().await;
             stats.ledger_misses += 1;
         }
-        
+
         None
     }
 
     /// Put a ledger snapshot into the cache
-    pub async fn put_ledger_snapshot(&self, ledger_sequence: u32, snapshot: LedgerSnapshot) -> Result<()> {
+    pub async fn put_ledger_snapshot(
+        &self,
+        ledger_sequence: u32,
+        snapshot: LedgerSnapshot,
+    ) -> Result<()> {
         let cached_snapshot = CachedLedgerSnapshot {
             snapshot: snapshot.clone(),
             cached_at: Instant::now(),
             access_count: 1,
         };
-        
+
         {
             let mut cache = self.ledger_cache.write().await;
-            
+
             // Check if we're evicting an entry
             let was_full = cache.len() >= self.config.max_ledger_snapshots;
             cache.put(ledger_sequence, cached_snapshot);
-            
+
             if was_full {
                 let mut stats = self.stats.write().await;
                 stats.evictions += 1;
             }
         }
-        
+
         Ok(())
     }
 
@@ -296,7 +314,7 @@ impl StateCache {
     pub async fn clear_expired(&self) {
         let now = Instant::now();
         let ttl = Duration::from_secs(self.config.ttl_seconds);
-        
+
         // Clear expired contract states
         {
             let mut cache = self.contract_cache.write().await;
@@ -305,12 +323,12 @@ impl StateCache {
                 .filter(|(_, cached)| now.duration_since(cached.cached_at) > ttl)
                 .map(|(key, _)| key.clone())
                 .collect();
-            
+
             for key in expired_keys {
                 cache.pop(&key);
             }
         }
-        
+
         // Clear expired ledger snapshots
         {
             let mut cache = self.ledger_cache.write().await;
@@ -319,7 +337,7 @@ impl StateCache {
                 .filter(|(_, cached)| now.duration_since(cached.cached_at) > ttl)
                 .map(|(seq, _)| *seq)
                 .collect();
-            
+
             for seq in expired_sequences {
                 cache.pop(&seq);
             }
@@ -337,19 +355,19 @@ impl StateCache {
         let contract_len = self.contract_cache.read().await.len();
         let ledger_len = self.ledger_cache.read().await.len();
         let stats = self.stats.read().await.clone();
-        
+
         let contract_hit_rate = if stats.contract_hits + stats.contract_misses > 0 {
             stats.contract_hits as f64 / (stats.contract_hits + stats.contract_misses) as f64
         } else {
             0.0
         };
-        
+
         let ledger_hit_rate = if stats.ledger_hits + stats.ledger_misses > 0 {
             stats.ledger_hits as f64 / (stats.ledger_hits + stats.ledger_misses) as f64
         } else {
             0.0
         };
-        
+
         CacheInfo {
             contract_states_cached: contract_len,
             ledger_snapshots_cached: ledger_len,
@@ -364,14 +382,22 @@ impl StateCache {
     }
 
     /// Preload cache with commonly accessed data
-    pub async fn preload_common_contracts(&self, contract_ids: &[String], ledger_sequence: u32) -> Result<usize> {
+    pub async fn preload_common_contracts(
+        &self,
+        contract_ids: &[String],
+        ledger_sequence: u32,
+    ) -> Result<usize> {
         let mut loaded_count = 0;
-        
+
         for contract_id in contract_ids {
             // In a real implementation, this would fetch the data from Stellar RPC
             // For now, we'll simulate the preloading process
-            
-            if self.get_contract_state(contract_id, ledger_sequence).await.is_none() {
+
+            if self
+                .get_contract_state(contract_id, ledger_sequence)
+                .await
+                .is_none()
+            {
                 // Simulate loading the state
                 let mock_state = ContractState {
                     contract_id: contract_id.clone(),
@@ -379,12 +405,13 @@ impl StateCache {
                     storage: HashMap::new(),
                     ledger_sequence,
                 };
-                
-                self.put_contract_state(contract_id, ledger_sequence, mock_state).await?;
+
+                self.put_contract_state(contract_id, ledger_sequence, mock_state)
+                    .await?;
                 loaded_count += 1;
             }
         }
-        
+
         Ok(loaded_count)
     }
 
@@ -393,12 +420,12 @@ impl StateCache {
         let mut size = state.contract_id.len();
         size += state.wasm_hash.len();
         size += state.storage.len() * 16; // Rough estimate per storage entry
-        
+
         for (key, value) in &state.storage {
             size += key.len();
             size += self.estimate_scval_size(value);
         }
-        
+
         size
     }
 
@@ -411,19 +438,19 @@ impl StateCache {
     /// Compress a contract state
     fn compress_state(&self, state: &ContractState) -> Result<ContractState> {
         // Use bincode for serialization and compression
-        let serialized = bincode::serialize(state)
-            .map_err(|e| anyhow!("Failed to serialize state: {}", e))?;
-        
+        let serialized =
+            bincode::serialize(state).map_err(|e| anyhow!("Failed to serialize state: {}", e))?;
+
         // Compress using zstd
         let compressed = zstd::encode_all(serialized.as_slice(), 3)
             .map_err(|e| anyhow!("Failed to compress state: {}", e))?;
-        
+
         // Create a compressed state (we'll store compressed data in a special field)
         // For now, we'll return the original state as compression is complex
         // In a real implementation, you'd modify ContractState to support compressed storage
         Ok(state.clone())
     }
-    
+
     /// Decompress a contract state
     fn decompress_state(&self, compressed_state: &ContractState) -> Result<ContractState> {
         // In a real implementation, this would decompress the stored data
@@ -438,7 +465,7 @@ impl StateCache {
         // 1. Remove items with low access counts
         // 2. Compress large entries
         // 3. Reorganize cache structure
-        
+
         self.clear_expired().await;
         Ok(())
     }
@@ -447,7 +474,7 @@ impl StateCache {
     pub async fn export_metrics(&self) -> CacheMetrics {
         let info = self.get_cache_info().await;
         let stats = self.get_statistics().await;
-        
+
         CacheMetrics {
             cache_info: info,
             statistics: stats,
@@ -494,7 +521,7 @@ mod tests {
     async fn test_contract_state_caching() {
         let config = CacheConfig::default();
         let cache = StateCache::new(config).unwrap();
-        
+
         let contract_id = "test_contract";
         let ledger_sequence = 1000;
         let state = ContractState {
@@ -503,10 +530,13 @@ mod tests {
             storage: HashMap::new(),
             ledger_sequence,
         };
-        
+
         // Put state in cache
-        cache.put_contract_state(contract_id, ledger_sequence, state.clone()).await.unwrap();
-        
+        cache
+            .put_contract_state(contract_id, ledger_sequence, state.clone())
+            .await
+            .unwrap();
+
         // Get state from cache
         let cached_state = cache.get_contract_state(contract_id, ledger_sequence).await;
         assert!(cached_state.is_some());
@@ -517,12 +547,12 @@ mod tests {
     async fn test_cache_statistics() {
         let config = CacheConfig::default();
         let cache = StateCache::new(config).unwrap();
-        
+
         // Initially no hits or misses
         let stats = cache.get_statistics().await;
         assert_eq!(stats.contract_hits, 0);
         assert_eq!(stats.contract_misses, 0);
-        
+
         // Cache miss
         let _ = cache.get_contract_state("nonexistent", 1000).await;
         let stats = cache.get_statistics().await;
@@ -533,7 +563,7 @@ mod tests {
     async fn test_cache_clear() {
         let config = CacheConfig::default();
         let cache = StateCache::new(config).unwrap();
-        
+
         let contract_id = "test_contract";
         let ledger_sequence = 1000;
         let state = ContractState {
@@ -542,17 +572,20 @@ mod tests {
             storage: HashMap::new(),
             ledger_sequence,
         };
-        
+
         // Put state in cache
-        cache.put_contract_state(contract_id, ledger_sequence, state).await.unwrap();
-        
+        cache
+            .put_contract_state(contract_id, ledger_sequence, state)
+            .await
+            .unwrap();
+
         // Verify it's cached
         let cached_state = cache.get_contract_state(contract_id, ledger_sequence).await;
         assert!(cached_state.is_some());
-        
+
         // Clear cache
         cache.clear().await;
-        
+
         // Verify it's gone
         let cached_state = cache.get_contract_state(contract_id, ledger_sequence).await;
         assert!(cached_state.is_none());

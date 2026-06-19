@@ -1,13 +1,13 @@
 //! Gas Limit Considerations for Complex Operations
-//! 
+//!
 //! This module provides gas limit estimation, validation, and optimization
 //! for complex operations like escrow release and emergency reward distribution.
 
+use anyhow::Result;
+use log::{error, info, warn};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use anyhow::Result;
-use serde::{Deserialize, Serialize};
-use log::{info, warn, error};
 
 /// Gas limit configuration for different operation types
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,10 +29,10 @@ pub struct GasLimitConfig {
 impl Default for GasLimitConfig {
     fn default() -> Self {
         Self {
-            simple_operation_limit: 5_000_000,      // 5M gas for simple ops
-            complex_operation_limit: 25_000_000,     // 25M gas for complex ops
-            batch_operation_limit: 100_000_000,      // 100M gas for batch ops
-            safety_margin_percentage: 10.0,          // 10% safety margin
+            simple_operation_limit: 5_000_000,   // 5M gas for simple ops
+            complex_operation_limit: 25_000_000, // 25M gas for complex ops
+            batch_operation_limit: 100_000_000,  // 100M gas for batch ops
+            safety_margin_percentage: 10.0,      // 10% safety margin
             enable_estimation: true,
             enable_optimization: true,
         }
@@ -42,9 +42,9 @@ impl Default for GasLimitConfig {
 /// Operation complexity levels
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OperationComplexity {
-    Simple,      // Basic operations like transfers, approvals
-    Complex,     // Escrow release, reward distribution
-    Batch,       // Multiple operations in single transaction
+    Simple,  // Basic operations like transfers, approvals
+    Complex, // Escrow release, reward distribution
+    Batch,   // Multiple operations in single transaction
 }
 
 /// Gas estimation result
@@ -140,7 +140,7 @@ impl GasLimitManager {
             config,
             operation_profiles: HashMap::new(),
         };
-        
+
         manager.initialize_default_profiles();
         manager
     }
@@ -148,102 +148,113 @@ impl GasLimitManager {
     /// Initialize default operation profiles
     fn initialize_default_profiles(&mut self) {
         // Escrow release operation profile
-        self.operation_profiles.insert("escrow_release".to_string(), GasProfile {
-            operation_name: "escrow_release".to_string(),
-            base_gas_cost: 50_000,
-            variable_gas_factors: vec![
-                GasFactor {
-                    factor_name: "recipients".to_string(),
-                    gas_per_unit: 10_000,
-                    max_units: Some(100),
-                },
-                GasFactor {
-                    factor_name: "amount_transfers".to_string(),
-                    gas_per_unit: 5_000,
-                    max_units: None,
-                },
-            ],
-            complexity: OperationComplexity::Complex,
-            optimization_hints: vec![
-                OptimizationHint {
+        self.operation_profiles.insert(
+            "escrow_release".to_string(),
+            GasProfile {
+                operation_name: "escrow_release".to_string(),
+                base_gas_cost: 50_000,
+                variable_gas_factors: vec![
+                    GasFactor {
+                        factor_name: "recipients".to_string(),
+                        gas_per_unit: 10_000,
+                        max_units: Some(100),
+                    },
+                    GasFactor {
+                        factor_name: "amount_transfers".to_string(),
+                        gas_per_unit: 5_000,
+                        max_units: None,
+                    },
+                ],
+                complexity: OperationComplexity::Complex,
+                optimization_hints: vec![OptimizationHint {
                     hint_type: OptimizationType::BatchOperations,
                     description: "Batch multiple transfers to reduce overhead".to_string(),
                     applicable_conditions: vec!["multiple_recipients".to_string()],
-                },
-            ],
-        });
+                }],
+            },
+        );
 
         // Reward distribution operation profile
-        self.operation_profiles.insert("reward_distribution".to_string(), GasProfile {
-            operation_name: "reward_distribution".to_string(),
-            base_gas_cost: 75_000,
-            variable_gas_factors: vec![
-                GasFactor {
-                    factor_name: "researchers".to_string(),
-                    gas_per_unit: 15_000,
-                    max_units: Some(500),
-                },
-                GasFactor {
-                    factor_name: "reward_calculations".to_string(),
-                    gas_per_unit: 2_000,
-                    max_units: None,
-                },
-                GasFactor {
-                    factor_name: "severity_checks".to_string(),
-                    gas_per_unit: 1_000,
-                    max_units: None,
-                },
-            ],
-            complexity: OperationComplexity::Complex,
-            optimization_hints: vec![
-                OptimizationHint {
-                    hint_type: OptimizationType::EarlyExit,
-                    description: "Skip zero-amount rewards early".to_string(),
-                    applicable_conditions: vec!["variable_amounts".to_string()],
-                },
-                OptimizationHint {
-                    hint_type: OptimizationType::StorageOptimization,
-                    description: "Cache severity reward percentages".to_string(),
-                    applicable_conditions: vec!["repeated_calculations".to_string()],
-                },
-            ],
-        });
+        self.operation_profiles.insert(
+            "reward_distribution".to_string(),
+            GasProfile {
+                operation_name: "reward_distribution".to_string(),
+                base_gas_cost: 75_000,
+                variable_gas_factors: vec![
+                    GasFactor {
+                        factor_name: "researchers".to_string(),
+                        gas_per_unit: 15_000,
+                        max_units: Some(500),
+                    },
+                    GasFactor {
+                        factor_name: "reward_calculations".to_string(),
+                        gas_per_unit: 2_000,
+                        max_units: None,
+                    },
+                    GasFactor {
+                        factor_name: "severity_checks".to_string(),
+                        gas_per_unit: 1_000,
+                        max_units: None,
+                    },
+                ],
+                complexity: OperationComplexity::Complex,
+                optimization_hints: vec![
+                    OptimizationHint {
+                        hint_type: OptimizationType::EarlyExit,
+                        description: "Skip zero-amount rewards early".to_string(),
+                        applicable_conditions: vec!["variable_amounts".to_string()],
+                    },
+                    OptimizationHint {
+                        hint_type: OptimizationType::StorageOptimization,
+                        description: "Cache severity reward percentages".to_string(),
+                        applicable_conditions: vec!["repeated_calculations".to_string()],
+                    },
+                ],
+            },
+        );
 
         // Emergency reward distribution profile
-        self.operation_profiles.insert("emergency_reward_distribution".to_string(), GasProfile {
-            operation_name: "emergency_reward_distribution".to_string(),
-            base_gas_cost: 100_000,
-            variable_gas_factors: vec![
-                GasFactor {
-                    factor_name: "emergency_claims".to_string(),
-                    gas_per_unit: 20_000,
-                    max_units: Some(1000),
-                },
-                GasFactor {
-                    factor_name: "priority_calculations".to_string(),
-                    gas_per_unit: 5_000,
-                    max_units: None,
-                },
-                GasFactor {
-                    factor_name: "bypass_checks".to_string(),
-                    gas_per_unit: 3_000,
-                    max_units: None,
-                },
-            ],
-            complexity: OperationComplexity::Complex,
-            optimization_hints: vec![
-                OptimizationHint {
+        self.operation_profiles.insert(
+            "emergency_reward_distribution".to_string(),
+            GasProfile {
+                operation_name: "emergency_reward_distribution".to_string(),
+                base_gas_cost: 100_000,
+                variable_gas_factors: vec![
+                    GasFactor {
+                        factor_name: "emergency_claims".to_string(),
+                        gas_per_unit: 20_000,
+                        max_units: Some(1000),
+                    },
+                    GasFactor {
+                        factor_name: "priority_calculations".to_string(),
+                        gas_per_unit: 5_000,
+                        max_units: None,
+                    },
+                    GasFactor {
+                        factor_name: "bypass_checks".to_string(),
+                        gas_per_unit: 3_000,
+                        max_units: None,
+                    },
+                ],
+                complexity: OperationComplexity::Complex,
+                optimization_hints: vec![OptimizationHint {
                     hint_type: OptimizationType::ConditionalExecution,
                     description: "Use priority-based processing".to_string(),
                     applicable_conditions: vec!["large_claim_sets".to_string()],
-                },
-            ],
-        });
+                }],
+            },
+        );
     }
 
     /// Estimate gas consumption for an operation
-    pub fn estimate_gas(&self, operation: &str, parameters: &HashMap<String, u64>) -> Result<GasEstimation> {
-        let profile = self.operation_profiles.get(operation)
+    pub fn estimate_gas(
+        &self,
+        operation: &str,
+        parameters: &HashMap<String, u64>,
+    ) -> Result<GasEstimation> {
+        let profile = self
+            .operation_profiles
+            .get(operation)
             .ok_or_else(|| anyhow::anyhow!("Unknown operation: {}", operation))?;
 
         let mut estimated_gas = profile.base_gas_cost;
@@ -268,13 +279,16 @@ impl GasLimitManager {
         };
 
         // Apply safety margin
-        let safety_margin = (estimated_gas as f64 * self.config.safety_margin_percentage / 100.0) as u64;
+        let safety_margin =
+            (estimated_gas as f64 * self.config.safety_margin_percentage / 100.0) as u64;
         let recommended_limit = estimated_gas + safety_margin;
 
         // Check if recommended limit exceeds base limit
         let final_limit = if recommended_limit > base_limit {
-            warn!("Recommended gas limit {} exceeds base limit {} for operation {}", 
-                  recommended_limit, base_limit, operation);
+            warn!(
+                "Recommended gas limit {} exceeds base limit {} for operation {}",
+                recommended_limit, base_limit, operation
+            );
             base_limit
         } else {
             recommended_limit
@@ -301,7 +315,12 @@ impl GasLimitManager {
     }
 
     /// Validate gas limit for an operation
-    pub fn validate_gas_limit(&self, operation: &str, parameters: &HashMap<String, u64>, provided_limit: u64) -> Result<GasValidationResult> {
+    pub fn validate_gas_limit(
+        &self,
+        operation: &str,
+        parameters: &HashMap<String, u64>,
+        provided_limit: u64,
+    ) -> Result<GasValidationResult> {
         let estimation = self.estimate_gas(operation, parameters)?;
 
         let is_valid = provided_limit >= estimation.estimated_gas;
@@ -327,18 +346,23 @@ impl GasLimitManager {
     }
 
     /// Generate optimization suggestions
-    fn generate_optimizations(&self, profile: &GasProfile, parameters: &HashMap<String, u64>) -> Result<Vec<GasOptimization>> {
+    fn generate_optimizations(
+        &self,
+        profile: &GasProfile,
+        parameters: &HashMap<String, u64>,
+    ) -> Result<Vec<GasOptimization>> {
         let mut optimizations = Vec::new();
 
         for hint in &profile.optimization_hints {
             if self.is_optimization_applicable(hint, parameters) {
                 let potential_savings = self.estimate_optimization_savings(hint, parameters);
-                
+
                 optimizations.push(GasOptimization {
                     optimization_type: hint.hint_type.clone(),
                     description: hint.description.clone(),
                     potential_savings,
-                    implementation_difficulty: self.assess_implementation_difficulty(&hint.hint_type),
+                    implementation_difficulty: self
+                        .assess_implementation_difficulty(&hint.hint_type),
                 });
             }
         }
@@ -347,14 +371,22 @@ impl GasLimitManager {
     }
 
     /// Check if optimization is applicable
-    fn is_optimization_applicable(&self, hint: &OptimizationHint, parameters: &HashMap<String, u64>) -> bool {
-        hint.applicable_conditions.iter().any(|condition| {
-            parameters.contains_key(condition)
-        })
+    fn is_optimization_applicable(
+        &self,
+        hint: &OptimizationHint,
+        parameters: &HashMap<String, u64>,
+    ) -> bool {
+        hint.applicable_conditions
+            .iter()
+            .any(|condition| parameters.contains_key(condition))
     }
 
     /// Estimate potential savings from optimization
-    fn estimate_optimization_savings(&self, hint: &OptimizationHint, parameters: &HashMap<String, u64>) -> u64 {
+    fn estimate_optimization_savings(
+        &self,
+        hint: &OptimizationHint,
+        parameters: &HashMap<String, u64>,
+    ) -> u64 {
         match hint.hint_type {
             OptimizationType::BatchOperations => {
                 // Estimate savings from batching operations
@@ -381,7 +413,10 @@ impl GasLimitManager {
     }
 
     /// Assess implementation difficulty
-    fn assess_implementation_difficulty(&self, optimization_type: &OptimizationType) -> ImplementationDifficulty {
+    fn assess_implementation_difficulty(
+        &self,
+        optimization_type: &OptimizationType,
+    ) -> ImplementationDifficulty {
         match optimization_type {
             OptimizationType::EarlyExit => ImplementationDifficulty::Easy,
             OptimizationType::BatchOperations => ImplementationDifficulty::Medium,
@@ -405,7 +440,11 @@ impl GasLimitManager {
     }
 
     /// Generate recommendations for gas usage
-    fn generate_recommendations(&self, estimation: &GasEstimation, provided_limit: u64) -> Vec<String> {
+    fn generate_recommendations(
+        &self,
+        estimation: &GasEstimation,
+        provided_limit: u64,
+    ) -> Vec<String> {
         let mut recommendations = Vec::new();
 
         if provided_limit < estimation.estimated_gas {
@@ -428,10 +467,12 @@ impl GasLimitManager {
 
         match estimation.risk_level {
             GasRiskLevel::Critical => {
-                recommendations.push("CRITICAL: Gas limit is insufficient for this operation".to_string());
+                recommendations
+                    .push("CRITICAL: Gas limit is insufficient for this operation".to_string());
             }
             GasRiskLevel::High => {
-                recommendations.push("WARNING: Gas limit is close to estimated consumption".to_string());
+                recommendations
+                    .push("WARNING: Gas limit is close to estimated consumption".to_string());
             }
             _ => {}
         }
@@ -441,7 +482,8 @@ impl GasLimitManager {
 
     /// Add custom operation profile
     pub fn add_operation_profile(&mut self, profile: GasProfile) {
-        self.operation_profiles.insert(profile.operation_name.clone(), profile);
+        self.operation_profiles
+            .insert(profile.operation_name.clone(), profile);
     }
 
     /// Update configuration
@@ -540,7 +582,7 @@ impl BatchGasEstimator {
         Self {
             gas_limit_manager,
             stellar_transaction_max_gas: 100_000_000, // ~100M max gas per Stellar transaction
-            threshold_percentage: 90.0, // Warn at 90% of Stellar limit
+            threshold_percentage: 90.0,               // Warn at 90% of Stellar limit
         }
     }
 
@@ -569,7 +611,8 @@ impl BatchGasEstimator {
             params.insert("recipients".to_string(), 1);
             params.insert("amount_transfers".to_string(), 1);
 
-            let estimation = self.gas_limit_manager
+            let estimation = self
+                .gas_limit_manager
                 .estimate_gas(operation_type.as_str(), &params)?;
 
             item_estimates.push(ItemGasEstimate {
@@ -597,7 +640,8 @@ impl BatchGasEstimator {
             params.insert("reward_calculations".to_string(), 1);
             params.insert("severity_checks".to_string(), 1);
 
-            let estimation = self.gas_limit_manager
+            let estimation = self
+                .gas_limit_manager
                 .estimate_gas("reward_distribution", &params)?;
 
             item_estimates.push(ItemGasEstimate {
@@ -626,7 +670,8 @@ impl BatchGasEstimator {
             params.insert("recipients".to_string(), 1);
             params.insert("amount_transfers".to_string(), 1);
 
-            let estimation = self.gas_limit_manager
+            let estimation = self
+                .gas_limit_manager
                 .estimate_gas("escrow_release", &params)?;
 
             item_estimates.push(ItemGasEstimate {
@@ -646,7 +691,8 @@ impl BatchGasEstimator {
             params.insert("reward_calculations".to_string(), 1);
             params.insert("severity_checks".to_string(), 1);
 
-            let estimation = self.gas_limit_manager
+            let estimation = self
+                .gas_limit_manager
                 .estimate_gas("reward_distribution", &params)?;
 
             item_estimates.push(ItemGasEstimate {
@@ -658,11 +704,7 @@ impl BatchGasEstimator {
             });
         }
 
-        self.build_batch_estimate(
-            escrow_count,
-            item_estimates,
-            verification_count,
-        )
+        self.build_batch_estimate(escrow_count, item_estimates, verification_count)
     }
 
     /// Build the final batch estimate from item estimates
@@ -688,7 +730,8 @@ impl BatchGasEstimator {
         let recommended_limit = total_estimated_gas + safety_margin;
 
         // Check if exceeds threshold
-        let threshold_gas = (self.stellar_transaction_max_gas as f64 * self.threshold_percentage / 100.0) as u64;
+        let threshold_gas =
+            (self.stellar_transaction_max_gas as f64 * self.threshold_percentage / 100.0) as u64;
         let exceeds_threshold = recommended_limit > threshold_gas;
 
         let threshold_warning = if exceeds_threshold {
@@ -757,33 +800,64 @@ impl BatchGasEstimator {
         output.push_str(&format!("📊 Batch Gas Estimate\n"));
         output.push_str(&format!("═══════════════════════════════════\n"));
         output.push_str(&format!("  Total items:     {}\n", estimate.total_items));
-        output.push_str(&format!("  Escrow releases: {}\n", estimate.escrow_releases));
+        output.push_str(&format!(
+            "  Escrow releases: {}\n",
+            estimate.escrow_releases
+        ));
         output.push_str(&format!("  Verifications:   {}\n", estimate.verifications));
         output.push_str(&format!("\n"));
-        output.push_str(&format!("  Item gas total:     {}\n", estimate.total_estimated_gas - estimate.batch_overhead - (estimate.per_item_overhead * estimate.total_items)));
-        output.push_str(&format!("  Batch overhead:     {} (fixed: {}, per-item: {} x {})\n",
+        output.push_str(&format!(
+            "  Item gas total:     {}\n",
+            estimate.total_estimated_gas
+                - estimate.batch_overhead
+                - (estimate.per_item_overhead * estimate.total_items)
+        ));
+        output.push_str(&format!(
+            "  Batch overhead:     {} (fixed: {}, per-item: {} x {})\n",
             estimate.batch_overhead + (estimate.per_item_overhead * estimate.total_items),
             estimate.batch_overhead,
             estimate.per_item_overhead,
             estimate.total_items
         ));
-        output.push_str(&format!("  Total estimated:    {}\n", estimate.total_estimated_gas));
-        output.push_str(&format!("  Safety margin:      {}\n", estimate.safety_margin));
-        output.push_str(&format!("  Recommended limit:  {}\n", estimate.recommended_limit));
-        output.push_str(&format!("  Stellar max limit:  {}\n", estimate.stellar_max_limit));
+        output.push_str(&format!(
+            "  Total estimated:    {}\n",
+            estimate.total_estimated_gas
+        ));
+        output.push_str(&format!(
+            "  Safety margin:      {}\n",
+            estimate.safety_margin
+        ));
+        output.push_str(&format!(
+            "  Recommended limit:  {}\n",
+            estimate.recommended_limit
+        ));
+        output.push_str(&format!(
+            "  Stellar max limit:  {}\n",
+            estimate.stellar_max_limit
+        ));
         output.push_str(&format!("\n"));
-        output.push_str(&format!("  Risk level: {}\n", match estimate.risk_level {
-            GasRiskLevel::Critical => "🔴 CRITICAL".to_string(),
-            GasRiskLevel::High => "🟠 HIGH".to_string(),
-            GasRiskLevel::Medium => "🟡 MEDIUM".to_string(),
-            GasRiskLevel::Low => "🟢 LOW".to_string(),
-        }));
+        output.push_str(&format!(
+            "  Risk level: {}\n",
+            match estimate.risk_level {
+                GasRiskLevel::Critical => "🔴 CRITICAL".to_string(),
+                GasRiskLevel::High => "🟠 HIGH".to_string(),
+                GasRiskLevel::Medium => "🟡 MEDIUM".to_string(),
+                GasRiskLevel::Low => "🟢 LOW".to_string(),
+            }
+        ));
 
         if estimate.exceeds_recommended_threshold {
-            output.push_str(&format!("  ⚠️  WARNING: Estimated gas exceeds 90% of Stellar limit!\n"));
-            output.push_str(&format!("  💡  Suggested splits: {} ({} items, ~{} gas each)\n",
+            output.push_str(&format!(
+                "  ⚠️  WARNING: Estimated gas exceeds 90% of Stellar limit!\n"
+            ));
+            output.push_str(&format!(
+                "  💡  Suggested splits: {} ({} items, ~{} gas each)\n",
                 estimate.suggested_splits,
-                if estimate.total_items > 0 { estimate.total_items / estimate.suggested_splits } else { 0 },
+                if estimate.total_items > 0 {
+                    estimate.total_items / estimate.suggested_splits
+                } else {
+                    0
+                },
                 estimate.estimated_gas_per_split
             ));
         }
@@ -810,7 +884,7 @@ mod tests {
         parameters.insert("amount_transfers".to_string(), 5);
 
         let estimation = manager.estimate_gas("escrow_release", &parameters).unwrap();
-        
+
         assert!(estimation.estimated_gas > 50_000); // Base cost
         assert_eq!(estimation.complexity, OperationComplexity::Complex);
         assert!(estimation.recommended_limit > estimation.estimated_gas);
@@ -824,8 +898,10 @@ mod tests {
         let mut parameters = HashMap::new();
         parameters.insert("researchers".to_string(), 5);
 
-        let result = manager.validate_gas_limit("reward_distribution", &parameters, 1_000_000).unwrap();
-        
+        let result = manager
+            .validate_gas_limit("reward_distribution", &parameters, 1_000_000)
+            .unwrap();
+
         assert!(result.is_valid);
         assert!(result.recommendations.is_empty());
     }
@@ -837,8 +913,10 @@ mod tests {
 
         let parameters = HashMap::new();
 
-        let result = manager.validate_gas_limit("escrow_release", &parameters, 10_000).unwrap();
-        
+        let result = manager
+            .validate_gas_limit("escrow_release", &parameters, 10_000)
+            .unwrap();
+
         assert!(!result.is_valid);
         assert_eq!(result.risk_level, GasRiskLevel::Critical);
         assert!(!result.recommendations.is_empty());

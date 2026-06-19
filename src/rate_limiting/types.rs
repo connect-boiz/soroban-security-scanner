@@ -1,10 +1,10 @@
 //! Core types and structures for rate limiting
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::time::Duration;
-use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 /// Rate limit tier types

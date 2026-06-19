@@ -1,14 +1,14 @@
 //! Core rate limiting implementation
 
+use crate::rate_limiting::config::RateLimitConfig;
+use crate::rate_limiting::storage::RateLimitStorage;
+use crate::rate_limiting::types::*;
+use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::time::Duration;
-use chrono::{DateTime, Utc};
-use async_trait::async_trait;
-use crate::rate_limiting::types::*;
-use crate::rate_limiting::config::RateLimitConfig;
-use crate::rate_limiting::storage::RateLimitStorage;
-use tracing::{debug, warn, error};
+use tracing::{debug, error, warn};
 
 /// Main rate limiter implementation
 pub struct RateLimiter {
@@ -25,7 +25,7 @@ impl RateLimiter {
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let ip_reputation = if config.ip_restrictions.enable_reputation_check {
             Some(Box::new(DefaultIpReputationProvider::new(
-                config.ip_restrictions.reputation_service.clone()
+                config.ip_restrictions.reputation_service.clone(),
             )?))
         } else {
             None
@@ -83,12 +83,17 @@ impl RateLimiter {
     }
 
     /// Record a request (for tracking purposes)
-    pub async fn record_request(&self, context: &RateLimitContext) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn record_request(
+        &self,
+        context: &RateLimitContext,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         // Record in storage for analytics
         let key = self.generate_storage_key(context, "requests");
         let window = Duration::from_secs(60); // 1-minute window for analytics
-        
-        self.storage.record_request(&key, window, context.timestamp).await?;
+
+        self.storage
+            .record_request(&key, window, context.timestamp)
+            .await?;
         Ok(())
     }
 
@@ -115,7 +120,10 @@ impl RateLimiter {
                 "Rate limit violation: {} from {} ({}) - {}",
                 context.resource,
                 context.ip_address,
-                context.user_id.map(|u| u.to_string()).unwrap_or_else(|| "anonymous".to_string()),
+                context
+                    .user_id
+                    .map(|u| u.to_string())
+                    .unwrap_or_else(|| "anonymous".to_string()),
                 reason
             );
         }
@@ -135,7 +143,9 @@ impl RateLimiter {
         ip_address: Option<IpAddr>,
         limit: Option<u64>,
     ) -> Result<Vec<RateLimitViolation>, Box<dyn std::error::Error>> {
-        self.storage.get_violations(user_id, ip_address, limit).await
+        self.storage
+            .get_violations(user_id, ip_address, limit)
+            .await
     }
 
     /// Check if the storage backend is healthy
@@ -145,20 +155,35 @@ impl RateLimiter {
 
     /// Clean up old data
     pub async fn cleanup(&self) -> Result<u64, Box<dyn std::error::Error>> {
-        self.storage.cleanup(self.config.monitoring.violation_retention).await
+        self.storage
+            .cleanup(self.config.monitoring.violation_retention)
+            .await
     }
 
     // Private helper methods
 
     async fn check_ip_restrictions(&self, context: &RateLimitContext) -> Option<RateLimitResult> {
         // Check if IP is whitelisted
-        if self.config.ip_restrictions.whitelisted_ips.contains(&context.ip_address) {
-            debug!("IP {} is whitelisted, bypassing rate limits", context.ip_address);
+        if self
+            .config
+            .ip_restrictions
+            .whitelisted_ips
+            .contains(&context.ip_address)
+        {
+            debug!(
+                "IP {} is whitelisted, bypassing rate limits",
+                context.ip_address
+            );
             return None;
         }
 
         // Check if IP is blocked
-        if self.config.ip_restrictions.blocked_ips.contains(&context.ip_address) {
+        if self
+            .config
+            .ip_restrictions
+            .blocked_ips
+            .contains(&context.ip_address)
+        {
             return Some(RateLimitResult::Blocked {
                 reason: "IP address is blocked".to_string(),
                 retry_after: Duration::from_secs(3600),
@@ -198,7 +223,12 @@ impl RateLimiter {
         };
 
         // Check blocked countries
-        if self.config.geo_restrictions.blocked_countries.contains(&country) {
+        if self
+            .config
+            .geo_restrictions
+            .blocked_countries
+            .contains(&country)
+        {
             return Some(RateLimitResult::Blocked {
                 reason: format!("Access from country {} is not allowed", country),
                 retry_after: Duration::from_secs(3600),
@@ -226,7 +256,10 @@ impl RateLimiter {
         if let Some(reputation) = &self.ip_reputation {
             match reputation.check_reputation(context.ip_address).await {
                 Ok(score) => {
-                    let threshold = self.config.ip_restrictions.reputation_service
+                    let threshold = self
+                        .config
+                        .ip_restrictions
+                        .reputation_service
                         .as_ref()
                         .map(|s| s.block_threshold)
                         .unwrap_or(0.5);
@@ -251,19 +284,27 @@ impl RateLimiter {
 
     fn get_applicable_policies(&self, context: &RateLimitContext) -> Vec<&RateLimitPolicy> {
         // Check for endpoint-specific policies first
-        if let Some(endpoint_config) = self.config.find_endpoint_config(&context.resource, &context.method) {
+        if let Some(endpoint_config) = self
+            .config
+            .find_endpoint_config(&context.resource, &context.method)
+        {
             if let Some(policies) = endpoint_config.policies.get(&context.tier) {
                 return policies.iter().collect();
             }
         }
 
         // Fall back to default policies for the tier
-        self.config.get_policies_for_tier(context.tier)
+        self.config
+            .get_policies_for_tier(context.tier)
             .map(|policies| policies.iter().collect())
             .unwrap_or_default()
     }
 
-    async fn check_policy(&self, context: &RateLimitContext, policy: &RateLimitPolicy) -> RateLimitResult {
+    async fn check_policy(
+        &self,
+        context: &RateLimitContext,
+        policy: &RateLimitPolicy,
+    ) -> RateLimitResult {
         let key = self.generate_storage_key(context, &format!("policy_{:?}", policy.window));
         let window = policy.window.as_duration();
 
@@ -271,22 +312,31 @@ impl RateLimiter {
             Ok(current_usage) => {
                 if current_usage >= policy.max_requests {
                     let retry_after = self.calculate_retry_after(policy, context.timestamp);
-                    
+
                     // Record violation
-                    if let Err(e) = self.record_violation(context, policy, "Rate limit exceeded").await {
+                    if let Err(e) = self
+                        .record_violation(context, policy, "Rate limit exceeded")
+                        .await
+                    {
                         error!("Failed to record violation: {}", e);
                     }
 
                     RateLimitResult::Blocked {
-                        reason: format!("Rate limit exceeded: {} requests per {:?}", 
-                                       policy.max_requests, policy.window),
+                        reason: format!(
+                            "Rate limit exceeded: {} requests per {:?}",
+                            policy.max_requests, policy.window
+                        ),
                         retry_after,
                         current_usage,
                         max_requests: policy.max_requests,
                     }
                 } else {
                     // Record the request
-                    if let Err(e) = self.storage.record_request(&key, window, context.timestamp).await {
+                    if let Err(e) = self
+                        .storage
+                        .record_request(&key, window, context.timestamp)
+                        .await
+                    {
                         error!("Failed to record request: {}", e);
                     }
 
@@ -319,7 +369,11 @@ impl RateLimiter {
         }
     }
 
-    fn calculate_retry_after(&self, policy: &RateLimitPolicy, timestamp: DateTime<Utc>) -> Duration {
+    fn calculate_retry_after(
+        &self,
+        policy: &RateLimitPolicy,
+        timestamp: DateTime<Utc>,
+    ) -> Duration {
         if let Some(penalty) = policy.penalty_duration {
             penalty
         } else {
@@ -330,7 +384,11 @@ impl RateLimiter {
         }
     }
 
-    fn calculate_severity(&self, context: &RateLimitContext, policy: &RateLimitPolicy) -> ViolationSeverity {
+    fn calculate_severity(
+        &self,
+        context: &RateLimitContext,
+        policy: &RateLimitPolicy,
+    ) -> ViolationSeverity {
         // Calculate severity based on context and policy
         match context.tier {
             RateLimitTier::Admin => ViolationSeverity::Low,
@@ -424,8 +482,11 @@ mod tests {
     #[tokio::test]
     async fn test_ip_whitelist() {
         let mut config = RateLimitConfig::default();
-        config.ip_restrictions.whitelisted_ips.push("127.0.0.1".parse().unwrap());
-        
+        config
+            .ip_restrictions
+            .whitelisted_ips
+            .push("127.0.0.1".parse().unwrap());
+
         let storage = Box::new(MemoryStorage::new());
         let limiter = RateLimiter::new(config, storage).await.unwrap();
 

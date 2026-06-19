@@ -1,7 +1,7 @@
-use sqlx::{PgPool, postgres::PgPoolOptions};
-use std::time::Duration;
 use anyhow::Result;
-use tracing::{info, error};
+use sqlx::{postgres::PgPoolOptions, PgPool};
+use std::time::Duration;
+use tracing::{error, info};
 
 #[derive(Debug, Clone)]
 pub struct DatabaseConfig {
@@ -51,10 +51,8 @@ impl DatabaseConfig {
                 .unwrap_or(5432),
             database: std::env::var("DATABASE_NAME")
                 .unwrap_or_else(|_| "soroban_security_scanner".to_string()),
-            username: std::env::var("DATABASE_USER")
-                .unwrap_or_else(|_| "postgres".to_string()),
-            password: std::env::var("DATABASE_PASSWORD")
-                .unwrap_or_else(|_| "password".to_string()),
+            username: std::env::var("DATABASE_USER").unwrap_or_else(|_| "postgres".to_string()),
+            password: std::env::var("DATABASE_PASSWORD").unwrap_or_else(|_| "password".to_string()),
             max_connections: std::env::var("DATABASE_MAX_CONNECTIONS")
                 .unwrap_or_else(|_| "20".to_string())
                 .parse()
@@ -67,19 +65,19 @@ impl DatabaseConfig {
                 std::env::var("DATABASE_CONNECT_TIMEOUT")
                     .unwrap_or_else(|_| "30".to_string())
                     .parse()
-                    .unwrap_or(30)
+                    .unwrap_or(30),
             ),
             idle_timeout: Duration::from_secs(
                 std::env::var("DATABASE_IDLE_TIMEOUT")
                     .unwrap_or_else(|_| "600".to_string())
                     .parse()
-                    .unwrap_or(600)
+                    .unwrap_or(600),
             ),
             max_lifetime: Duration::from_secs(
                 std::env::var("DATABASE_MAX_LIFETIME")
                     .unwrap_or_else(|_| "1800".to_string())
                     .parse()
-                    .unwrap_or(1800)
+                    .unwrap_or(1800),
             ),
         };
         Ok(config)
@@ -93,8 +91,11 @@ pub struct Database {
 
 impl Database {
     pub async fn new(config: DatabaseConfig) -> Result<Self> {
-        info!("Connecting to database: {}:{}/{}", config.host, config.port, config.database);
-        
+        info!(
+            "Connecting to database: {}:{}/{}",
+            config.host, config.port, config.database
+        );
+
         let pool = PgPoolOptions::new()
             .max_connections(config.max_connections)
             .min_connections(config.min_connections)
@@ -122,9 +123,7 @@ impl Database {
     }
 
     pub async fn health_check(&self) -> Result<()> {
-        sqlx::query("SELECT 1")
-            .fetch_one(&self.pool)
-            .await?;
+        sqlx::query("SELECT 1").fetch_one(&self.pool).await?;
         Ok(())
     }
 
@@ -136,9 +135,7 @@ impl Database {
     // Migration methods
     pub async fn run_migrations(&self) -> Result<()> {
         info!("Running database migrations");
-        sqlx::migrate!("./migrations")
-            .run(&self.pool)
-            .await?;
+        sqlx::migrate!("./migrations").run(&self.pool).await?;
         info!("Database migrations completed successfully");
         Ok(())
     }
@@ -175,12 +172,15 @@ static DATABASE: OnceCell<Arc<Database>> = OnceCell::const_new();
 
 pub async fn init_database(config: DatabaseConfig) -> Result<Arc<Database>> {
     let db = Arc::new(Database::new(config).await?);
-    DATABASE.set(db.clone()).map_err(|_| anyhow::anyhow!("Database already initialized"))?;
+    DATABASE
+        .set(db.clone())
+        .map_err(|_| anyhow::anyhow!("Database already initialized"))?;
     Ok(db)
 }
 
 pub async fn get_database() -> Result<Arc<Database>> {
-    DATABASE.get()
+    DATABASE
+        .get()
         .ok_or_else(|| anyhow::anyhow!("Database not initialized"))
         .cloned()
 }
@@ -192,8 +192,10 @@ pub mod test_utils {
     use sqlx::PgPool;
 
     pub async fn create_test_pool() -> PgPool {
-        let database_url = std::env::var("TEST_DATABASE_URL")
-            .unwrap_or_else(|_| "postgresql://postgres:password@localhost:5432/soroban_security_scanner_test".to_string());
+        let database_url = std::env::var("TEST_DATABASE_URL").unwrap_or_else(|_| {
+            "postgresql://postgres:password@localhost:5432/soroban_security_scanner_test"
+                .to_string()
+        });
 
         PgPoolOptions::new()
             .max_connections(5)
@@ -204,9 +206,7 @@ pub mod test_utils {
 
     pub async fn setup_test_database(pool: &PgPool) -> Result<()> {
         // Run migrations on test database
-        sqlx::migrate!("./migrations")
-            .run(pool)
-            .await?;
+        sqlx::migrate!("./migrations").run(pool).await?;
         Ok(())
     }
 
@@ -238,9 +238,12 @@ pub mod test_utils {
         ];
 
         for table in tables {
-            sqlx::query(&format!("TRUNCATE TABLE {} RESTART IDENTITY CASCADE", table))
-                .execute(pool)
-                .await?;
+            sqlx::query(&format!(
+                "TRUNCATE TABLE {} RESTART IDENTITY CASCADE",
+                table
+            ))
+            .execute(pool)
+            .await?;
         }
 
         Ok(())

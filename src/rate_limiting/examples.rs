@@ -1,10 +1,10 @@
 //! Examples demonstrating rate limiting usage
 
+use crate::rate_limiting::*;
+use chrono::Utc;
 use std::net::IpAddr;
 use std::time::Duration;
-use chrono::Utc;
 use uuid::Uuid;
-use crate::rate_limiting::*;
 
 /// Example 1: Basic rate limiting setup
 pub async fn basic_rate_limiting_example() -> Result<(), Box<dyn std::error::Error>> {
@@ -12,10 +12,10 @@ pub async fn basic_rate_limiting_example() -> Result<(), Box<dyn std::error::Err
 
     // Create configuration
     let config = RateLimitConfig::default();
-    
+
     // Create storage (in-memory for this example)
     let storage = Box::new(storage::MemoryStorage::new());
-    
+
     // Create rate limiter
     let limiter = RateLimiter::new(config, storage).await?;
 
@@ -28,14 +28,22 @@ pub async fn basic_rate_limiting_example() -> Result<(), Box<dyn std::error::Err
 
     // Check rate limit
     let result = limiter.check_rate_limit(&context).await;
-    
+
     match result {
-        RateLimitResult::Allowed { remaining, reset_time, .. } => {
+        RateLimitResult::Allowed {
+            remaining,
+            reset_time,
+            ..
+        } => {
             println!("✅ Request allowed!");
             println!("   Remaining requests: {}", remaining);
             println!("   Reset time: {}", reset_time);
         }
-        RateLimitResult::Blocked { reason, retry_after, .. } => {
+        RateLimitResult::Blocked {
+            reason,
+            retry_after,
+            ..
+        } => {
             println!("🚫 Request blocked: {}", reason);
             println!("   Retry after: {} seconds", retry_after.as_secs());
         }
@@ -72,9 +80,17 @@ pub async fn tiered_rate_limiting_example() -> Result<(), Box<dyn std::error::Er
         .with_metadata("email".to_string(), email.to_string());
 
         let result = limiter.check_rate_limit(&context).await;
-        
-        println!("👤 {:?} user ({}): {:?}", tier, email, 
-            if result.is_allowed() { "✅ Allowed" } else { "🚫 Blocked" });
+
+        println!(
+            "👤 {:?} user ({}): {:?}",
+            tier,
+            email,
+            if result.is_allowed() {
+                "✅ Allowed"
+            } else {
+                "🚫 Blocked"
+            }
+        );
     }
 
     Ok(())
@@ -85,11 +101,20 @@ pub async fn ip_restrictions_example() -> Result<(), Box<dyn std::error::Error>>
     println!("\n=== IP Restrictions Example ===");
 
     let mut config = RateLimitConfig::default();
-    
+
     // Add some IP restrictions
-    config.ip_restrictions.blocked_ips.push("192.168.1.50".parse().unwrap());
-    config.ip_restrictions.whitelisted_ips.push("192.168.1.200".parse().unwrap());
-    config.ip_restrictions.blocked_ranges.push("10.0.0.0/8".to_string());
+    config
+        .ip_restrictions
+        .blocked_ips
+        .push("192.168.1.50".parse().unwrap());
+    config
+        .ip_restrictions
+        .whitelisted_ips
+        .push("192.168.1.200".parse().unwrap());
+    config
+        .ip_restrictions
+        .blocked_ranges
+        .push("10.0.0.0/8".to_string());
 
     let storage = Box::new(storage::MemoryStorage::new());
     let limiter = RateLimiter::new(config, storage).await?;
@@ -109,9 +134,17 @@ pub async fn ip_restrictions_example() -> Result<(), Box<dyn std::error::Error>>
         );
 
         let result = limiter.check_rate_limit(&context).await;
-        
-        println!("🌐 {} ({}): {:?}", ip, description,
-            if result.is_allowed() { "✅ Allowed" } else { "🚫 Blocked" });
+
+        println!(
+            "🌐 {} ({}): {:?}",
+            ip,
+            description,
+            if result.is_allowed() {
+                "✅ Allowed"
+            } else {
+                "🚫 Blocked"
+            }
+        );
     }
 
     Ok(())
@@ -122,21 +155,20 @@ pub async fn endpoint_specific_example() -> Result<(), Box<dyn std::error::Error
     println!("\n=== Endpoint-Specific Rate Limiting Example ===");
 
     let mut config = RateLimitConfig::default();
-    
+
     // Add endpoint-specific policies
     let scan_endpoint = EndpointRateLimit::new("/api/scan".to_string())
         .with_methods(vec!["POST".to_string()])
         .with_policy(
             RateLimitTier::Basic,
-            RateLimitPolicy::new(10, RateLimitWindow::Minute)
+            RateLimitPolicy::new(10, RateLimitWindow::Minute),
         )
         .requires_auth(true);
 
-    let status_endpoint = EndpointRateLimit::new("/api/status".to_string())
-        .with_policy(
-            RateLimitTier::Unauthenticated,
-            RateLimitPolicy::new(100, RateLimitWindow::Minute)
-        );
+    let status_endpoint = EndpointRateLimit::new("/api/status".to_string()).with_policy(
+        RateLimitTier::Unauthenticated,
+        RateLimitPolicy::new(100, RateLimitWindow::Minute),
+    );
 
     config = config
         .add_endpoint(scan_endpoint)
@@ -158,9 +190,17 @@ pub async fn endpoint_specific_example() -> Result<(), Box<dyn std::error::Error
         );
 
         let result = limiter.check_rate_limit(&context).await;
-        
-        println!("🔗 {} ({}): {:?}", description, endpoint,
-            if result.is_allowed() { "✅ Allowed" } else { "🚫 Blocked" });
+
+        println!(
+            "🔗 {} ({}): {:?}",
+            description,
+            endpoint,
+            if result.is_allowed() {
+                "✅ Allowed"
+            } else {
+                "🚫 Blocked"
+            }
+        );
     }
 
     Ok(())
@@ -191,9 +231,16 @@ pub async fn distributed_rate_limiting_example() -> Result<(), Box<dyn std::erro
         .with_metadata("instance".to_string(), format!("instance-{}", i % 3));
 
         let result = limiter.check_rate_limit(&context).await;
-        
-        println!("🔄 Request {}: {:?}", i + 1,
-            if result.is_allowed() { "✅ Allowed" } else { "🚫 Blocked" });
+
+        println!(
+            "🔄 Request {}: {:?}",
+            i + 1,
+            if result.is_allowed() {
+                "✅ Allowed"
+            } else {
+                "🚫 Blocked"
+            }
+        );
 
         if let RateLimitResult::Allowed { remaining, .. } = result {
             if remaining == 0 {
@@ -225,20 +272,22 @@ pub async fn monitoring_example() -> Result<(), Box<dyn std::error::Error>> {
         .with_tier(RateLimitTier::Basic);
 
         let result = limiter.check_rate_limit(&context).await;
-        
+
         // Record the request
         limiter.record_request(&context).await?;
 
         // Intentionally violate rate limits for some requests
         if i > 40 {
             let policy = RateLimitPolicy::new(10, RateLimitWindow::Minute);
-            limiter.record_violation(&context, &policy, "Test violation").await?;
+            limiter
+                .record_violation(&context, &policy, "Test violation")
+                .await?;
         }
     }
 
     // Get statistics
     let stats = limiter.get_stats().await?;
-    
+
     println!("📊 Rate Limiting Statistics:");
     println!("   Total requests: {}", stats.total_requests);
     println!("   Allowed requests: {}", stats.allowed_requests);
@@ -247,7 +296,9 @@ pub async fn monitoring_example() -> Result<(), Box<dyn std::error::Error>> {
     println!("   Active IPs: {}", stats.active_ips);
 
     // Get violations
-    let violations = limiter.get_violations(Some(user_id), None, Some(10)).await?;
+    let violations = limiter
+        .get_violations(Some(user_id), None, Some(10))
+        .await?;
     println!("   Recent violations: {}", violations.len());
 
     Ok(())
@@ -286,11 +337,8 @@ pub async fn middleware_example() -> Result<(), Box<dyn std::error::Error>> {
         println!("   IP: {}", request.ip);
 
         // Create context from request
-        let mut context = RateLimitContext::new(
-            request.ip,
-            request.path.clone(),
-            request.method.clone(),
-        );
+        let mut context =
+            RateLimitContext::new(request.ip, request.path.clone(), request.method.clone());
 
         if let Some(user_id) = request.user_id {
             context = context.with_user_id(user_id);
@@ -302,12 +350,16 @@ pub async fn middleware_example() -> Result<(), Box<dyn std::error::Error>> {
 
         // Check rate limit
         let result = limiter.check_rate_limit(&context).await;
-        
+
         match result {
             RateLimitResult::Allowed { remaining, .. } => {
                 println!("   ✅ Request allowed ({} remaining)", remaining);
             }
-            RateLimitResult::Blocked { reason, retry_after, .. } => {
+            RateLimitResult::Blocked {
+                reason,
+                retry_after,
+                ..
+            } => {
                 println!("   🚫 Request blocked: {}", reason);
                 println!("   ⏰ Retry after: {} seconds", retry_after.as_secs());
             }

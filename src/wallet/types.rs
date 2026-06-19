@@ -3,10 +3,10 @@
 //! Core data structures for wallet creation, import/export, backup/restore,
 //! and cross-device synchronization.
 
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use uuid::Uuid;
 
 /// Wallet type classification
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

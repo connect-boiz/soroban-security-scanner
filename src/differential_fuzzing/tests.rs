@@ -17,7 +17,10 @@ mod tests {
             .with_release_date("2024-01-15");
         assert_eq!(version_with_details.version, "25.2.0");
         assert_eq!(version_with_details.git_hash, Some("abc123".to_string()));
-        assert_eq!(version_with_details.release_date, Some("2024-01-15".to_string()));
+        assert_eq!(
+            version_with_details.release_date,
+            Some("2024-01-15".to_string())
+        );
     }
 
     #[test]
@@ -39,7 +42,7 @@ mod tests {
     #[test]
     fn test_differential_fuzzing_config_default() {
         let config = DifferentialFuzzingConfig::default();
-        
+
         assert_eq!(config.sdk_versions.len(), 3);
         assert_eq!(config.test_count, 1000);
         assert_eq!(config.max_execution_time, Duration::from_secs(30));
@@ -58,17 +61,17 @@ mod tests {
             ArgumentValue::String("test".to_string()),
             ArgumentValue::Bytes(vec![1, 2, 3]),
             ArgumentValue::Address([42u8; 32]),
-            ArgumentValue::Vector(vec![
-                ArgumentValue::I128(1),
-                ArgumentValue::I128(2),
-            ]),
+            ArgumentValue::Vector(vec![ArgumentValue::I128(1), ArgumentValue::I128(2)]),
             ArgumentValue::None,
         ];
 
         for value in values {
             // Test that values can be created and cloned
             let cloned = value.clone();
-            assert_eq!(std::mem::discriminant(&value), std::mem::discriminant(&cloned));
+            assert_eq!(
+                std::mem::discriminant(&value),
+                std::mem::discriminant(&cloned)
+            );
         }
     }
 
@@ -122,7 +125,7 @@ mod tests {
     #[test]
     fn test_execution_trace() {
         let mut trace = ExecutionTrace::new();
-        
+
         trace.add_event(TraceEvent::new(
             TraceEventType::FunctionEntry,
             "test_function".to_string(),
@@ -270,7 +273,7 @@ mod tests {
         let inputs = generator.generate_test_inputs(10).unwrap();
 
         assert_eq!(inputs.len(), 10);
-        
+
         for input in &inputs {
             assert!(!input.function_name.is_empty());
             assert!(input.metadata.edge_case_type.is_some());
@@ -282,7 +285,7 @@ mod tests {
     #[test]
     fn test_deterministic_detector_config() {
         let config = DeterministicDetectorConfig::default();
-        
+
         assert_eq!(config.execution_retries, 5);
         assert_eq!(config.variation_threshold, 0.1);
         assert_eq!(config.time_dependency_threshold, Duration::from_millis(100));
@@ -311,15 +314,15 @@ mod tests {
     #[test]
     fn test_execution_tracer() {
         let mut tracer = ExecutionTracer::new();
-        
+
         tracer.start_trace();
         tracer.record_function_entry("test_function", 1);
         tracer.record_variable_read("x", ArgumentValue::I128(42), 2);
         tracer.record_variable_write("x", ArgumentValue::I128(100), 3);
         tracer.record_function_exit("test_function", 4, Some(ArgumentValue::I128(100)));
-        
+
         let trace = tracer.stop_trace().unwrap();
-        
+
         assert_eq!(trace.events.len(), 4);
         assert_eq!(trace.events[0].event_type, TraceEventType::FunctionEntry);
         assert_eq!(trace.events[1].event_type, TraceEventType::VariableRead);
@@ -330,16 +333,16 @@ mod tests {
     #[test]
     fn test_memory_usage_info() {
         let mut memory_info = MemoryUsageInfo::new();
-        
+
         assert_eq!(memory_info.peak_memory, 0);
         assert_eq!(memory_info.current_memory, 0);
         assert_eq!(memory_info.allocations.len(), 0);
-        
+
         memory_info.record_allocation(0x1000, 1024);
         assert_eq!(memory_info.current_memory, 1024);
         assert_eq!(memory_info.peak_memory, 1024);
         assert_eq!(memory_info.allocations.len(), 1);
-        
+
         memory_info.record_deallocation(0x1000, 1024);
         assert_eq!(memory_info.current_memory, 0);
         assert_eq!(memory_info.peak_memory, 1024);
@@ -349,9 +352,12 @@ mod tests {
     #[test]
     fn test_snapshot_config() {
         let config = SnapshotConfig::default();
-        
+
         assert_eq!(config.network_url, "https://horizon-futurenet.stellar.org");
-        assert_eq!(config.network_passphrase, "Test SDF Future Network ; October 2022");
+        assert_eq!(
+            config.network_passphrase,
+            "Test SDF Future Network ; October 2022"
+        );
         assert_eq!(config.horizon_url, "https://horizon-futurenet.stellar.org");
         assert!(config.friendbot_url.is_some());
         assert!(config.cache_enabled);
@@ -460,7 +466,7 @@ mod tests {
         let config = DifferentialFuzzingConfig::default();
         let serialized = serde_json::to_string(&config).unwrap();
         let deserialized: DifferentialFuzzingConfig = serde_json::from_str(&serialized).unwrap();
-        
+
         assert_eq!(config.test_count, deserialized.test_count);
         assert_eq!(config.sdk_versions.len(), deserialized.sdk_versions.len());
     }
@@ -474,19 +480,19 @@ mod tests {
         ]);
 
         let inputs = generator.generate_boundary_inputs().unwrap();
-        
+
         assert!(!inputs.is_empty());
-        
+
         // Verify that boundary inputs contain expected edge cases
-        let has_max_i128 = inputs.iter().any(|input| {
-            input.metadata.edge_case_type == Some(EdgeCaseType::MaxI128)
-        });
-        let has_min_i128 = inputs.iter().any(|input| {
-            input.metadata.edge_case_type == Some(EdgeCaseType::MinI128)
-        });
-        let has_zero = inputs.iter().any(|input| {
-            input.metadata.edge_case_type == Some(EdgeCaseType::ZeroValue)
-        });
+        let has_max_i128 = inputs
+            .iter()
+            .any(|input| input.metadata.edge_case_type == Some(EdgeCaseType::MaxI128));
+        let has_min_i128 = inputs
+            .iter()
+            .any(|input| input.metadata.edge_case_type == Some(EdgeCaseType::MinI128));
+        let has_zero = inputs
+            .iter()
+            .any(|input| input.metadata.edge_case_type == Some(EdgeCaseType::ZeroValue));
 
         assert!(has_max_i128);
         assert!(has_min_i128);
@@ -497,15 +503,19 @@ mod tests {
     fn test_cross_contract_input_generation() {
         let mut generator = InputGenerator::new(vec![]);
         let inputs = generator.generate_cross_contract_inputs(5).unwrap();
-        
+
         assert_eq!(inputs.len(), 5);
-        
+
         for input in &inputs {
-            assert!(input.function_name.contains("call") || 
-                   input.function_name.contains("external") ||
-                   input.function_name.contains("delegate"));
-            assert_eq!(input.metadata.edge_case_type, 
-                      Some(EdgeCaseType::Custom("cross_contract".to_string())));
+            assert!(
+                input.function_name.contains("call")
+                    || input.function_name.contains("external")
+                    || input.function_name.contains("delegate")
+            );
+            assert_eq!(
+                input.metadata.edge_case_type,
+                Some(EdgeCaseType::Custom("cross_contract".to_string()))
+            );
         }
     }
 
@@ -544,11 +554,14 @@ mod tests {
         ]);
 
         let inputs = generator.generate_composite_inputs(2, 100).unwrap();
-        
+
         // Should generate inputs without duplicates
-        assert!(!inputs.is_empty(), "Should generate at least some composite inputs");
+        assert!(
+            !inputs.is_empty(),
+            "Should generate at least some composite inputs"
+        );
         assert!(inputs.len() <= 100, "Should respect max_inputs limit");
-        
+
         // Verify deduplication (no two inputs should have the same fingerprint)
         let mut fingerprints = std::collections::HashSet::new();
         for input in &inputs {
@@ -570,23 +583,32 @@ mod tests {
         let inputs = generator.generate_composite_inputs(1, 10).unwrap();
 
         // Find self-transfer inputs and verify same address
-        let self_transfer_inputs: Vec<&crate::differential_fuzzing::TestInput> = inputs.iter()
-            .filter(|i| i.metadata.edge_case_type.as_ref().map_or(false, |e| {
-                matches!(e, EdgeCaseType::Custom(s) if s.contains("SelfTransfer"))
-            }))
+        let self_transfer_inputs: Vec<&crate::differential_fuzzing::TestInput> = inputs
+            .iter()
+            .filter(|i| {
+                i.metadata.edge_case_type.as_ref().map_or(
+                    false,
+                    |e| matches!(e, EdgeCaseType::Custom(s) if s.contains("SelfTransfer")),
+                )
+            })
             .collect();
 
         for input in self_transfer_inputs {
-            let addr_args: Vec<&ArgumentValue> = input.arguments.iter()
+            let addr_args: Vec<&ArgumentValue> = input
+                .arguments
+                .iter()
                 .filter(|a| matches!(a.value, ArgumentValue::Address(_)))
                 .map(|a| &a.value)
                 .collect();
-            
+
             // If there are 2+ address args, they should be equal
             if addr_args.len() >= 2 {
                 let first = format!("{:?}", addr_args[0]);
                 let second = format!("{:?}", addr_args[1]);
-                assert_eq!(first, second, "Self-transfer should use same address for all Address params");
+                assert_eq!(
+                    first, second,
+                    "Self-transfer should use same address for all Address params"
+                );
             }
         }
     }
@@ -597,10 +619,14 @@ mod tests {
         let inputs = generator.generate_composite_inputs(1, 10).unwrap();
 
         // Find zero-address-transfer inputs and verify recipient is [0u8; 32]
-        let zero_addr_inputs: Vec<&crate::differential_fuzzing::TestInput> = inputs.iter()
-            .filter(|i| i.metadata.edge_case_type.as_ref().map_or(false, |e| {
-                matches!(e, EdgeCaseType::Custom(s) if s.contains("ZeroAddressTransfer"))
-            }))
+        let zero_addr_inputs: Vec<&crate::differential_fuzzing::TestInput> = inputs
+            .iter()
+            .filter(|i| {
+                i.metadata.edge_case_type.as_ref().map_or(
+                    false,
+                    |e| matches!(e, EdgeCaseType::Custom(s) if s.contains("ZeroAddressTransfer")),
+                )
+            })
             .collect();
 
         for input in zero_addr_inputs {
@@ -618,10 +644,14 @@ mod tests {
         let mut generator = InputGenerator::new(vec![]);
         let inputs = generator.generate_composite_inputs(1, 10).unwrap();
 
-        let max_inputs: Vec<&crate::differential_fuzzing::TestInput> = inputs.iter()
-            .filter(|i| i.metadata.edge_case_type.as_ref().map_or(false, |e| {
-                matches!(e, EdgeCaseType::Custom(s) if s.contains("AllMaxI128"))
-            }))
+        let max_inputs: Vec<&crate::differential_fuzzing::TestInput> = inputs
+            .iter()
+            .filter(|i| {
+                i.metadata.edge_case_type.as_ref().map_or(
+                    false,
+                    |e| matches!(e, EdgeCaseType::Custom(s) if s.contains("AllMaxI128")),
+                )
+            })
             .collect();
 
         for input in max_inputs {
@@ -661,13 +691,15 @@ mod tests {
         ]);
 
         let inputs = generator.generate_composite_inputs(2, 200).unwrap();
-        
+
         // With 13 composite scenarios x ~5 function names = up to 65 inputs
         // But we limit to 200, so we should get at least 50 distinct ones
-        assert!(inputs.len() >= 50, 
-            "Expected at least 50 distinct composite inputs from 5 base types, got {}", 
-            inputs.len());
-        
+        assert!(
+            inputs.len() >= 50,
+            "Expected at least 50 distinct composite inputs from 5 base types, got {}",
+            inputs.len()
+        );
+
         // Verify they're all unique
         let mut fingerprints = std::collections::HashSet::new();
         for input in &inputs {
@@ -688,7 +720,7 @@ mod tests {
     fn test_fingerprint_determinism() {
         let mut generator = InputGenerator::new(vec![]);
         let inputs = generator.generate_composite_inputs(1, 5).unwrap();
-        
+
         // Same input should produce same fingerprint
         for input in &inputs {
             let fp1 = crate::differential_fuzzing::input_generator::fingerprint_input(input);

@@ -36,7 +36,8 @@ pub trait WalletStore: Send + Sync {
 
     // Sync records
     async fn upsert_sync_record(&self, record: &WalletSyncRecord) -> Result<(), WalletError>;
-    async fn get_sync_records(&self, wallet_id: Uuid) -> Result<Vec<WalletSyncRecord>, WalletError>;
+    async fn get_sync_records(&self, wallet_id: Uuid)
+        -> Result<Vec<WalletSyncRecord>, WalletError>;
 
     // Per-user HMAC key for export integrity
     async fn get_hmac_key(&self, user_id: Uuid) -> Result<Vec<u8>, WalletError>;
@@ -58,8 +59,13 @@ pub struct InMemoryWalletStore {
 impl WalletStore for InMemoryWalletStore {
     async fn create(&self, wallet: &Wallet) -> Result<(), WalletError> {
         let mut store = self.wallets.write().await;
-        if store.values().any(|w| w.stellar_address == wallet.stellar_address) {
-            return Err(WalletError::DuplicateAddress(wallet.stellar_address.clone()));
+        if store
+            .values()
+            .any(|w| w.stellar_address == wallet.stellar_address)
+        {
+            return Err(WalletError::DuplicateAddress(
+                wallet.stellar_address.clone(),
+            ));
         }
         store.insert(wallet.id, wallet.clone());
         Ok(())
@@ -119,7 +125,10 @@ impl WalletStore for InMemoryWalletStore {
         Ok(())
     }
 
-    async fn get_sync_records(&self, wallet_id: Uuid) -> Result<Vec<WalletSyncRecord>, WalletError> {
+    async fn get_sync_records(
+        &self,
+        wallet_id: Uuid,
+    ) -> Result<Vec<WalletSyncRecord>, WalletError> {
         Ok(self
             .sync_records
             .read()
@@ -321,7 +330,11 @@ impl WalletService {
 
     /// Fetch the current balance from Stellar Horizon (mock implementation).
     /// In production, replace with a real Horizon HTTP call.
-    pub async fn get_balance(&self, wallet_id: Uuid, user_id: Uuid) -> Result<WalletBalance, WalletError> {
+    pub async fn get_balance(
+        &self,
+        wallet_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<WalletBalance, WalletError> {
         let wallet = self.get_owned_wallet(wallet_id, user_id).await?;
         // TODO: replace with real Horizon API call
         Ok(WalletBalance {
@@ -344,7 +357,11 @@ impl WalletService {
         self.store.list_for_user(user_id).await
     }
 
-    pub async fn freeze_wallet(&self, wallet_id: Uuid, user_id: Uuid) -> Result<Wallet, WalletError> {
+    pub async fn freeze_wallet(
+        &self,
+        wallet_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Wallet, WalletError> {
         let mut wallet = self.get_owned_wallet(wallet_id, user_id).await?;
         wallet.status = WalletStatus::Frozen;
         wallet.updated_at = Utc::now();
@@ -398,7 +415,11 @@ impl WalletService {
         Ok(wallet)
     }
 
-    async fn get_owned_wallet(&self, wallet_id: Uuid, user_id: Uuid) -> Result<Wallet, WalletError> {
+    async fn get_owned_wallet(
+        &self,
+        wallet_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Wallet, WalletError> {
         let wallet = self
             .store
             .get_by_id(wallet_id)
@@ -425,17 +446,16 @@ impl WalletService {
     /// Generate a fresh Stellar keypair. Returns (public_address, secret_seed).
     /// Uses ring's Ed25519 key generation and encodes with Stellar's base32 strkey format.
     fn generate_keypair(&self) -> (String, String) {
+        use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
         use rand::RngCore;
         use ring::signature::{Ed25519KeyPair, KeyPair};
-        use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 
         let mut seed = [0u8; 32];
         rand::thread_rng().fill_bytes(&mut seed);
 
         // Encode as Stellar strkey: version byte + payload + checksum, base32
         let secret_address = stellar_strkey_encode(&seed, 0x90); // S... secret seed
-        let key_pair = Ed25519KeyPair::from_seed_unchecked(&seed)
-            .expect("valid 32-byte seed");
+        let key_pair = Ed25519KeyPair::from_seed_unchecked(&seed).expect("valid 32-byte seed");
         let public_bytes: &[u8] = key_pair.public_key().as_ref();
         let public_address = stellar_strkey_encode(public_bytes, 0x30); // G... public key
 
@@ -446,8 +466,7 @@ impl WalletService {
     fn parse_keypair(&self, seed: &str) -> Result<(String, String), WalletError> {
         use ring::signature::{Ed25519KeyPair, KeyPair};
 
-        let raw = stellar_strkey_decode(seed, 0x90)
-            .map_err(|_| WalletError::InvalidSecretSeed)?;
+        let raw = stellar_strkey_decode(seed, 0x90).map_err(|_| WalletError::InvalidSecretSeed)?;
         if raw.len() != 32 {
             return Err(WalletError::InvalidSecretSeed);
         }

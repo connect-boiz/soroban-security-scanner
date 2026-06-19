@@ -1,5 +1,5 @@
 //! Security and Invariant Scanners for Stellar Smart Contracts
-//! 
+//!
 //! This crate provides comprehensive security analysis tools for Stellar Soroban contracts,
 //! including vulnerability detection, invariant checking, and best practices enforcement.
 
@@ -9,7 +9,6 @@ pub mod audit_proof_of_scan;
 pub mod batch_operations;
 pub mod config;
 pub mod database;
-pub mod detectors;
 pub mod differential_fuzzing;
 pub mod emergency_stop;
 pub mod escrow;
@@ -19,10 +18,8 @@ pub mod invariants;
 pub mod kubernetes;
 pub mod multisig;
 pub mod notification_service;
-pub mod performance;
 pub mod rate_limiting;
 pub mod report;
-pub mod reporters;
 pub mod scanner_registry;
 pub mod scanners;
 pub mod secure_id_generation;
@@ -34,52 +31,52 @@ pub mod wallet;
 #[cfg(test)]
 mod multisig_tests;
 
-pub use scanners::{SecurityScanner, InvariantScanner};
-pub use vulnerabilities::VulnerabilityType;
-pub use invariants::InvariantRule;
 pub use analysis::AnalysisResult;
-pub use report::{SecurityReport, ReportFormat};
-pub use config::ScannerConfig;
-pub use kubernetes::{K8sScanManager, ScanPodConfig, ScanAutoScaler};
-pub use scanner_registry::{ScannerRegistry, ScannerVersion, VersionStatus};
-pub use audit_proof_of_scan::{AuditProofOfScan, SecurityCertificate, CertificateStatus, RiskScore};
-pub use session::stateless::{
-    ExternalSessionStore, InMemorySessionStore, SessionClaims, SessionError,
-    SessionStoreRecord, StatelessSessionManager,
-};
-pub use time_travel_debugger::{
-    TimeTravelDebugger, TimeTravelConfig, LedgerSnapshot, ContractState, 
-    ForkedState, TestResult, UpgradeSimulationResult, CacheStats
-};
-pub use differential_fuzzing::{
-    DifferentialFuzzer, DifferentialFuzzingConfig, DifferentialFuzzingReport,
-    SdkVersion, TestInput, ExecutionResult, DiscrepancyDetector, NonDeterministicBehavior
+pub use audit_proof_of_scan::{
+    AuditProofOfScan, CertificateStatus, RiskScore, SecurityCertificate,
 };
 pub use batch_operations::{
-    BatchOperations, BatchOperationStatus, BatchEscrowReleaseRequest, 
-    BatchVerificationRequest, BatchOperationResult, BatchOperationSummary
+    BatchEscrowReleaseRequest, BatchOperationResult, BatchOperationStatus, BatchOperationSummary,
+    BatchOperations, BatchVerificationRequest,
+};
+pub use config::ScannerConfig;
+pub use differential_fuzzing::{
+    DifferentialFuzzer, DifferentialFuzzingConfig, DifferentialFuzzingReport, DiscrepancyDetector,
+    ExecutionResult, NonDeterministicBehavior, SdkVersion, TestInput,
+};
+pub use invariants::InvariantRule;
+pub use kubernetes::{K8sScanManager, ScanAutoScaler, ScanPodConfig};
+pub use multisig::{
+    AggregatedSignatures, CreateProposalRequest, InMemoryMultiSigStore, MultiSigError,
+    MultiSigProposal, MultiSigService, MultiSigSigner, MultiSigStore, ProposalStatus,
+    SignatureEntry, SignerDecision, SignerSpec, SubmitSignatureRequest,
 };
 pub use notification_service::{
-    NotificationService, NotificationServiceTrait, NotificationTemplate, TemplateManager,
-    DeliveryTracker, StorageBackend, InMemoryBackend, NotificationProvider, NotificationChannel, NotificationPriority,
-    DeliveryStatus, Recipient, NotificationMessage, NotificationResult
+    DeliveryStatus, DeliveryTracker, InMemoryBackend, NotificationChannel, NotificationMessage,
+    NotificationPriority, NotificationProvider, NotificationResult, NotificationService,
+    NotificationServiceTrait, NotificationTemplate, Recipient, StorageBackend, TemplateManager,
 };
 pub use rate_limiting::{
-    RateLimiter, RateLimitConfig, RateLimitContext, RateLimitResult, RateLimitTier,
-    RateLimitPolicy, RateLimitWindow, RateLimitMiddleware, EndpointRateLimit,
-    RateLimitStorage, RateLimitViolation, RateLimitStats
+    EndpointRateLimit, RateLimitConfig, RateLimitContext, RateLimitMiddleware, RateLimitPolicy,
+    RateLimitResult, RateLimitStats, RateLimitStorage, RateLimitTier, RateLimitViolation,
+    RateLimitWindow, RateLimiter,
 };
+pub use report::{ReportFormat, SecurityReport};
+pub use scanner_registry::{ScannerRegistry, ScannerVersion, VersionStatus};
+pub use scanners::{InvariantScanner, SecurityScanner};
+pub use session::stateless::{
+    ExternalSessionStore, InMemorySessionStore, SessionClaims, SessionError, SessionStoreRecord,
+    StatelessSessionManager,
+};
+pub use time_travel_debugger::{
+    CacheStats, ContractState, ForkedState, LedgerSnapshot, TestResult, TimeTravelConfig,
+    TimeTravelDebugger, UpgradeSimulationResult,
+};
+pub use vulnerabilities::VulnerabilityType;
 pub use wallet::{
-    WalletService, WalletStore, InMemoryWalletStore,
-    Wallet, WalletType, WalletStatus, WalletError,
-    CreateWalletRequest, ImportWalletRequest, RestoreWalletRequest,
-    WalletExport, WalletBalance, WalletSyncRecord,
-};
-pub use multisig::{
-    MultiSigService, MultiSigStore, InMemoryMultiSigStore,
-    MultiSigProposal, MultiSigSigner, ProposalStatus, SignerDecision,
-    MultiSigError, CreateProposalRequest, SubmitSignatureRequest,
-    AggregatedSignatures, SignatureEntry, SignerSpec,
+    CreateWalletRequest, ImportWalletRequest, InMemoryWalletStore, RestoreWalletRequest, Wallet,
+    WalletBalance, WalletError, WalletExport, WalletService, WalletStatus, WalletStore,
+    WalletSyncRecord, WalletType,
 };
 
 #[derive(Debug, Clone)]

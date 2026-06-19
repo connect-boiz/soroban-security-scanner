@@ -1,13 +1,13 @@
 //! Example usage of Kubernetes-based isolated scanning
-//! 
+//!
 //! This example demonstrates how to use the stellar-security-scanner
 //! with complete Kubernetes isolation for tenant separation.
 
 use anyhow::Result;
 use std::time::Duration;
 use stellar_security_scanner::{
-    kubernetes::{K8sScanManager, ScanPodConfig, ScanAutoScaler},
     config::ScannerConfig,
+    kubernetes::{K8sScanManager, ScanAutoScaler, ScanPodConfig},
 };
 use tokio;
 
@@ -17,14 +17,14 @@ async fn main() -> Result<()> {
 
     // 1. Configure scan pod settings
     let scan_config = ScanPodConfig {
-        cpu_limit: "500m".to_string(),      // 0.5 CPU cores max
-        memory_limit: "1Gi".to_string(),    // 1GB RAM max
+        cpu_limit: "500m".to_string(),       // 0.5 CPU cores max
+        memory_limit: "1Gi".to_string(),     // 1GB RAM max
         cpu_request: "100m".to_string(),     // 0.1 CPU cores min
         memory_request: "256Mi".to_string(), // 256MB RAM min
         scanner_image: "stellar-security-scanner:latest".to_string(),
-        timeout: Duration::from_secs(300),   // 5 minute timeout
-        encrypt_volumes: true,               // Enable encryption
-        block_egress: true,                  // Block all external traffic
+        timeout: Duration::from_secs(300), // 5 minute timeout
+        encrypt_volumes: true,             // Enable encryption
+        block_egress: true,                // Block all external traffic
     };
 
     // 2. Create Kubernetes scan manager
@@ -76,7 +76,7 @@ async fn main() -> Result<()> {
 
     // 6. Execute multiple scans concurrently with auto-scaling
     let mut scan_tasks = Vec::new();
-    
+
     for i in 1..=3 {
         let scan_id = format!("example-scan-{}", i);
         let contract_bytes = contract_code.as_bytes().to_vec();
@@ -85,20 +85,30 @@ async fn main() -> Result<()> {
 
         let task = tokio::spawn(async move {
             println!("🔍 Starting scan {}...", scan_id);
-            
+
             let start_time = std::time::Instant::now();
-            match scaler.execute_scaled_scan(&scan_id, &config, &contract_bytes).await {
+            match scaler
+                .execute_scaled_scan(&scan_id, &config, &contract_bytes)
+                .await
+            {
                 Ok(result) => {
                     let duration = start_time.elapsed();
-                    println!("✅ Scan {} completed in {:.2}s", scan_id, duration.as_secs_f64());
+                    println!(
+                        "✅ Scan {} completed in {:.2}s",
+                        scan_id,
+                        duration.as_secs_f64()
+                    );
                     println!("   Vulnerabilities found: {}", result.vulnerabilities.len());
-                    println!("   Invariant violations: {}", result.invariant_violations.len());
-                    
+                    println!(
+                        "   Invariant violations: {}",
+                        result.invariant_violations.len()
+                    );
+
                     // Print specific findings
                     for vuln in &result.vulnerabilities {
                         println!("   🚨 {}: {}", vuln, vuln.description());
                     }
-                    
+
                     Ok::<_, anyhow::Error>(result)
                 }
                 Err(e) => {
@@ -107,7 +117,7 @@ async fn main() -> Result<()> {
                 }
             }
         });
-        
+
         scan_tasks.push(task);
     }
 
@@ -139,7 +149,9 @@ async fn main() -> Result<()> {
 
     // 10. Cleanup demonstration (optional)
     println!("🧹 Performing cleanup of old scans...");
-    let cleaned_count = manager.cleanup_stuck_scans(Duration::from_secs(1800)).await?; // 30 minutes
+    let cleaned_count = manager
+        .cleanup_stuck_scans(Duration::from_secs(1800))
+        .await?; // 30 minutes
     if cleaned_count > 0 {
         println!("   Cleaned up {} stuck scans", cleaned_count);
     } else {
@@ -157,7 +169,7 @@ mod tests {
     #[tokio::test]
     async fn test_kubernetes_manager_creation() {
         let config = ScanPodConfig::default();
-        
+
         // This test requires a running Kubernetes cluster
         // In CI/CD, use a test cluster like kind or minikube
         if std::env::var("KUBE_TEST").is_ok() {
@@ -170,11 +182,11 @@ mod tests {
     async fn test_auto_scaler_load_metrics() {
         let config = ScanPodConfig::default();
         let max_concurrent = 10;
-        
+
         if std::env::var("KUBE_TEST").is_ok() {
             let manager = K8sScanManager::new(config).await.unwrap();
             let scaler = ScanAutoScaler::new(manager, max_concurrent);
-            
+
             let (current, max) = scaler.get_load_metrics();
             assert_eq!(max, max_concurrent);
             assert!(current <= max);
@@ -184,7 +196,7 @@ mod tests {
     #[test]
     fn test_scan_pod_config_defaults() {
         let config = ScanPodConfig::default();
-        
+
         assert_eq!(config.cpu_limit, "1000m");
         assert_eq!(config.memory_limit, "2Gi");
         assert_eq!(config.timeout, Duration::from_secs(600));

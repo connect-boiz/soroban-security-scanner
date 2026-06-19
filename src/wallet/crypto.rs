@@ -6,10 +6,11 @@
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use rand::RngCore;
 use ring::{
-    aead::{self, Aad, BoundKey, Nonce, NonceSequence, OpeningKey, SealingKey, UnboundKey, AES_256_GCM},
+    aead::{
+        self, Aad, BoundKey, Nonce, NonceSequence, OpeningKey, SealingKey, UnboundKey, AES_256_GCM,
+    },
     error::Unspecified,
-    hmac,
-    pbkdf2,
+    hmac, pbkdf2,
 };
 use std::num::NonZeroU32;
 
@@ -90,8 +91,8 @@ pub fn decrypt_seed(export: &WalletExport, password: &str) -> Result<String, Wal
 
     let key_bytes = derive_key(password, &salt, export.kdf_iterations);
 
-    let unbound = UnboundKey::new(&AES_256_GCM, &key_bytes)
-        .map_err(|_| WalletError::DecryptionError)?;
+    let unbound =
+        UnboundKey::new(&AES_256_GCM, &key_bytes).map_err(|_| WalletError::DecryptionError)?;
     let mut opening = OpeningKey::new(unbound, SingleNonce(nonce_bytes));
 
     let mut in_out = encrypted;
