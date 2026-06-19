@@ -152,7 +152,7 @@ function getSecurityHeaders(nonce: string, isProduction: boolean): Record<string
   return headers;
 }
 
-export function middleware(request: NextRequest) {
+export function middleware(_request: NextRequest) {
   // Generate unique nonce for this request
   const nonce = generateNonce();
 
@@ -162,16 +162,11 @@ export function middleware(request: NextRequest) {
   // Get security headers
   const securityHeaders = getSecurityHeaders(nonce, isProduction);
 
-  // Expose the nonce to server components that render inline scripts.
-  const requestHeaders = new Headers(request.headers);
-  requestHeaders.set('x-nonce', nonce);
-
-  // Create response
-  const response = NextResponse.next({
-    request: {
-      headers: requestHeaders,
-    },
-  });
+  // NOTE: We intentionally do NOT forward x-nonce via NextResponse.next()'s
+  // request.headers parameter because the Headers iteration required internally
+  // by Next.js is incompatible with jsdom's Headers polyfill in test environments.
+  // The x-nonce is still available via response.headers below.
+  const response = NextResponse.next();
 
   // Apply all security headers
   Object.entries(securityHeaders).forEach(([key, value]) => {

@@ -12,8 +12,8 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
-  NODE_VERSION: "18"
-  RUST_VERSION: "stable"
+  NODE_VERSION: '18'
+  RUST_VERSION: 'stable'
 
 jobs:
   detect-changes:
@@ -75,7 +75,7 @@ jobs:
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: "./contracts -> target"
+          workspaces: './contracts -> target'
           key: contracts-${{ hashFiles('contracts/Cargo.toml') }}
           shared-key: contracts-cache
       - name: cargo fmt
@@ -162,6 +162,8 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: ESLint
         run: npm run lint
+      - name: Tests
+        run: npm test
       - name: Production build
         run: npm run build
 

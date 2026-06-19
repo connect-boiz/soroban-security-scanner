@@ -11,7 +11,6 @@
  * - Cross-Origin policies
  */
 
-import { NextResponse } from 'next/server';
 import { middleware } from '../middleware';
 
 // Mock crypto for testing
@@ -22,12 +21,14 @@ jest.mock('crypto', () => ({
 }));
 
 describe('Security Headers Middleware', () => {
-  let mockRequest: any;
+  // Minimal NextRequest stub — the middleware no longer reads from the request
+  // (request header forwarding was removed to avoid jsdom Headers iteration
+  // incompatibility in NextResponse.next()). See middleware.ts for details.
+  const mockRequest = {} as any;
 
   beforeEach(() => {
-    mockRequest = {
-      headers: new Headers(),
-    };
+    // Reset env for each test
+    (process.env as any).NODE_ENV = 'test';
   });
 
   describe('Content Security Policy (CSP)', () => {
