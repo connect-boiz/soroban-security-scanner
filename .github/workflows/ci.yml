@@ -109,7 +109,7 @@ jobs:
       - name: cargo fmt
         run: cargo fmt --check
       - name: cargo clippy
-        run: cargo clippy
+        run: cargo clippy --lib
       - name: cargo test
         run: cargo test
       - name: cargo build

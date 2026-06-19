@@ -163,52 +163,32 @@ describe('Security Headers Middleware', () => {
 
   describe('HTTP Strict Transport Security (HSTS)', () => {
     it('should set HSTS header in production', () => {
-      const originalEnv = process.env.NODE_ENV;
-      process.env.NODE_ENV = 'production';
-
+      (process.env as any).NODE_ENV = 'production';
       const response = middleware(mockRequest);
       const hstsHeader = response.headers.get('Strict-Transport-Security');
-
       expect(hstsHeader).toBeTruthy();
       expect(hstsHeader).toContain('max-age=31536000');
-
-      process.env.NODE_ENV = originalEnv;
     });
 
     it('should include includeSubDomains directive', () => {
-      const originalEnv = process.env.NODE_ENV;
-      process.env.NODE_ENV = 'production';
-
+      (process.env as any).NODE_ENV = 'production';
       const response = middleware(mockRequest);
       const hstsHeader = response.headers.get('Strict-Transport-Security');
-
       expect(hstsHeader).toContain('includeSubDomains');
-
-      process.env.NODE_ENV = originalEnv;
     });
 
     it('should include preload directive', () => {
-      const originalEnv = process.env.NODE_ENV;
-      process.env.NODE_ENV = 'production';
-
+      (process.env as any).NODE_ENV = 'production';
       const response = middleware(mockRequest);
       const hstsHeader = response.headers.get('Strict-Transport-Security');
-
       expect(hstsHeader).toContain('preload');
-
-      process.env.NODE_ENV = originalEnv;
     });
 
     it('should not set HSTS in development', () => {
-      const originalEnv = process.env.NODE_ENV;
-      process.env.NODE_ENV = 'development';
-
+      (process.env as any).NODE_ENV = 'development';
       const response = middleware(mockRequest);
       const hstsHeader = response.headers.get('Strict-Transport-Security');
-
       expect(hstsHeader).toBeNull();
-
-      process.env.NODE_ENV = originalEnv;
     });
   });
 
@@ -292,27 +272,17 @@ describe('Security Headers Middleware', () => {
 
   describe('Environment-Specific Behavior', () => {
     it('should use CSP report-only mode in development', () => {
-      const originalEnv = process.env.NODE_ENV;
-      process.env.NODE_ENV = 'development';
-
+      (process.env as any).NODE_ENV = 'development';
       const response = middleware(mockRequest);
-
       expect(response.headers.get('Content-Security-Policy-Report-Only')).toBeTruthy();
       expect(response.headers.get('Content-Security-Policy')).toBeNull();
-
-      process.env.NODE_ENV = originalEnv;
     });
 
     it('should use enforcing CSP mode in production', () => {
-      const originalEnv = process.env.NODE_ENV;
-      process.env.NODE_ENV = 'production';
-
+      (process.env as any).NODE_ENV = 'production';
       const response = middleware(mockRequest);
-
       expect(response.headers.get('Content-Security-Policy')).toBeTruthy();
       expect(response.headers.get('Content-Security-Policy-Report-Only')).toBeNull();
-
-      process.env.NODE_ENV = originalEnv;
     });
   });
 
