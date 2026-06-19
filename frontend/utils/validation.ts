@@ -186,10 +186,10 @@ export class FormValidator {
     const fieldErrors: Record<string, string> = {};
 
     for (const fieldName of Object.keys(this.config)) {
-      const fieldErrors = await this.validateField(fieldName, formData[fieldName], formData);
-      if (fieldErrors.length > 0) {
-        errors[fieldName] = fieldErrors;
-        fieldErrors[fieldName] = fieldErrors[0]; // First error for display
+      const results = await this.validateField(fieldName, formData[fieldName], formData);
+      if (results.length > 0) {
+        errors[fieldName] = results;
+        fieldErrors[fieldName] = results[0]; // First error for display
       }
     }
 

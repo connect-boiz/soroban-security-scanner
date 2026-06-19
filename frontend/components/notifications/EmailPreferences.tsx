@@ -69,7 +69,7 @@ export const EmailPreferencesPanel: React.FC<EmailPreferencesProps> = ({
         start_hour: 22,
         end_hour: 8,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      });
+      } as QuietHours);
     }
   };
 
@@ -217,7 +217,7 @@ export const EmailPreferencesPanel: React.FC<EmailPreferencesProps> = ({
                 value={localPreferences.quiet_hours.timezone}
                 onChange={e =>
                   handleQuietHoursChange({
-                    ...localPreferences.quiet_hours,
+                    ...localPreferences.quiet_hours!,
                     timezone: e.target.value,
                   })
                 }

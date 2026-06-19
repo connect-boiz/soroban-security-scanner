@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { FormValidator, FormConfig, ValidationResult, ValidationState } from '@/utils/validation';
 
-interface UseFormValidationOptions {
+export interface UseFormValidationOptions {
   validateOnChange?: boolean;
   validateOnBlur?: boolean;
   validateOnSubmit?: boolean;

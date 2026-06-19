@@ -1,8 +1,9 @@
 import React, { useEffect } from 'react';
 import dynamic from 'next/dynamic';
-import { CallBackProps, STATUS, Step } from 'react-joyride';
+import { STATUS, Step } from 'react-joyride';
 import { useHelpStore } from '../../lib/store/helpStore';
 
+// @ts-ignore - react-joyride dynamic import type mismatch
 const Joyride = dynamic(() => import('react-joyride'), { ssr: false });
 import { SCAN_TOUR_STEPS } from '../../lib/tours/scan-tour';
 import { VULNERABILITY_TOUR_STEPS } from '../../lib/tours/vulnerability-tour';
@@ -42,7 +43,7 @@ const GuidedTour: React.FC<GuidedTourProps> = ({ tourId }) => {
     }
   }, [tourId, completedTours, activeTour, setActiveTour, markTourComplete]);
 
-  const handleJoyrideCallback = (data: CallBackProps) => {
+  const handleJoyrideCallback = (data: any) => {
     const { status } = data;
     const finishedStatuses: string[] = [STATUS.FINISHED, STATUS.SKIPPED];
 
@@ -53,8 +54,10 @@ const GuidedTour: React.FC<GuidedTourProps> = ({ tourId }) => {
     }
   };
 
+  const JoyrideComponent = Joyride as React.ComponentType<any>;
+
   return (
-    <Joyride
+    <JoyrideComponent
       steps={steps}
       run={activeTour === tourId}
       continuous

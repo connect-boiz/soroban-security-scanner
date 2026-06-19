@@ -109,12 +109,14 @@ export const TransactionChart: React.FC<TransactionChartProps> = ({
     if (timeRange === 'all') return data;
 
     const now = new Date();
-    const daysAgo = {
-      '24h': 1,
-      '7d': 7,
-      '30d': 30,
-      '90d': 90,
-    }[timeRange];
+    const daysAgo = (
+      {
+        '24h': 1,
+        '7d': 7,
+        '30d': 30,
+        '90d': 90,
+      } as Record<string, number>
+    )[timeRange];
 
     const cutoffDate = subDays(now, daysAgo!);
     return data.filter(tx => isAfter(tx.timestamp, cutoffDate));
@@ -155,6 +157,7 @@ export const TransactionChart: React.FC<TransactionChartProps> = ({
     const distribution = filteredData.reduce((acc: any, tx) => {
       if (!acc[tx.type]) {
         acc[tx.type] = {
+          name: tx.type,
           type: tx.type,
           count: 0,
           totalAmount: 0,
@@ -331,7 +334,7 @@ export const TransactionChart: React.FC<TransactionChartProps> = ({
             cx="50%"
             cy="50%"
             labelLine={false}
-            label={({ type, percent }) => `${type} ${(percent * 100).toFixed(0)}%`}
+            label={({ name, percent }: any) => `${name} ${(percent! * 100).toFixed(0)}%`}
             outerRadius={80}
             fill="#8884d8"
             dataKey="totalAmount"
