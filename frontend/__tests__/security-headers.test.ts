@@ -26,7 +26,7 @@ describe('Security Headers Middleware', () => {
 
   beforeEach(() => {
     mockRequest = {
-      headers: new Map(),
+      headers: new Headers(),
     };
   });
 
