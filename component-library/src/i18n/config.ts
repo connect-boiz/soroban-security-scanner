@@ -1,7 +1,6 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import Backend from 'i18next-fs-backend';
-// @ts-expect-error - no type declarations available
 import LanguageDetector from 'i18next-browser-languagedetector';
 
 // Import translation files
