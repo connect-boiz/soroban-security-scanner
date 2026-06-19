@@ -49,7 +49,7 @@ class TemplateManager {
     this.handlebars.registerHelper('truncate', function(text, length) {
       if (!text) { return ''; }
       const len = parseInt(length) || 50;
-      if (text.length <= len) return text;
+      if (text.length <= len) { return text; }
       return text.substring(0, len) + '...';
     });
 
