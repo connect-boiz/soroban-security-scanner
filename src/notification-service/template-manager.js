@@ -35,19 +35,19 @@ class TemplateManager {
   registerCustomHelpers() {
     // Format date helper with i18n support
     this.handlebars.registerHelper('format_date', function(date, language = 'en') {
-      if (!date) return '';
+      if (!date) { return ''; }
       return formatDate(date, language);
     });
 
     // Format currency helper with i18n support
     this.handlebars.registerHelper('format_currency', function(amount, language = 'en') {
-      if (typeof amount !== 'number') return '';
+      if (typeof amount !== 'number') { return ''; }
       return formatCurrency(amount, language);
     });
 
     // Truncate helper
     this.handlebars.registerHelper('truncate', function(text, length) {
-      if (!text) return '';
+      if (!text) { return ''; }
       const len = parseInt(length) || 50;
       if (text.length <= len) return text;
       return text.substring(0, len) + '...';

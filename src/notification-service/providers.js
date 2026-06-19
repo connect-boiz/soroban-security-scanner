@@ -5,9 +5,7 @@ const {
   NotificationChannel,
   DeliveryStatus,
   DeliveryTracking,
-  ProviderStats,
-  NotificationMessage,
-  Recipient
+  ProviderStats
 } = require('./types');
 
 class ProviderError extends Error {
@@ -35,7 +33,7 @@ class NotificationProvider {
   /**
    * Send a notification (to be implemented by subclasses)
    */
-  async sendNotification(message, recipient) {
+  async sendNotification(_message, _recipient) {
     throw new Error('sendNotification must be implemented by subclass');
   }
 
@@ -345,7 +343,6 @@ class PushProvider extends NotificationProvider {
     const startTime = Date.now();
     const trackingId = `push_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     let successCount = 0;
-    let failureCount = 0;
     const errors = [];
 
     // Send to all device tokens
@@ -355,7 +352,7 @@ class PushProvider extends NotificationProvider {
         console.log(`Push sent to device ${deviceToken}: ${message.subject}`);
         successCount++;
       } catch (error) {
-        failureCount++;
+        const _failure = true;
         errors.push(error.message);
       }
     }

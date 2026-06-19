@@ -199,7 +199,7 @@ class NotificationService {
       recipient = new Recipient(recipient);
     }
 
-    const scheduledMessage = new NotificationMessage({
+    const _scheduledMessage = new NotificationMessage({
       ...message,
       scheduledFor
     });
