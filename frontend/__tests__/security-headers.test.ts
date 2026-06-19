@@ -25,8 +25,9 @@ describe('Security Headers Middleware', () => {
   let mockRequest: any;
 
   beforeEach(() => {
-    // Middleware currently ignores request fields, so a plain object is enough.
-    mockRequest = {};
+    mockRequest = {
+      headers: new Map(),
+    };
   });
 
   describe('Content Security Policy (CSP)', () => {
