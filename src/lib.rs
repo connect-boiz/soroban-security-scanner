@@ -26,6 +26,7 @@ pub mod secure_id_generation;
 pub mod security_analyzer;
 pub mod session;
 pub mod time_travel_debugger;
+pub mod validation;
 pub mod wallet;
 
 #[cfg(test)]
@@ -71,6 +72,10 @@ pub use session::stateless::{
 pub use time_travel_debugger::{
     CacheStats, ContractState, ForkedState, LedgerSnapshot, TestResult, TimeTravelConfig,
     TimeTravelDebugger, UpgradeSimulationResult,
+};
+pub use validation::{
+    sanitize_string, validate_address, validate_amount, validate_contract_id, validate_pagination,
+    ErrorResponse, ValidatedAddress, ValidatedPagination, ValidationError,
 };
 pub use vulnerabilities::VulnerabilityType;
 pub use wallet::{
