@@ -1,11 +1,11 @@
 #[cfg(test)]
 mod batch_verify_tests {
     use crate::{
-        ContractError, SecurityScannerContract, SecurityScannerContractClient, Permission,
+        ContractError, Permission, SecurityScannerContract, SecurityScannerContractClient,
         VulnerabilityReport, REPORTS, ROLE_PERMISSIONS,
     };
     use soroban_sdk::testutils::Address as _;
-    use soroban_sdk::{Address, BytesN, Env, String, Symbol, Vec, Map};
+    use soroban_sdk::{Address, BytesN, Env, Map, String, Symbol, Vec};
 
     fn test_address(env: &Env, seed: u64) -> Address {
         Address::generate(env)
@@ -18,14 +18,14 @@ mod batch_verify_tests {
                 .instance()
                 .get(&ROLE_PERMISSIONS)
                 .unwrap_or(Map::new(env));
-            let mut user_perms = permissions
-                .get(user.clone())
-                .unwrap_or(Vec::new(env));
+            let mut user_perms = permissions.get(user.clone()).unwrap_or(Vec::new(env));
             if !user_perms.contains(&Permission::VerifyVulnerability) {
                 user_perms.push_back(Permission::VerifyVulnerability);
             }
             permissions.set(user.clone(), user_perms);
-            env.storage().instance().set(&ROLE_PERMISSIONS, &permissions);
+            env.storage()
+                .instance()
+                .set(&ROLE_PERMISSIONS, &permissions);
         });
     }
 
@@ -190,7 +190,7 @@ mod batch_verify_tests {
 
         let mut report_ids = Vec::new(&env);
         let mut bounty_amounts = Vec::new(&env);
-        
+
         // Add duplicate IDs
         report_ids.push_back(1);
         report_ids.push_back(2);
@@ -215,7 +215,7 @@ mod batch_verify_tests {
 
         let admin = test_address(&env, 1);
         let reporter = test_address(&env, 2);
-        
+
         client.initialize(&admin);
         grant_verifier_role(&env, &contract_id, &admin);
 
@@ -226,13 +226,13 @@ mod batch_verify_tests {
 
         let mut report_ids = Vec::new(&env);
         let mut bounty_amounts = Vec::new(&env);
-        
+
         report_ids.push_back(1);
         bounty_amounts.push_back(100_000i128); // Normal bounty
-        
+
         report_ids.push_back(2);
         bounty_amounts.push_back(2_000_000i128); // High bounty - should be skipped
-        
+
         report_ids.push_back(3);
         bounty_amounts.push_back(100_000i128); // Normal bounty
 
@@ -264,13 +264,13 @@ mod batch_verify_tests {
 
         let mut report_ids = Vec::new(&env);
         let mut bounty_amounts = Vec::new(&env);
-        
+
         report_ids.push_back(1);
         bounty_amounts.push_back(100_000i128);
-        
+
         report_ids.push_back(2); // Doesn't exist
         bounty_amounts.push_back(100_000i128);
-        
+
         report_ids.push_back(3);
         bounty_amounts.push_back(100_000i128);
 
@@ -302,10 +302,10 @@ mod batch_verify_tests {
 
         let mut report_ids = Vec::new(&env);
         let mut bounty_amounts = Vec::new(&env);
-        
+
         report_ids.push_back(1);
         bounty_amounts.push_back(100_000i128); // Valid
-        
+
         report_ids.push_back(2);
         bounty_amounts.push_back(-50_000i128); // Invalid - negative
 

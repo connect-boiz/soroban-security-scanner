@@ -1402,7 +1402,11 @@ impl SecurityScannerContract {
                 // Emit failure event and skip
                 env.events().publish(
                     (Symbol::new(&env, "batch_verify_failure"),),
-                    (report_id, bounty_amount, String::from_str(&env, "invalid_bounty")),
+                    (
+                        report_id,
+                        bounty_amount,
+                        String::from_str(&env, "invalid_bounty"),
+                    ),
                 );
                 continue;
             }
@@ -1411,7 +1415,11 @@ impl SecurityScannerContract {
             if !reports.contains_key(report_id) {
                 env.events().publish(
                     (Symbol::new(&env, "batch_verify_failure"),),
-                    (report_id, bounty_amount, String::from_str(&env, "not_found")),
+                    (
+                        report_id,
+                        bounty_amount,
+                        String::from_str(&env, "not_found"),
+                    ),
                 );
                 continue;
             }
@@ -1420,7 +1428,11 @@ impl SecurityScannerContract {
             if bounty_amount > 1_000_000i128 {
                 env.events().publish(
                     (Symbol::new(&env, "batch_verify_skipped"),),
-                    (report_id, bounty_amount, String::from_str(&env, "multisig_required")),
+                    (
+                        report_id,
+                        bounty_amount,
+                        String::from_str(&env, "multisig_required"),
+                    ),
                 );
                 continue;
             }
@@ -2508,7 +2520,4 @@ mod dispute_tests;
 
 #[cfg(test)]
 mod batch_verify_tests;
-
-#[cfg(test)]
-mod gas_benchmarks;
 

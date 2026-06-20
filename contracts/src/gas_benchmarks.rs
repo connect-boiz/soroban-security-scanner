@@ -1,15 +1,15 @@
 /// Gas Benchmarking for Batch Vulnerability Verification
 /// Issue #358: Gas optimization for bulk vulnerability verification
-/// 
+///
 /// This module demonstrates gas cost comparisons between individual and batch operations
 
 #[cfg(test)]
 mod gas_benchmarks {
     use crate::{
-        ContractError, SecurityScannerContract, SecurityScannerContractClient, Permission,
+        ContractError, Permission, SecurityScannerContract, SecurityScannerContractClient,
         VulnerabilityReport, REPORTS, ROLE_PERMISSIONS,
     };
-    use soroban_sdk::{Address, BytesN, Env, String, Vec, Map};
+    use soroban_sdk::{Address, BytesN, Env, Map, String, Vec};
 
     fn test_address(env: &Env, seed: u64) -> Address {
         Address::generate(env)
@@ -22,23 +22,18 @@ mod gas_benchmarks {
                 .instance()
                 .get(&ROLE_PERMISSIONS)
                 .unwrap_or(Map::new(env));
-            let mut user_perms = permissions
-                .get(user.clone())
-                .unwrap_or(Vec::new(env));
+            let mut user_perms = permissions.get(user.clone()).unwrap_or(Vec::new(env));
             if !user_perms.contains(&Permission::VerifyVulnerability) {
                 user_perms.push_back(Permission::VerifyVulnerability);
             }
             permissions.set(user.clone(), user_perms);
-            env.storage().instance().set(&ROLE_PERMISSIONS, &permissions);
+            env.storage()
+                .instance()
+                .set(&ROLE_PERMISSIONS, &permissions);
         });
     }
 
-    fn create_test_report(
-        env: &Env,
-        contract_id: &Address,
-        report_id: u64,
-        reporter: &Address,
-    ) {
+    fn create_test_report(env: &Env, contract_id: &Address, report_id: u64, reporter: &Address) {
         env.as_contract(contract_id, || {
             let mut reports: Map<u64, VulnerabilityReport> = env
                 .storage()
@@ -64,7 +59,7 @@ mod gas_benchmarks {
     }
 
     /// Gas benchmark: Individual verify_vulnerability calls vs batch_verify_vulnerabilities
-    /// 
+    ///
     /// This test demonstrates the gas savings from batch operations.
     /// Batch operations are more efficient because they:
     /// 1. Reduce authorization checks (1 vs N)
@@ -96,7 +91,7 @@ mod gas_benchmarks {
 
             // Note: In a real scenario, you'd use env.ledger().get_current_cpu_instruction_count()
             // to measure actual gas usage. This is a conceptual demonstration.
-            
+
             // Individual calls (10 separate transactions)
             for i in 1..=10 {
                 let _ = client.verify_vulnerability(&admin, i, 100_000i128);
@@ -131,7 +126,7 @@ mod gas_benchmarks {
         // - Auth checks: 10 (one per call)
         // - Storage reads: ~30 (3 per call: permissions, reports, reputation)
         // - Storage writes: ~20 (2 per call: reports, reputation)
-        // 
+        //
         // Batch call (1x batch_verify_vulnerabilities):
         // - Auth checks: 1
         // - Storage reads: ~4 (1 permission check, 1 reports load, 1 reputation reads)
