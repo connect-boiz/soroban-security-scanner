@@ -53,6 +53,9 @@ jobs:
               - 'package.json'
               - 'package-lock.json'
               - 'jest.config.js'
+              - 'scripts/**'
+              - 'docs/**'
+              - 'tests/**'
 
   contracts:
     needs: detect-changes
@@ -112,6 +115,42 @@ jobs:
         run: cargo check --lib
       - name: cargo test
         run: cargo test --lib
+
+  api-security:
+    needs: detect-changes
+    if: |
+      needs.detect-changes.outputs.backend == 'true' ||
+      needs.detect-changes.outputs.root == 'true' ||
+      github.ref_name == 'main' || github.ref_name == 'master' || github.ref_name == 'develop'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: api-security-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}
+          shared-key: backend-cache
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - name: npm ci
+        run: npm ci --no-audit --no-fund
+      - name: Run API security test suite
+        run: |
+          chmod +x ./scripts/api_security_scan.sh
+          ./scripts/api_security_scan.sh
+      - name: Upload security report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-security-report
+          path: target/api-security-report.md
 
   node-backend:
     needs: detect-changes

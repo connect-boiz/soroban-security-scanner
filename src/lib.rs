@@ -53,6 +53,7 @@ impl Severity {
 
 // === Clean modules (no feature gate needed) ===
 // The api_versioning module compiles cleanly without the broken-modules feature.
+pub mod api_security;
 pub mod api_versioning;
 
 // === Broken modules gated behind feature flag ===
