@@ -64,3 +64,4 @@ stellar-scanner.toml
 # Documentation and templates
 PULL_REQUEST_TEMPLATE.md
 whitelist.md
+node_modules

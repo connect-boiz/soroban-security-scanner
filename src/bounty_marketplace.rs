@@ -1,11 +1,11 @@
 //! Security Bounty Marketplace Smart Contract
-//! 
+//!
 //! This contract manages the financial side of the Security Bounty Marketplace,
 //! holding XLM in escrow until bugs are verified and approved.
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, panic_with_error, Address, Bytes, BytesN, Env, Map, 
-    Symbol, Vec, i128, u64,
+    contract, contractimpl, contracttype, i128, panic_with_error, u64, Address, Bytes, BytesN, Env,
+    Map, Symbol, Vec,
 };
 
 // Event logging constants
@@ -126,7 +126,7 @@ impl BountyMarketplace {
         // Use multiple entropy sources instead of predictable ledger sequence
         let timestamp = env.ledger().timestamp();
         let contract_address = env.current_contract_address();
-        
+
         // Create entropy from multiple sources
         let entropy_sources = vec![
             format!("{:?}", seed),
@@ -134,20 +134,23 @@ impl BountyMarketplace {
             timestamp.to_string(),
             format!("{:?}", contract_address),
             // Add additional entropy from storage state
-            format!("{:?}", env.storage().instance().has(&Symbol::short("ADMIN"))),
+            format!(
+                "{:?}",
+                env.storage().instance().has(&Symbol::short("ADMIN"))
+            ),
         ];
-        
+
         // Combine all entropy sources
         let combined_entropy = entropy_sources.join(":");
-        
+
         // Add some randomness using the current timestamp in nanoseconds
         let nanos = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_nanos();
-        
+
         let final_entropy = format!("{}:{}", combined_entropy, nanos);
-        
+
         let bytes = Bytes::from_slice(env, final_entropy.as_bytes());
         env.crypto().sha256(&bytes).into()
     }
@@ -161,7 +164,13 @@ impl BountyMarketplace {
         let contract_balance = Self::get_contract_balance(env);
 
         if contract_balance < amount {
-            Self::emit_insufficient_funds_event(env, bounty_id, recipient, amount, contract_balance);
+            Self::emit_insufficient_funds_event(
+                env,
+                bounty_id,
+                recipient,
+                amount,
+                contract_balance,
+            );
             panic_with_error!(env, "Insufficient escrow funds");
         }
 
@@ -170,24 +179,35 @@ impl BountyMarketplace {
         let new_balance = Self::checked_sub_i128(env, contract_balance, amount);
         Self::set_contract_balance(env, new_balance);
 
-        env.events()
-            .publish(Symbol::new(env, "payout_ready"), (bounty_id, recipient.clone(), amount));
+        env.events().publish(
+            Symbol::new(env, "payout_ready"),
+            (bounty_id, recipient.clone(), amount),
+        );
     }
 
     /// Query the contract's actual token balance (XLM)
     fn get_contract_balance(env: &Env) -> i128 {
-        env.storage().persistent()
+        env.storage()
+            .persistent()
             .get(&Symbol::new(env, "contract_balance"))
             .unwrap_or(0i128)
     }
 
     /// Set the contract's tracked balance (called on deposit/replenish)
     fn set_contract_balance(env: &Env, amount: i128) {
-        env.storage().persistent().set(&Symbol::new(env, "contract_balance"), &amount);
+        env.storage()
+            .persistent()
+            .set(&Symbol::new(env, "contract_balance"), &amount);
     }
 
     /// Emit an insufficient escrow funds event for audit trail
-    fn emit_insufficient_funds_event(env: &Env, bounty_id: u64, recipient: &Address, required: i128, available: i128) {
+    fn emit_insufficient_funds_event(
+        env: &Env,
+        bounty_id: u64,
+        recipient: &Address,
+        required: i128,
+        available: i128,
+    ) {
         env.events().publish(
             Symbol::new(env, "insufficient_escrow_funds"),
             (
@@ -201,70 +221,113 @@ impl BountyMarketplace {
     }
 
     // Critical event logging functions
-    fn log_critical_operation_start(env: &Env, operation: &str, actor: &Address, target: Option<&str>, metadata: Vec<(Symbol, &str)>) {
+    fn log_critical_operation_start(
+        env: &Env,
+        operation: &str,
+        actor: &Address,
+        target: Option<&str>,
+        metadata: Vec<(Symbol, &str)>,
+    ) {
         let mut event_data = vec![
             (Symbol::new(env, "operation"), operation),
             (Symbol::new(env, "actor"), actor.to_string()),
             (Symbol::new(env, "status"), "started"),
-            (Symbol::new(env, "timestamp"), env.ledger().timestamp().to_string()),
-            (Symbol::new(env, "ledger_sequence"), env.ledger().sequence().to_string()),
+            (
+                Symbol::new(env, "timestamp"),
+                env.ledger().timestamp().to_string(),
+            ),
+            (
+                Symbol::new(env, "ledger_sequence"),
+                env.ledger().sequence().to_string(),
+            ),
         ];
-        
+
         if let Some(target_str) = target {
             event_data.push((Symbol::new(env, "target"), target_str));
         }
-        
+
         for (key, value) in metadata {
             event_data.push((key, value));
         }
-        
+
         env.events().publish(
             Symbol::new(env, &format!("{}{}", CRITICAL_EVENT_PREFIX, operation)),
             event_data,
         );
     }
 
-    fn log_critical_operation_complete(env: &Env, operation: &str, actor: &Address, result: &str, metadata: Vec<(Symbol, &str)>) {
+    fn log_critical_operation_complete(
+        env: &Env,
+        operation: &str,
+        actor: &Address,
+        result: &str,
+        metadata: Vec<(Symbol, &str)>,
+    ) {
         let mut event_data = vec![
             (Symbol::new(env, "operation"), operation),
             (Symbol::new(env, "actor"), actor.to_string()),
             (Symbol::new(env, "status"), "completed"),
             (Symbol::new(env, "result"), result),
-            (Symbol::new(env, "timestamp"), env.ledger().timestamp().to_string()),
-            (Symbol::new(env, "ledger_sequence"), env.ledger().sequence().to_string()),
+            (
+                Symbol::new(env, "timestamp"),
+                env.ledger().timestamp().to_string(),
+            ),
+            (
+                Symbol::new(env, "ledger_sequence"),
+                env.ledger().sequence().to_string(),
+            ),
         ];
-        
+
         for (key, value) in metadata {
             event_data.push((key, value));
         }
-        
+
         env.events().publish(
             Symbol::new(env, &format!("{}{}", CRITICAL_EVENT_PREFIX, operation)),
             event_data,
         );
     }
 
-    fn log_critical_operation_failed(env: &Env, operation: &str, actor: &Address, error: &str, metadata: Vec<(Symbol, &str)>) {
+    fn log_critical_operation_failed(
+        env: &Env,
+        operation: &str,
+        actor: &Address,
+        error: &str,
+        metadata: Vec<(Symbol, &str)>,
+    ) {
         let mut event_data = vec![
             (Symbol::new(env, "operation"), operation),
             (Symbol::new(env, "actor"), actor.to_string()),
             (Symbol::new(env, "status"), "failed"),
             (Symbol::new(env, "error"), error),
-            (Symbol::new(env, "timestamp"), env.ledger().timestamp().to_string()),
-            (Symbol::new(env, "ledger_sequence"), env.ledger().sequence().to_string()),
+            (
+                Symbol::new(env, "timestamp"),
+                env.ledger().timestamp().to_string(),
+            ),
+            (
+                Symbol::new(env, "ledger_sequence"),
+                env.ledger().sequence().to_string(),
+            ),
         ];
-        
+
         for (key, value) in metadata {
             event_data.push((key, value));
         }
-        
+
         env.events().publish(
             Symbol::new(env, &format!("{}{}", CRITICAL_EVENT_PREFIX, operation)),
             event_data,
         );
     }
 
-    fn log_state_change(env: &Env, entity_type: &str, entity_id: &str, previous_state: &str, new_state: &str, actor: &Address) {
+    fn log_state_change(
+        env: &Env,
+        entity_type: &str,
+        entity_id: &str,
+        previous_state: &str,
+        new_state: &str,
+        actor: &Address,
+    ) {
         env.events().publish(
             Symbol::new(env, &format!("{}STATE_CHANGE", AUDIT_EVENT_PREFIX)),
             vec![
@@ -273,13 +336,26 @@ impl BountyMarketplace {
                 (Symbol::new(env, "previous_state"), previous_state),
                 (Symbol::new(env, "new_state"), new_state),
                 (Symbol::new(env, "actor"), actor.to_string()),
-                (Symbol::new(env, "timestamp"), env.ledger().timestamp().to_string()),
-                (Symbol::new(env, "ledger_sequence"), env.ledger().sequence().to_string()),
+                (
+                    Symbol::new(env, "timestamp"),
+                    env.ledger().timestamp().to_string(),
+                ),
+                (
+                    Symbol::new(env, "ledger_sequence"),
+                    env.ledger().sequence().to_string(),
+                ),
             ],
         );
     }
 
-    fn log_fund_transfer(env: &Env, from: &Address, to: &Address, amount: i128, reason: &str, actor: &Address) {
+    fn log_fund_transfer(
+        env: &Env,
+        from: &Address,
+        to: &Address,
+        amount: i128,
+        reason: &str,
+        actor: &Address,
+    ) {
         env.events().publish(
             Symbol::new(env, &format!("{}FUND_TRANSFER", CRITICAL_EVENT_PREFIX)),
             vec![
@@ -288,8 +364,14 @@ impl BountyMarketplace {
                 (Symbol::new(env, "amount"), amount.to_string()),
                 (Symbol::new(env, "reason"), reason),
                 (Symbol::new(env, "actor"), actor.to_string()),
-                (Symbol::new(env, "timestamp"), env.ledger().timestamp().to_string()),
-                (Symbol::new(env, "ledger_sequence"), env.ledger().sequence().to_string()),
+                (
+                    Symbol::new(env, "timestamp"),
+                    env.ledger().timestamp().to_string(),
+                ),
+                (
+                    Symbol::new(env, "ledger_sequence"),
+                    env.ledger().sequence().to_string(),
+                ),
             ],
         );
     }
@@ -311,15 +393,22 @@ impl BountyMarketplace {
         env.storage().persistent().set(&BOUNTY_COUNTER, &0u64);
 
         // Initialize empty maps
-        env.storage().persistent().set(&BOUNTIES, &Map::<Address, Vec<Bounty>>::new(&env));
-        env.storage().persistent().set(&RESEARCHER_ASSIGNMENTS, &Map::<Address, Vec<u64>>::new(&env));
-        env.storage().persistent().set(&PENDING_APPROVALS, &Map::<u64, MultiSigApproval>::new(&env));
-        env.storage().persistent().set(&BOUNTY_NONCES, &Map::<u64, BytesN<32>>::new(&env));
-
-        env.events().publish(
-            Symbol::new(&env, "contract_initialized"),
-            (admin, owner),
+        env.storage()
+            .persistent()
+            .set(&BOUNTIES, &Map::<Address, Vec<Bounty>>::new(&env));
+        env.storage().persistent().set(
+            &RESEARCHER_ASSIGNMENTS,
+            &Map::<Address, Vec<u64>>::new(&env),
         );
+        env.storage()
+            .persistent()
+            .set(&PENDING_APPROVALS, &Map::<u64, MultiSigApproval>::new(&env));
+        env.storage()
+            .persistent()
+            .set(&BOUNTY_NONCES, &Map::<u64, BytesN<32>>::new(&env));
+
+        env.events()
+            .publish(Symbol::new(&env, "contract_initialized"), (admin, owner));
     }
 
     // Create a new bounty with XLM deposit
@@ -347,12 +436,19 @@ impl BountyMarketplace {
         // Generate bounty ID
         let mut bounty_counter: u64 = env.storage().persistent().get(&BOUNTY_COUNTER).unwrap_or(0);
         bounty_counter = Self::checked_add_u64(&env, bounty_counter, 1);
-        env.storage().persistent().set(&BOUNTY_COUNTER, &bounty_counter);
+        env.storage()
+            .persistent()
+            .set(&BOUNTY_COUNTER, &bounty_counter);
         let nonce = Self::generate_secure_nonce(&env, &creator, bounty_counter);
-        let mut bounty_nonces: Map<u64, BytesN<32>> =
-            env.storage().persistent().get(&BOUNTY_NONCES).unwrap_or_else(|| Map::new(&env));
+        let mut bounty_nonces: Map<u64, BytesN<32>> = env
+            .storage()
+            .persistent()
+            .get(&BOUNTY_NONCES)
+            .unwrap_or_else(|| Map::new(&env));
         bounty_nonces.set(bounty_counter, nonce);
-        env.storage().persistent().set(&BOUNTY_NONCES, &bounty_nonces);
+        env.storage()
+            .persistent()
+            .set(&BOUNTY_NONCES, &bounty_nonces);
 
         // Create bounty
         let bounty = Bounty {
@@ -371,10 +467,15 @@ impl BountyMarketplace {
         };
 
         // Store bounty
-        let mut bounties: Map<Address, Vec<Bounty>> = env.storage().persistent().get(&BOUNTIES)
+        let mut bounties: Map<Address, Vec<Bounty>> = env
+            .storage()
+            .persistent()
+            .get(&BOUNTIES)
             .unwrap_or_else(|| Map::new(&env));
-        
-        let mut user_bounties = bounties.get(creator.clone()).unwrap_or_else(|| Vec::new(&env));
+
+        let mut user_bounties = bounties
+            .get(creator.clone())
+            .unwrap_or_else(|| Vec::new(&env));
         user_bounties.push_back(bounty.clone());
         bounties.set(creator, user_bounties);
         env.storage().persistent().set(&BOUNTIES, &bounties);
@@ -388,11 +489,16 @@ impl BountyMarketplace {
             admin_approval_time: None,
             owner_approval_time: None,
         };
-        
-        let mut pending_approvals: Map<u64, MultiSigApproval> = env.storage().persistent().get(&PENDING_APPROVALS)
+
+        let mut pending_approvals: Map<u64, MultiSigApproval> = env
+            .storage()
+            .persistent()
+            .get(&PENDING_APPROVALS)
             .unwrap_or_else(|| Map::new(&env));
         pending_approvals.set(bounty_counter, approval);
-        env.storage().persistent().set(&PENDING_APPROVALS, &pending_approvals);
+        env.storage()
+            .persistent()
+            .set(&PENDING_APPROVALS, &pending_approvals);
 
         // Track contract balance (XLM deposited for the bounty)
         let current_balance = Self::get_contract_balance(&env);
@@ -417,8 +523,14 @@ impl BountyMarketplace {
             &researcher,
             Some(&bounty_id.to_string()),
             vec![
-                (Symbol::new(&env, "bounty_id"), bounty_id.to_string().as_str()),
-                (Symbol::new(&env, "researcher"), researcher.to_string().as_str()),
+                (
+                    Symbol::new(&env, "bounty_id"),
+                    bounty_id.to_string().as_str(),
+                ),
+                (
+                    Symbol::new(&env, "researcher"),
+                    researcher.to_string().as_str(),
+                ),
             ],
         );
 
@@ -428,7 +540,7 @@ impl BountyMarketplace {
         // Get bounty
         let bounty = Self::get_bounty_internal(&env, bounty_id);
         let previous_status = format!("{:?}", bounty.status);
-        
+
         // Validate bounty status
         if bounty.status != BountyStatus::Approved {
             Self::log_critical_operation_failed(
@@ -437,8 +549,14 @@ impl BountyMarketplace {
                 &researcher,
                 "Bounty must be approved to claim reward",
                 vec![
-                    (Symbol::new(&env, "bounty_id"), bounty_id.to_string().as_str()),
-                    (Symbol::new(&env, "current_status"), previous_status.as_str()),
+                    (
+                        Symbol::new(&env, "bounty_id"),
+                        bounty_id.to_string().as_str(),
+                    ),
+                    (
+                        Symbol::new(&env, "current_status"),
+                        previous_status.as_str(),
+                    ),
                 ],
             );
             panic_with_error!(&env, "Bounty must be approved to claim reward");
@@ -452,7 +570,10 @@ impl BountyMarketplace {
                 &researcher,
                 "Researcher not assigned to this bounty",
                 vec![
-                    (Symbol::new(&env, "bounty_id"), bounty_id.to_string().as_str()),
+                    (
+                        Symbol::new(&env, "bounty_id"),
+                        bounty_id.to_string().as_str(),
+                    ),
                     (Symbol::new(&env, "assigned_researcher"), "none"),
                 ],
             );
@@ -460,22 +581,25 @@ impl BountyMarketplace {
         }
 
         // Get multi-sig approval
-        let mut pending_approvals: Map<u64, MultiSigApproval> = env.storage().persistent().get(&PENDING_APPROVALS)
+        let mut pending_approvals: Map<u64, MultiSigApproval> = env
+            .storage()
+            .persistent()
+            .get(&PENDING_APPROVALS)
             .unwrap_or_else(|| Map::new(&env));
-        
-        let approval = pending_approvals.get(bounty_id)
-            .unwrap_or_else(|| {
-                Self::log_critical_operation_failed(
-                    &env,
-                    "CLAIM_REWARD",
-                    &researcher,
-                    "Approval not found",
-                    vec![
-                        (Symbol::new(&env, "bounty_id"), bounty_id.to_string().as_str()),
-                    ],
-                );
-                panic_with_error!(&env, "Approval not found")
-            });
+
+        let approval = pending_approvals.get(bounty_id).unwrap_or_else(|| {
+            Self::log_critical_operation_failed(
+                &env,
+                "CLAIM_REWARD",
+                &researcher,
+                "Approval not found",
+                vec![(
+                    Symbol::new(&env, "bounty_id"),
+                    bounty_id.to_string().as_str(),
+                )],
+            );
+            panic_with_error!(&env, "Approval not found")
+        });
 
         // Check multi-sig approval
         if !(approval.admin_approved && approval.owner_approved) {
@@ -485,9 +609,18 @@ impl BountyMarketplace {
                 &researcher,
                 "Multi-sig approval required (Admin + Owner)",
                 vec![
-                    (Symbol::new(&env, "bounty_id"), bounty_id.to_string().as_str()),
-                    (Symbol::new(&env, "admin_approved"), approval.admin_approved.to_string().as_str()),
-                    (Symbol::new(&env, "owner_approved"), approval.owner_approved.to_string().as_str()),
+                    (
+                        Symbol::new(&env, "bounty_id"),
+                        bounty_id.to_string().as_str(),
+                    ),
+                    (
+                        Symbol::new(&env, "admin_approved"),
+                        approval.admin_approved.to_string().as_str(),
+                    ),
+                    (
+                        Symbol::new(&env, "owner_approved"),
+                        approval.owner_approved.to_string().as_str(),
+                    ),
                 ],
             );
             panic_with_error!(&env, "Multi-sig approval required (Admin + Owner)");
@@ -538,7 +671,9 @@ impl BountyMarketplace {
 
         // Remove from pending approvals
         pending_approvals.remove(bounty_id);
-        env.storage().persistent().set(&PENDING_APPROVALS, &pending_approvals);
+        env.storage()
+            .persistent()
+            .set(&PENDING_APPROVALS, &pending_approvals);
 
         // Log operation completion
         Self::log_critical_operation_complete(
@@ -547,9 +682,18 @@ impl BountyMarketplace {
             &researcher,
             "Reward claimed successfully",
             vec![
-                (Symbol::new(&env, "bounty_id"), bounty_id.to_string().as_str()),
-                (Symbol::new(&env, "reward_amount"), reward_amount.to_string().as_str()),
-                (Symbol::new(&env, "severity"), format!("{:?}", bounty.severity).as_str()),
+                (
+                    Symbol::new(&env, "bounty_id"),
+                    bounty_id.to_string().as_str(),
+                ),
+                (
+                    Symbol::new(&env, "reward_amount"),
+                    reward_amount.to_string().as_str(),
+                ),
+                (
+                    Symbol::new(&env, "severity"),
+                    format!("{:?}", bounty.severity).as_str(),
+                ),
             ],
         );
 
@@ -566,18 +710,25 @@ impl BountyMarketplace {
         admin.require_auth();
 
         // Verify admin status
-        let admin_address = env.storage().persistent().get(&ADMIN)
+        let admin_address = env
+            .storage()
+            .persistent()
+            .get(&ADMIN)
             .unwrap_or_else(|| panic_with_error!(&env, "Admin not set"));
-        
+
         if admin != admin_address {
             panic_with_error!(&env, "Not authorized: admin access required");
         }
 
         // Get and update approval
-        let mut pending_approvals: Map<u64, MultiSigApproval> = env.storage().persistent().get(&PENDING_APPROVALS)
+        let mut pending_approvals: Map<u64, MultiSigApproval> = env
+            .storage()
+            .persistent()
+            .get(&PENDING_APPROVALS)
             .unwrap_or_else(|| Map::new(&env));
-        
-        let mut approval = pending_approvals.get(bounty_id)
+
+        let mut approval = pending_approvals
+            .get(bounty_id)
             .unwrap_or_else(|| panic_with_error!(&env, "Bounty not found"));
 
         if approval.admin_approved {
@@ -587,16 +738,16 @@ impl BountyMarketplace {
         approval.admin_approved = true;
         approval.admin_approval_time = Some(env.ledger().timestamp());
         pending_approvals.set(bounty_id, approval);
-        env.storage().persistent().set(&PENDING_APPROVALS, &pending_approvals);
+        env.storage()
+            .persistent()
+            .set(&PENDING_APPROVALS, &pending_approvals);
 
         // Check if both approvals are now present
         Self::check_full_approval(&env, bounty_id);
 
         // Emit event
-        env.events().publish(
-            Symbol::new(&env, "admin_approved"),
-            (bounty_id, admin),
-        );
+        env.events()
+            .publish(Symbol::new(&env, "admin_approved"), (bounty_id, admin));
     }
 
     // Owner approval function
@@ -605,18 +756,25 @@ impl BountyMarketplace {
         owner.require_auth();
 
         // Verify owner status
-        let owner_address = env.storage().persistent().get(&OWNER)
+        let owner_address = env
+            .storage()
+            .persistent()
+            .get(&OWNER)
             .unwrap_or_else(|| panic_with_error!(&env, "Owner not set"));
-        
+
         if owner != owner_address {
             panic_with_error!(&env, "Not authorized: owner access required");
         }
 
         // Get and update approval
-        let mut pending_approvals: Map<u64, MultiSigApproval> = env.storage().persistent().get(&PENDING_APPROVALS)
+        let mut pending_approvals: Map<u64, MultiSigApproval> = env
+            .storage()
+            .persistent()
+            .get(&PENDING_APPROVALS)
             .unwrap_or_else(|| Map::new(&env));
-        
-        let mut approval = pending_approvals.get(bounty_id)
+
+        let mut approval = pending_approvals
+            .get(bounty_id)
             .unwrap_or_else(|| panic_with_error!(&env, "Bounty not found"));
 
         if approval.owner_approved {
@@ -626,16 +784,16 @@ impl BountyMarketplace {
         approval.owner_approved = true;
         approval.owner_approval_time = Some(env.ledger().timestamp());
         pending_approvals.set(bounty_id, approval);
-        env.storage().persistent().set(&PENDING_APPROVALS, &pending_approvals);
+        env.storage()
+            .persistent()
+            .set(&PENDING_APPROVALS, &pending_approvals);
 
         // Check if both approvals are now present
         Self::check_full_approval(&env, bounty_id);
 
         // Emit event
-        env.events().publish(
-            Symbol::new(&env, "owner_approved"),
-            (bounty_id, owner),
-        );
+        env.events()
+            .publish(Symbol::new(&env, "owner_approved"), (bounty_id, owner));
     }
 
     // Assign researcher to private audit
@@ -645,7 +803,10 @@ impl BountyMarketplace {
 
         // Check if caller is bounty creator or admin
         let caller = env.current_contract_address();
-        let admin = env.storage().persistent().get(&ADMIN)
+        let admin = env
+            .storage()
+            .persistent()
+            .get(&ADMIN)
             .unwrap_or_else(|| panic_with_error!(&env, "Admin not set"));
 
         if caller != bounty.creator && caller != admin {
@@ -656,13 +817,20 @@ impl BountyMarketplace {
         Self::update_bounty_assignment(&env, bounty_id, researcher.clone());
 
         // Update researcher assignments map
-        let mut assignments: Map<Address, Vec<u64>> = env.storage().persistent().get(&RESEARCHER_ASSIGNMENTS)
+        let mut assignments: Map<Address, Vec<u64>> = env
+            .storage()
+            .persistent()
+            .get(&RESEARCHER_ASSIGNMENTS)
             .unwrap_or_else(|| Map::new(&env));
-        
-        let mut researcher_bounties = assignments.get(researcher.clone()).unwrap_or_else(|| Vec::new(&env));
+
+        let mut researcher_bounties = assignments
+            .get(researcher.clone())
+            .unwrap_or_else(|| Vec::new(&env));
         researcher_bounties.push_back(bounty_id);
         assignments.set(researcher, researcher_bounties);
-        env.storage().persistent().set(&RESEARCHER_ASSIGNMENTS, &assignments);
+        env.storage()
+            .persistent()
+            .set(&RESEARCHER_ASSIGNMENTS, &assignments);
 
         // Emit event
         env.events().publish(
@@ -681,28 +849,42 @@ impl BountyMarketplace {
         Self::require_positive_amount(&env, amount);
 
         // Get researcher's assigned bounties
-        let assignments: Map<Address, Vec<u64>> = env.storage().persistent().get(&RESEARCHER_ASSIGNMENTS)
+        let assignments: Map<Address, Vec<u64>> = env
+            .storage()
+            .persistent()
+            .get(&RESEARCHER_ASSIGNMENTS)
             .unwrap_or_else(|| Map::new(&env));
-        
-        let researcher_bounties = assignments.get(researcher.clone())
+
+        let researcher_bounties = assignments
+            .get(researcher.clone())
             .unwrap_or_else(|| Vec::new(&env));
 
         // Calculate total available rewards
         let mut total_available = 0i128;
         for bounty_id in researcher_bounties.iter() {
             let bounty = Self::get_bounty_internal(&env, bounty_id);
-            if bounty.status == BountyStatus::Approved && bounty.assigned_researcher == Some(researcher.clone()) {
+            if bounty.status == BountyStatus::Approved
+                && bounty.assigned_researcher == Some(researcher.clone())
+            {
                 let reward = match bounty.severity {
                     Severity::Critical => bounty.amount,
                     Severity::High => bounty.amount,
                     Severity::Medium => Self::checked_div_i128(
                         &env,
-                        Self::checked_mul_i128(&env, bounty.amount, bounty.severity.reward_percentage()),
+                        Self::checked_mul_i128(
+                            &env,
+                            bounty.amount,
+                            bounty.severity.reward_percentage(),
+                        ),
                         100,
                     ),
                     Severity::Low => Self::checked_div_i128(
                         &env,
-                        Self::checked_mul_i128(&env, bounty.amount, bounty.severity.reward_percentage()),
+                        Self::checked_mul_i128(
+                            &env,
+                            bounty.amount,
+                            bounty.severity.reward_percentage(),
+                        ),
                         100,
                     ),
                 };
@@ -717,23 +899,21 @@ impl BountyMarketplace {
         // Delegate all escrow balance verification and deduction to emit_payout_ready
         Self::emit_payout_ready(&env, 0u64, &researcher, amount);
         // Emit event (in a real implementation, this would transfer XLM)
-        env.events().publish(
-            Symbol::new(&env, "withdrawal"),
-            (researcher, amount),
-        );
+        env.events()
+            .publish(Symbol::new(&env, "withdrawal"), (researcher, amount));
     }
 
     // Check if timelock has passed
     pub fn check_timelock(env: Env, bounty_id: u64) -> bool {
         let bounty = Self::get_bounty_internal(&env, bounty_id);
         let current_time = env.ledger().timestamp();
-        
+
         if bounty.status == BountyStatus::Timelocked && current_time >= bounty.timelock_until {
             // Update status to Active
             Self::update_bounty_status(&env, bounty_id, BountyStatus::Active);
             return true;
         }
-        
+
         false
     }
 
@@ -754,9 +934,12 @@ impl BountyMarketplace {
         Self::require_positive_amount(&env, amount);
 
         // Verify admin status
-        let admin_address: Address = env.storage().persistent().get(&ADMIN)
+        let admin_address: Address = env
+            .storage()
+            .persistent()
+            .get(&ADMIN)
             .unwrap_or_else(|| panic_with_error!(&env, "Admin not set"));
-        
+
         if admin != admin_address {
             panic_with_error!(&env, "Not authorized: admin access required");
         }
@@ -774,25 +957,36 @@ impl BountyMarketplace {
 
     // Get researcher's assigned bounties
     pub fn get_researcher_bounties(env: Env, researcher: Address) -> Vec<u64> {
-        let assignments: Map<Address, Vec<u64>> = env.storage().persistent().get(&RESEARCHER_ASSIGNMENTS)
+        let assignments: Map<Address, Vec<u64>> = env
+            .storage()
+            .persistent()
+            .get(&RESEARCHER_ASSIGNMENTS)
             .unwrap_or_else(|| Map::new(&env));
-        
-        assignments.get(researcher).unwrap_or_else(|| Vec::new(&env))
+
+        assignments
+            .get(researcher)
+            .unwrap_or_else(|| Vec::new(&env))
     }
 
     // Get all bounties for a user
     pub fn get_user_bounties(env: Env, user: Address) -> Vec<Bounty> {
-        let bounties: Map<Address, Vec<Bounty>> = env.storage().persistent().get(&BOUNTIES)
+        let bounties: Map<Address, Vec<Bounty>> = env
+            .storage()
+            .persistent()
+            .get(&BOUNTIES)
             .unwrap_or_else(|| Map::new(&env));
-        
+
         bounties.get(user).unwrap_or_else(|| Vec::new(&env))
     }
 
     // Internal helper functions
     fn get_bounty_internal(env: &Env, bounty_id: u64) -> Bounty {
-        let bounties: Map<Address, Vec<Bounty>> = env.storage().persistent().get(&BOUNTIES)
+        let bounties: Map<Address, Vec<Bounty>> = env
+            .storage()
+            .persistent()
+            .get(&BOUNTIES)
             .unwrap_or_else(|| Map::new(env));
-        
+
         // Search through all user bounties
         for (_, user_bounties) in bounties.iter() {
             for bounty in user_bounties.iter() {
@@ -801,19 +995,22 @@ impl BountyMarketplace {
                 }
             }
         }
-        
+
         panic_with_error!(env, "Bounty not found");
     }
 
     fn update_bounty_status(env: &Env, bounty_id: u64, new_status: BountyStatus) {
-        let mut bounties: Map<Address, Vec<Bounty>> = env.storage().persistent().get(&BOUNTIES)
+        let mut bounties: Map<Address, Vec<Bounty>> = env
+            .storage()
+            .persistent()
+            .get(&BOUNTIES)
             .unwrap_or_else(|| Map::new(env));
-        
+
         // Find and update the bounty
         for (user_address, user_bounties) in bounties.iter() {
             let mut updated_bounties = Vec::new(env);
             let mut found = false;
-            
+
             for bounty in user_bounties.iter() {
                 if bounty.id == bounty_id {
                     let mut updated_bounty = bounty.clone();
@@ -824,26 +1021,29 @@ impl BountyMarketplace {
                     updated_bounties.push_back(bounty.clone());
                 }
             }
-            
+
             if found {
                 bounties.set(user_address, updated_bounties);
                 env.storage().persistent().set(&BOUNTIES, &bounties);
                 return;
             }
         }
-        
+
         panic_with_error!(env, "Bounty not found for status update");
     }
 
     fn update_bounty_assignment(env: &Env, bounty_id: u64, researcher: Address) {
-        let mut bounties: Map<Address, Vec<Bounty>> = env.storage().persistent().get(&BOUNTIES)
+        let mut bounties: Map<Address, Vec<Bounty>> = env
+            .storage()
+            .persistent()
+            .get(&BOUNTIES)
             .unwrap_or_else(|| Map::new(env));
-        
+
         // Find and update the bounty
         for (user_address, user_bounties) in bounties.iter() {
             let mut updated_bounties = Vec::new(env);
             let mut found = false;
-            
+
             for bounty in user_bounties.iter() {
                 if bounty.id == bounty_id {
                     let mut updated_bounty = bounty.clone();
@@ -854,31 +1054,32 @@ impl BountyMarketplace {
                     updated_bounties.push_back(bounty.clone());
                 }
             }
-            
+
             if found {
                 bounties.set(user_address, updated_bounties);
                 env.storage().persistent().set(&BOUNTIES, &bounties);
                 return;
             }
         }
-        
+
         panic_with_error!(env, "Bounty not found for assignment update");
     }
 
     fn check_full_approval(env: &Env, bounty_id: u64) {
-        let pending_approvals: Map<u64, MultiSigApproval> = env.storage().persistent().get(&PENDING_APPROVALS)
+        let pending_approvals: Map<u64, MultiSigApproval> = env
+            .storage()
+            .persistent()
+            .get(&PENDING_APPROVALS)
             .unwrap_or_else(|| Map::new(env));
-        
+
         if let Some(approval) = pending_approvals.get(bounty_id) {
             if approval.admin_approved && approval.owner_approved {
                 // Update bounty status to Approved
                 Self::update_bounty_status(env, bounty_id, BountyStatus::Approved);
-                
+
                 // Emit event
-                env.events().publish(
-                    Symbol::new(env, "bounty_fully_approved"),
-                    bounty_id,
-                );
+                env.events()
+                    .publish(Symbol::new(env, "bounty_fully_approved"), bounty_id);
             }
         }
     }
