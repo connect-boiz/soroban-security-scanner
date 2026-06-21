@@ -1,8 +1,8 @@
+use anyhow::{anyhow, Result};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use anyhow::{Result, anyhow};
-use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -103,8 +103,7 @@ impl DataRetentionManager {
                 let meta = self.metadata.read().await;
                 meta.iter()
                     .filter(|m| {
-                        m.contract_id == contract_id
-                            && m.data_type == StoredDataType::ContractState
+                        m.contract_id == contract_id && m.data_type == StoredDataType::ContractState
                     })
                     .count()
             };
@@ -189,10 +188,7 @@ impl DataRetentionManager {
         RetentionCleanupReport {
             entries_removed: removed,
             bytes_freed: freed,
-            details: format!(
-                "Cleaned up {} entries, freed {} bytes",
-                removed, freed
-            ),
+            details: format!("Cleaned up {} entries, freed {} bytes", removed, freed),
         }
     }
 

@@ -1,15 +1,15 @@
 //! Ledger Snapshot Integration for Differential Fuzzing
-//! 
+//!
 //! Integrates with soroban-ledger-snapshot tool to pull real network state for tests.
 
 use crate::differential_fuzzing::{
-    TestInput, ExecutionResult, DifferentialFuzzingConfig, ArgumentValue
+    ArgumentValue, DifferentialFuzzingConfig, ExecutionResult, TestInput,
 };
-use serde::{Serialize, Deserialize};
-use std::collections::HashMap;
-use std::time::SystemTime;
 use anyhow::Result;
 use reqwest::Client;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::time::SystemTime;
 use tokio::time::{timeout, Duration};
 
 /// Network state information from ledger snapshot
@@ -180,9 +180,7 @@ impl LedgerSnapshotIntegration {
     }
 
     pub fn with_config(config: SnapshotConfig) -> Result<Self> {
-        let client = Client::builder()
-            .timeout(Duration::from_secs(30))
-            .build()?;
+        let client = Client::builder().timeout(Duration::from_secs(30)).build()?;
 
         Ok(Self {
             client,
@@ -202,7 +200,9 @@ impl LedgerSnapshotIntegration {
         }
 
         // Pull from network
-        let network_state = self.fetch_network_state_from_network(ledger_sequence).await?;
+        let network_state = self
+            .fetch_network_state_from_network(ledger_sequence)
+            .await?;
 
         // Cache the result
         if self.config.cache_enabled {
@@ -219,9 +219,10 @@ impl LedgerSnapshotIntegration {
 
         let network_state = timeout(
             Duration::from_secs(30),
-            self.build_network_state_from_horizon(ledger_sequence)
-        ).await
-            .map_err(|_| anyhow::anyhow!("Timeout while fetching network state"))??;
+            self.build_network_state_from_horizon(ledger_sequence),
+        )
+        .await
+        .map_err(|_| anyhow::anyhow!("Timeout while fetching network state"))??;
 
         Ok(network_state)
     }
@@ -254,15 +255,15 @@ impl LedgerSnapshotIntegration {
     }
 
     /// Fetch contracts at specific ledger
-    async fn fetch_contracts_at_ledger(&self, ledger_sequence: u64) -> Result<HashMap<String, ContractState>> {
+    async fn fetch_contracts_at_ledger(
+        &self,
+        ledger_sequence: u64,
+    ) -> Result<HashMap<String, ContractState>> {
         let mut contracts = HashMap::new();
 
         // In a real implementation, this would query for all contracts
         // For now, we'll simulate with some sample contracts
-        let sample_contracts = vec![
-            "sample_contract_1",
-            "sample_contract_2",
-        ];
+        let sample_contracts = vec!["sample_contract_1", "sample_contract_2"];
 
         for contract_id in sample_contracts {
             let contract_state = ContractState {
@@ -284,15 +285,15 @@ impl LedgerSnapshotIntegration {
     }
 
     /// Fetch accounts at specific ledger
-    async fn fetch_accounts_at_ledger(&self, ledger_sequence: u64) -> Result<HashMap<String, AccountState>> {
+    async fn fetch_accounts_at_ledger(
+        &self,
+        ledger_sequence: u64,
+    ) -> Result<HashMap<String, AccountState>> {
         let mut accounts = HashMap::new();
 
         // In a real implementation, this would query for accounts
         // For now, we'll simulate with sample accounts
-        let sample_accounts = vec![
-            "sample_account_1",
-            "sample_account_2",
-        ];
+        let sample_accounts = vec!["sample_account_1", "sample_account_2"];
 
         for account_id in sample_accounts {
             let account_state = AccountState {
@@ -364,9 +365,11 @@ impl LedgerSnapshotIntegration {
 
     /// Get cached snapshot if available and not expired
     fn get_cached_snapshot(&self, ledger_sequence: u64) -> Option<NetworkState> {
-        if let Some((timestamp, _)) = self.cached_snapshots.iter()
-            .find(|(seq, _)| *seq == ledger_sequence) {
-            
+        if let Some((timestamp, _)) = self
+            .cached_snapshots
+            .iter()
+            .find(|(seq, _)| *seq == ledger_sequence)
+        {
             if timestamp.elapsed().unwrap_or(Duration::MAX) < self.config.cache_ttl {
                 return self.snapshot_cache.get(&ledger_sequence).cloned();
             }
@@ -379,17 +382,21 @@ impl LedgerSnapshotIntegration {
     fn cache_snapshot(&mut self, ledger_sequence: u64, network_state: NetworkState) {
         // Remove oldest snapshots if cache is full
         if self.cached_snapshots.len() >= self.config.max_snapshots {
-            if let Some(oldest_seq) = self.cached_snapshots.iter()
+            if let Some(oldest_seq) = self
+                .cached_snapshots
+                .iter()
                 .min_by_key(|(_, timestamp)| *timestamp)
-                .map(|(seq, _)| *seq) {
-                
+                .map(|(seq, _)| *seq)
+            {
                 self.snapshot_cache.remove(&oldest_seq);
                 self.cached_snapshots.retain(|(seq, _)| *seq != oldest_seq);
             }
         }
 
-        self.snapshot_cache.insert(ledger_sequence, network_state.clone());
-        self.cached_snapshots.push((ledger_sequence, SystemTime::now()));
+        self.snapshot_cache
+            .insert(ledger_sequence, network_state.clone());
+        self.cached_snapshots
+            .push((ledger_sequence, SystemTime::now()));
     }
 
     /// Generate test inputs based on real network state
@@ -410,14 +417,18 @@ impl LedgerSnapshotIntegration {
     }
 
     /// Generate a single test input from network state
-    fn generate_input_from_network_state(&self, network_state: &NetworkState, index: usize) -> Result<TestInput> {
+    fn generate_input_from_network_state(
+        &self,
+        network_state: &NetworkState,
+        index: usize,
+    ) -> Result<TestInput> {
         // Select a random contract
         let contract_ids: Vec<&String> = network_state.contract_states.keys().collect();
         let contract_id = contract_ids[index % contract_ids.len()];
 
         // Select a random function
         let functions = vec![
-            "transfer", "approve", "balance", "mint", "burn", "withdraw", "deposit"
+            "transfer", "approve", "balance", "mint", "burn", "withdraw", "deposit",
         ];
         let function_name = functions[index % functions.len()].to_string();
 
@@ -425,7 +436,9 @@ impl LedgerSnapshotIntegration {
         let arguments = self.generate_arguments_from_state(network_state, &function_name, index)?;
 
         let metadata = crate::differential_fuzzing::TestInputMetadata {
-            edge_case_type: Some(crate::differential_fuzzing::EdgeCaseType::Custom("real_network".to_string())),
+            edge_case_type: Some(crate::differential_fuzzing::EdgeCaseType::Custom(
+                "real_network".to_string(),
+            )),
             generation_method: "ledger_snapshot".to_string(),
             complexity_score: 0.7,
         };
@@ -451,11 +464,12 @@ impl LedgerSnapshotIntegration {
             "transfer" | "approve" => Ok(vec![
                 crate::differential_fuzzing::TestArgument {
                     value: ArgumentValue::Address(
-                        account_ids[index % account_ids.len()].as_bytes()
+                        account_ids[index % account_ids.len()]
+                            .as_bytes()
                             .get(..32)
                             .unwrap_or(&[0u8; 32])
                             .try_into()
-                            .unwrap_or([0u8; 32])
+                            .unwrap_or([0u8; 32]),
                     ),
                     argument_type: crate::differential_fuzzing::ArgumentType::Address,
                 },
@@ -464,26 +478,26 @@ impl LedgerSnapshotIntegration {
                     argument_type: crate::differential_fuzzing::ArgumentType::I128,
                 },
             ]),
-            "balance" => Ok(vec![
-                crate::differential_fuzzing::TestArgument {
-                    value: ArgumentValue::Address(
-                        account_ids[index % account_ids.len()].as_bytes()
-                            .get(..32)
-                            .unwrap_or(&[0u8; 32])
-                            .try_into()
-                            .unwrap_or([0u8; 32])
-                    ),
-                    argument_type: crate::differential_fuzzing::ArgumentType::Address,
-                },
-            ]),
+            "balance" => Ok(vec![crate::differential_fuzzing::TestArgument {
+                value: ArgumentValue::Address(
+                    account_ids[index % account_ids.len()]
+                        .as_bytes()
+                        .get(..32)
+                        .unwrap_or(&[0u8; 32])
+                        .try_into()
+                        .unwrap_or([0u8; 32]),
+                ),
+                argument_type: crate::differential_fuzzing::ArgumentType::Address,
+            }]),
             "mint" | "burn" => Ok(vec![
                 crate::differential_fuzzing::TestArgument {
                     value: ArgumentValue::Address(
-                        account_ids[index % account_ids.len()].as_bytes()
+                        account_ids[index % account_ids.len()]
+                            .as_bytes()
                             .get(..32)
                             .unwrap_or(&[0u8; 32])
                             .try_into()
-                            .unwrap_or([0u8; 32])
+                            .unwrap_or([0u8; 32]),
                     ),
                     argument_type: crate::differential_fuzzing::ArgumentType::Address,
                 },
@@ -492,12 +506,10 @@ impl LedgerSnapshotIntegration {
                     argument_type: crate::differential_fuzzing::ArgumentType::I128,
                 },
             ]),
-            "withdraw" | "deposit" => Ok(vec![
-                crate::differential_fuzzing::TestArgument {
-                    value: ArgumentValue::I128((index as i128 + 1) * 25),
-                    argument_type: crate::differential_fuzzing::ArgumentType::I128,
-                },
-            ]),
+            "withdraw" | "deposit" => Ok(vec![crate::differential_fuzzing::TestArgument {
+                value: ArgumentValue::I128((index as i128 + 1) * 25),
+                argument_type: crate::differential_fuzzing::ArgumentType::I128,
+            }]),
             _ => Ok(Vec::new()),
         }
     }
@@ -556,7 +568,10 @@ impl LedgerSnapshotIntegration {
             return Ok(Some(StateValidationIssue {
                 issue_type: StateValidationIssueType::UnexpectedStateDeletion,
                 severity: crate::Severity::Medium,
-                description: format!("Unexpected deletion of state key: {}", hex::encode(&state_change.key)),
+                description: format!(
+                    "Unexpected deletion of state key: {}",
+                    hex::encode(&state_change.key)
+                ),
                 key: state_change.key.clone(),
                 expected_value: state_change.old_value.clone(),
                 actual_value: state_change.new_value.clone(),
@@ -580,7 +595,10 @@ impl LedgerSnapshotIntegration {
             return Ok(Some(StateValidationIssue {
                 issue_type: StateValidationIssueType::ExcessiveGasConsumption,
                 severity: crate::Severity::Low,
-                description: format!("Gas consumption {} exceeds baseline by 10x", result.gas_consumed),
+                description: format!(
+                    "Gas consumption {} exceeds baseline by 10x",
+                    result.gas_consumed
+                ),
                 key: Vec::new(),
                 expected_value: Some(baseline_gas.to_le_bytes().to_vec()),
                 actual_value: Some(result.gas_consumed.to_le_bytes().to_vec()),
@@ -611,11 +629,11 @@ impl LedgerSnapshotIntegration {
         });
 
         // Remove corresponding entries from snapshot cache
-        let active_sequences: std::collections::HashSet<u64> = self.cached_snapshots.iter()
-            .map(|(seq, _)| *seq)
-            .collect();
-        
-        self.snapshot_cache.retain(|seq, _| active_sequences.contains(seq));
+        let active_sequences: std::collections::HashSet<u64> =
+            self.cached_snapshots.iter().map(|(seq, _)| *seq).collect();
+
+        self.snapshot_cache
+            .retain(|seq, _| active_sequences.contains(seq));
     }
 
     /// Get cache statistics

@@ -1,13 +1,13 @@
 //! Orphaned State Tracker
-//! 
+//!
 //! This module tracks storage entries that are no longer accessible by contract code
 //! after upgrades or changes.
 
-use std::collections::{HashMap, HashSet};
-use anyhow::{Result, anyhow};
+use crate::time_travel_debugger::{ContractState, StorageLayoutInfo};
+use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use soroban_sdk::xdr::ScVal;
-use crate::time_travel_debugger::{ContractState, StorageLayoutInfo};
+use std::collections::{HashMap, HashSet};
 
 /// Tracks orphaned state entries that become inaccessible after contract changes
 pub struct OrphanedStateTracker {
@@ -30,14 +30,14 @@ impl OrphanedStateTracker {
     ) -> Result<Vec<String>> {
         // Parse new WASM to get expected storage layout
         let new_layout = self.parse_new_wasm_layout(new_wasm).await?;
-        
+
         // Find entries that exist in current state but not in new layout
         let mut orphaned_keys = Vec::new();
-        
+
         for (key, value) in &current_state.storage {
             if !self.is_key_accessible_in_new_layout(key, &new_layout) {
                 orphaned_keys.push(key.clone());
-                
+
                 // Store detailed information about the orphaned entry
                 let orphaned_entry = OrphanedEntry {
                     key: key.clone(),
@@ -47,14 +47,14 @@ impl OrphanedStateTracker {
                     recovery_possible: self.is_recovery_possible(key, value),
                     data_loss_risk: self.assess_data_loss_risk(key, value),
                 };
-                
+
                 self.orphaned_entries
                     .entry(current_state.contract_id.clone())
                     .or_insert_with(Vec::new)
                     .push(orphaned_entry);
             }
         }
-        
+
         Ok(orphaned_keys)
     }
 
@@ -65,11 +65,11 @@ impl OrphanedStateTracker {
         new_layout: &HashMap<String, StorageLayoutInfo>,
     ) -> Result<Vec<String>> {
         let mut orphaned_keys = Vec::new();
-        
+
         for (key, value) in &current_state.storage {
             if !new_layout.contains_key(key) && key != "instance" {
                 orphaned_keys.push(key.clone());
-                
+
                 // Store detailed information
                 let orphaned_entry = OrphanedEntry {
                     key: key.clone(),
@@ -79,57 +79,75 @@ impl OrphanedStateTracker {
                     recovery_possible: self.is_recovery_possible(key, value),
                     data_loss_risk: self.assess_data_loss_risk(key, value),
                 };
-                
+
                 self.orphaned_entries
                     .entry(current_state.contract_id.clone())
                     .or_insert_with(Vec::new)
                     .push(orphaned_entry);
             }
         }
-        
+
         Ok(orphaned_keys)
     }
 
     /// Parse new WASM to extract expected storage layout
-    async fn parse_new_wasm_layout(&self, wasm: &[u8]) -> Result<HashMap<String, StorageLayoutInfo>> {
+    async fn parse_new_wasm_layout(
+        &self,
+        wasm: &[u8],
+    ) -> Result<HashMap<String, StorageLayoutInfo>> {
         let mut layout = HashMap::new();
-        
+
         // In a real implementation, this would parse the WASM to extract storage patterns
         // For now, we'll simulate with some common patterns
         let wasm_string = String::from_utf8_lossy(wasm);
-        
+
         // Look for storage-related patterns
         if wasm_string.contains("balance") {
-            layout.insert("balance".to_string(), StorageLayoutInfo {
-                storage_type: crate::time_travel_debugger::contract_upgrade::StorageType::Persistent,
-                required: false,
-                description: "Token balance".to_string(),
-            });
+            layout.insert(
+                "balance".to_string(),
+                StorageLayoutInfo {
+                    storage_type:
+                        crate::time_travel_debugger::contract_upgrade::StorageType::Persistent,
+                    required: false,
+                    description: "Token balance".to_string(),
+                },
+            );
         }
-        
+
         if wasm_string.contains("allowance") {
-            layout.insert("allowance".to_string(), StorageLayoutInfo {
-                storage_type: crate::time_travel_debugger::contract_upgrade::StorageType::Persistent,
-                required: false,
-                description: "Token allowance".to_string(),
-            });
+            layout.insert(
+                "allowance".to_string(),
+                StorageLayoutInfo {
+                    storage_type:
+                        crate::time_travel_debugger::contract_upgrade::StorageType::Persistent,
+                    required: false,
+                    description: "Token allowance".to_string(),
+                },
+            );
         }
-        
+
         if wasm_string.contains("owner") {
-            layout.insert("owner".to_string(), StorageLayoutInfo {
-                storage_type: crate::time_travel_debugger::contract_upgrade::StorageType::Persistent,
-                required: true,
-                description: "Contract owner".to_string(),
-            });
+            layout.insert(
+                "owner".to_string(),
+                StorageLayoutInfo {
+                    storage_type:
+                        crate::time_travel_debugger::contract_upgrade::StorageType::Persistent,
+                    required: true,
+                    description: "Contract owner".to_string(),
+                },
+            );
         }
-        
+
         // Always include instance storage
-        layout.insert("instance".to_string(), StorageLayoutInfo {
-            storage_type: crate::time_travel_debugger::contract_upgrade::StorageType::Instance,
-            required: true,
-            description: "Contract instance data".to_string(),
-        });
-        
+        layout.insert(
+            "instance".to_string(),
+            StorageLayoutInfo {
+                storage_type: crate::time_travel_debugger::contract_upgrade::StorageType::Instance,
+                required: true,
+                description: "Contract instance data".to_string(),
+            },
+        );
+
         Ok(layout)
     }
 
@@ -143,7 +161,7 @@ impl OrphanedStateTracker {
         if key == "instance" {
             return true;
         }
-        
+
         // Check if the key exists in the new layout
         new_layout.contains_key(key)
     }
@@ -213,17 +231,17 @@ impl OrphanedStateTracker {
         if key.contains("balance") || key.contains("total_supply") || key.contains("owner") {
             return DataLossRisk::High;
         }
-        
+
         // Medium-risk keys
         if key.contains("allowance") || key.contains("approval") || key.contains("metadata") {
             return DataLossRisk::Medium;
         }
-        
+
         // Low-risk keys
         if key.contains("temp") || key.contains("cache") || key.contains("counter") {
             return DataLossRisk::Low;
         }
-        
+
         // Default to medium for unknown keys
         DataLossRisk::Medium
     }
@@ -239,12 +257,15 @@ impl OrphanedStateTracker {
     /// Get orphaned entries summary for a contract
     pub fn get_orphaned_summary(&self, contract_id: &str) -> OrphanedSummary {
         let entries = self.get_orphaned_entries(contract_id);
-        
+
         let total_entries = entries.len();
         let total_size_bytes: usize = entries.iter().map(|e| e.size_bytes).sum();
-        let high_risk_count = entries.iter().filter(|e| e.data_loss_risk == DataLossRisk::High).count();
+        let high_risk_count = entries
+            .iter()
+            .filter(|e| e.data_loss_risk == DataLossRisk::High)
+            .count();
         let recoverable_count = entries.iter().filter(|e| e.recovery_possible).count();
-        
+
         let risk_level = if high_risk_count > 0 {
             OverallRisk::High
         } else if total_entries > 10 {
@@ -252,7 +273,7 @@ impl OrphanedStateTracker {
         } else {
             OverallRisk::Low
         };
-        
+
         OrphanedSummary {
             total_entries,
             total_size_bytes,
@@ -263,15 +284,18 @@ impl OrphanedStateTracker {
     }
 
     /// Generate recovery recommendations for orphaned entries
-    pub fn generate_recovery_recommendations(&self, contract_id: &str) -> Vec<RecoveryRecommendation> {
+    pub fn generate_recovery_recommendations(
+        &self,
+        contract_id: &str,
+    ) -> Vec<RecoveryRecommendation> {
         let entries = self.get_orphaned_entries(contract_id);
         let mut recommendations = Vec::new();
-        
+
         // Group entries by type for batch recommendations
         let mut balance_entries = Vec::new();
         let mut metadata_entries = Vec::new();
         let mut other_entries = Vec::new();
-        
+
         for entry in &entries {
             if entry.key.contains("balance") {
                 balance_entries.push(entry);
@@ -281,7 +305,7 @@ impl OrphanedStateTracker {
                 other_entries.push(entry);
             }
         }
-        
+
         // Generate recommendations for each group
         if !balance_entries.is_empty() {
             recommendations.push(RecoveryRecommendation {
@@ -292,27 +316,33 @@ impl OrphanedStateTracker {
                 estimated_effort: "High".to_string(),
             });
         }
-        
+
         if !metadata_entries.is_empty() {
             recommendations.push(RecoveryRecommendation {
                 priority: RecommendationPriority::High,
                 category: "Metadata".to_string(),
-                description: format!("{} metadata entries will be lost. This may affect contract functionality.", metadata_entries.len()),
+                description: format!(
+                    "{} metadata entries will be lost. This may affect contract functionality.",
+                    metadata_entries.len()
+                ),
                 action: "Export metadata before upgrade and re-import after".to_string(),
                 estimated_effort: "Medium".to_string(),
             });
         }
-        
+
         if !other_entries.is_empty() {
             recommendations.push(RecoveryRecommendation {
                 priority: RecommendationPriority::Medium,
                 category: "Other Data".to_string(),
-                description: format!("{} other storage entries will be orphaned.", other_entries.len()),
+                description: format!(
+                    "{} other storage entries will be orphaned.",
+                    other_entries.len()
+                ),
                 action: "Review and determine if data needs to be preserved".to_string(),
                 estimated_effort: "Low".to_string(),
             });
         }
-        
+
         recommendations
     }
 
@@ -331,24 +361,24 @@ impl OrphanedStateTracker {
         let mut common_keys = HashMap::new();
         let mut risk_distribution = HashMap::new();
         let mut total_orphans = 0;
-        
+
         for entries in self.orphaned_entries.values() {
             total_orphans += entries.len();
-            
+
             for entry in entries {
                 // Track common orphaned keys
                 *common_keys.entry(entry.key.clone()).or_insert(0) += 1;
-                
+
                 // Track risk distribution
                 let risk_str = format!("{:?}", entry.data_loss_risk);
                 *risk_distribution.entry(risk_str).or_insert(0) += 1;
             }
         }
-        
+
         // Find most common orphaned keys
         let mut common_keys_vec: Vec<_> = common_keys.into_iter().collect();
         common_keys_vec.sort_by(|a, b| b.1.cmp(&a.1));
-        
+
         OrphanedPatterns {
             total_contracts_with_orphans: self.orphaned_entries.len(),
             total_orphaned_entries: total_orphans,
@@ -438,13 +468,13 @@ mod tests {
     #[tokio::test]
     async fn test_value_type_detection() {
         let tracker = OrphanedStateTracker::new();
-        
+
         let bool_val = ScVal::Bool(true);
         assert_eq!(tracker.get_value_type(&bool_val), "bool");
-        
+
         let u32_val = ScVal::U32(42);
         assert_eq!(tracker.get_value_type(&u32_val), "u32");
-        
+
         let bytes_val = ScVal::Bytes(vec![1, 2, 3, 4]);
         assert_eq!(tracker.get_value_type(&bytes_val), "bytes");
     }
@@ -452,13 +482,13 @@ mod tests {
     #[tokio::test]
     async fn test_size_estimation() {
         let tracker = OrphanedStateTracker::new();
-        
+
         let bool_val = ScVal::Bool(true);
         assert_eq!(tracker.estimate_value_size(&bool_val), 1);
-        
+
         let u32_val = ScVal::U32(42);
         assert_eq!(tracker.estimate_value_size(&u32_val), 4);
-        
+
         let bytes_val = ScVal::Bytes(vec![1, 2, 3, 4, 5]);
         assert_eq!(tracker.estimate_value_size(&bytes_val), 5);
     }
@@ -466,19 +496,25 @@ mod tests {
     #[tokio::test]
     async fn test_risk_assessment() {
         let tracker = OrphanedStateTracker::new();
-        
+
         let balance_val = ScVal::U64(1000);
-        assert_eq!(tracker.assess_data_loss_risk("balance", &balance_val), DataLossRisk::High);
-        
+        assert_eq!(
+            tracker.assess_data_loss_risk("balance", &balance_val),
+            DataLossRisk::High
+        );
+
         let temp_val = ScVal::U32(42);
-        assert_eq!(tracker.assess_data_loss_risk("temp_counter", &temp_val), DataLossRisk::Low);
+        assert_eq!(
+            tracker.assess_data_loss_risk("temp_counter", &temp_val),
+            DataLossRisk::Low
+        );
     }
 
     #[tokio::test]
     async fn test_orphaned_summary() {
         let tracker = OrphanedStateTracker::new();
         let contract_id = "test_contract";
-        
+
         let summary = tracker.get_orphaned_summary(contract_id);
         assert_eq!(summary.total_entries, 0);
         assert_eq!(summary.risk_level, OverallRisk::Low);

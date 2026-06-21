@@ -204,7 +204,11 @@ mod tests {
     fn validates_stateless_session_with_external_store() {
         let manager = StatelessSessionManager::new("test-signing-key", InMemorySessionStore::new());
         let token = manager
-            .issue("user-123", vec!["scan:read".to_string()], Duration::from_secs(60))
+            .issue(
+                "user-123",
+                vec!["scan:read".to_string()],
+                Duration::from_secs(60),
+            )
             .expect("token should be issued");
 
         let claims = manager.validate(&token).expect("token should validate");
@@ -215,7 +219,11 @@ mod tests {
     fn revocation_is_enforced_without_session_affinity() {
         let manager = StatelessSessionManager::new("test-signing-key", InMemorySessionStore::new());
         let token = manager
-            .issue("user-456", vec!["scan:write".to_string()], Duration::from_secs(60))
+            .issue(
+                "user-456",
+                vec!["scan:write".to_string()],
+                Duration::from_secs(60),
+            )
             .expect("token should be issued");
 
         manager.revoke(&token).expect("token should be revoked");

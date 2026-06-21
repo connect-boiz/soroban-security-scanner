@@ -1,8 +1,8 @@
+use anyhow::{anyhow, Result};
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use anyhow::{Result, anyhow};
-use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -192,7 +192,10 @@ impl AccessController {
                                 contract_id: contract_id.map(|s| s.to_string()),
                                 timestamp: Instant::now(),
                                 allowed: false,
-                                reason: Some(format!("Ledger sequence {} is not accessible for this user tier", seq)),
+                                reason: Some(format!(
+                                    "Ledger sequence {} is not accessible for this user tier",
+                                    seq
+                                )),
                             });
                         }
                     }
@@ -257,11 +260,7 @@ impl AccessController {
         }
     }
 
-    pub async fn register_contract_owner(
-        &self,
-        contract_id: &str,
-        owner_id: &str,
-    ) -> Result<()> {
+    pub async fn register_contract_owner(&self, contract_id: &str, owner_id: &str) -> Result<()> {
         let mut cache = self.contract_owner_cache.write().await;
         cache
             .entry(contract_id.to_string())
@@ -326,33 +325,23 @@ impl AccessController {
 
     pub async fn check_approval_status(&self, approval_id: &str) -> Option<ApprovalStatus> {
         let approvals = self.pending_approvals.read().await;
-        approvals
-            .iter()
-            .find(|r| r.id == approval_id)
-            .map(|r| {
-                if matches!(r.status, ApprovalStatus::Pending)
-                    && r.requested_at.elapsed() > self.approval_timeout
-                {
-                    ApprovalStatus::Expired
-                } else {
-                    r.status.clone()
-                }
-            })
+        approvals.iter().find(|r| r.id == approval_id).map(|r| {
+            if matches!(r.status, ApprovalStatus::Pending)
+                && r.requested_at.elapsed() > self.approval_timeout
+            {
+                ApprovalStatus::Expired
+            } else {
+                r.status.clone()
+            }
+        })
     }
 
     pub async fn get_role_permissions(&self, role: &UserRole) -> HashSet<Permission> {
         let role_perms = self.role_permissions.read().await;
-        role_perms
-            .get(role)
-            .cloned()
-            .unwrap_or_default()
+        role_perms.get(role).cloned().unwrap_or_default()
     }
 
-    pub async fn add_role_permission(
-        &self,
-        role: UserRole,
-        permission: Permission,
-    ) -> Result<()> {
+    pub async fn add_role_permission(&self, role: UserRole, permission: Permission) -> Result<()> {
         let mut role_perms = self.role_permissions.write().await;
         role_perms
             .entry(role)

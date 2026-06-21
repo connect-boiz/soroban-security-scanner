@@ -1,6 +1,6 @@
-use std::sync::Arc;
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use tokio::sync::RwLock;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -96,7 +96,12 @@ impl DataEncryptor {
             .as_ref()
             .ok_or_else(|| anyhow!("Encryption key not initialized"))?;
 
-        self.decrypt_data(&encrypted.ciphertext, key_data, &encrypted.nonce, &encrypted.algorithm)
+        self.decrypt_data(
+            &encrypted.ciphertext,
+            key_data,
+            &encrypted.nonce,
+            &encrypted.algorithm,
+        )
     }
 
     pub async fn rotate_key(&self, new_key: &[u8]) -> Result<()> {
@@ -147,9 +152,7 @@ impl DataEncryptor {
         let key_bytes = &key_hash[..32];
 
         match algorithm {
-            EncryptionAlgorithm::Aes256Gcm => {
-                self.aes256_gcm_encrypt(plaintext, key_bytes, nonce)
-            }
+            EncryptionAlgorithm::Aes256Gcm => self.aes256_gcm_encrypt(plaintext, key_bytes, nonce),
             EncryptionAlgorithm::ChaCha20Poly1305 => {
                 self.chacha20_poly1305_encrypt(plaintext, key_bytes, nonce)
             }
@@ -167,9 +170,7 @@ impl DataEncryptor {
         let key_bytes = &key_hash[..32];
 
         match algorithm {
-            EncryptionAlgorithm::Aes256Gcm => {
-                self.aes256_gcm_decrypt(ciphertext, key_bytes, nonce)
-            }
+            EncryptionAlgorithm::Aes256Gcm => self.aes256_gcm_decrypt(ciphertext, key_bytes, nonce),
             EncryptionAlgorithm::ChaCha20Poly1305 => {
                 self.chacha20_poly1305_decrypt(ciphertext, key_bytes, nonce)
             }
@@ -177,7 +178,7 @@ impl DataEncryptor {
     }
 
     fn derive_key(&self, key: &[u8], _algorithm: &EncryptionAlgorithm) -> Result<Vec<u8>> {
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
         hasher.update(key);
         Ok(hasher.finalize().to_vec())
@@ -202,7 +203,9 @@ impl DataEncryptor {
         let (encrypted, tag) = ciphertext.split_at(ciphertext.len() - 16);
         let expected_tag = self.compute_auth_tag(encrypted, key);
         if tag != expected_tag.as_slice() {
-            return Err(anyhow!("Authentication tag mismatch - data may be corrupted"));
+            return Err(anyhow!(
+                "Authentication tag mismatch - data may be corrupted"
+            ));
         }
         let mut plaintext = Vec::with_capacity(encrypted.len());
         for (i, byte) in encrypted.iter().enumerate() {
@@ -213,7 +216,12 @@ impl DataEncryptor {
         Ok(plaintext)
     }
 
-    fn chacha20_poly1305_encrypt(&self, plaintext: &[u8], key: &[u8], nonce: &[u8]) -> Result<Vec<u8>> {
+    fn chacha20_poly1305_encrypt(
+        &self,
+        plaintext: &[u8],
+        key: &[u8],
+        nonce: &[u8],
+    ) -> Result<Vec<u8>> {
         let mut result = Vec::with_capacity(plaintext.len() + 16);
         for (i, byte) in plaintext.iter().enumerate() {
             let key_byte = key[i % key.len()];
@@ -228,14 +236,21 @@ impl DataEncryptor {
         Ok(result)
     }
 
-    fn chacha20_poly1305_decrypt(&self, ciphertext: &[u8], key: &[u8], nonce: &[u8]) -> Result<Vec<u8>> {
+    fn chacha20_poly1305_decrypt(
+        &self,
+        ciphertext: &[u8],
+        key: &[u8],
+        nonce: &[u8],
+    ) -> Result<Vec<u8>> {
         if ciphertext.len() < 16 {
             return Err(anyhow!("Ciphertext too short"));
         }
         let (encrypted, tag) = ciphertext.split_at(ciphertext.len() - 16);
         let expected_tag = self.compute_poly1305_tag(encrypted, key, nonce);
         if tag != expected_tag.as_slice() {
-            return Err(anyhow!("Authentication tag mismatch - data may be corrupted"));
+            return Err(anyhow!(
+                "Authentication tag mismatch - data may be corrupted"
+            ));
         }
         let mut plaintext = Vec::with_capacity(encrypted.len());
         for (i, byte) in encrypted.iter().enumerate() {
@@ -250,7 +265,7 @@ impl DataEncryptor {
     }
 
     fn compute_auth_tag(&self, data: &[u8], key: &[u8]) -> Vec<u8> {
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
         hasher.update(data);
         hasher.update(key);
@@ -259,7 +274,7 @@ impl DataEncryptor {
     }
 
     fn compute_poly1305_tag(&self, data: &[u8], key: &[u8], nonce: &[u8]) -> Vec<u8> {
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
         hasher.update(data);
         hasher.update(key);
@@ -278,14 +293,20 @@ mod tests {
     async fn test_encryption_initialization() {
         let encryptor = DataEncryptor::new(EncryptionConfig::default());
         assert!(!encryptor.is_initialized().await);
-        encryptor.initialize(b"this_is_a_32_byte_test_key!!!!!!").await.unwrap();
+        encryptor
+            .initialize(b"this_is_a_32_byte_test_key!!!!!!")
+            .await
+            .unwrap();
         assert!(encryptor.is_initialized().await);
     }
 
     #[tokio::test]
     async fn test_encrypt_decrypt_roundtrip() {
         let encryptor = DataEncryptor::new(EncryptionConfig::default());
-        encryptor.initialize(b"this_is_a_32_byte_test_key!!!!!!").await.unwrap();
+        encryptor
+            .initialize(b"this_is_a_32_byte_test_key!!!!!!")
+            .await
+            .unwrap();
 
         let plaintext = b"Hello, Time Travel Debugger!";
         let encrypted = encryptor.encrypt(plaintext).await.unwrap();
@@ -301,7 +322,10 @@ mod tests {
             ..Default::default()
         };
         let encryptor = DataEncryptor::new(config);
-        encryptor.initialize(b"this_is_a_32_byte_test_key!!!!!!").await.unwrap();
+        encryptor
+            .initialize(b"this_is_a_32_byte_test_key!!!!!!")
+            .await
+            .unwrap();
 
         let result = encryptor.encrypt(b"test").await;
         assert!(result.is_err());
@@ -333,7 +357,10 @@ mod tests {
     #[tokio::test]
     async fn test_corrupted_data_detection() {
         let encryptor = DataEncryptor::new(EncryptionConfig::default());
-        encryptor.initialize(b"this_is_a_32_byte_test_key!!!!!!").await.unwrap();
+        encryptor
+            .initialize(b"this_is_a_32_byte_test_key!!!!!!")
+            .await
+            .unwrap();
 
         let plaintext = b"test data";
         let mut encrypted = encryptor.encrypt(plaintext).await.unwrap();

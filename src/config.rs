@@ -1,10 +1,10 @@
 //! Configuration management for the security scanner
 
+use crate::event_logging::EventLoggingConfig as EventLoggingConfigType;
+use crate::gas_limits::GasLimitConfig as GasLimitConfigType;
+use crate::secure_id_generation::SecureIdConfig as SecureIdConfigType;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use crate::gas_limits::GasLimitConfig as GasLimitConfigType;
-use crate::event_logging::EventLoggingConfig as EventLoggingConfigType;
-use crate::secure_id_generation::SecureIdConfig as SecureIdConfigType;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScannerConfig {
@@ -164,24 +164,44 @@ impl ScannerConfig {
     pub fn load_from_file(path: &PathBuf) -> ScannerResult<Self> {
         let content = std::fs::read_to_string(path)
             .map_err(|e| ScannerError::file_operation("read", &path.to_string_lossy(), e))?;
-        
+
         let config: ScannerConfig = if path.extension().and_then(|s| s.to_str()) == Some("toml") {
-            toml::from_str(&content)
-                .map_err(|e| ScannerError::parsing_with_source("TOML", &path.to_string_lossy(), "Invalid configuration format", Box::new(e)))?
+            toml::from_str(&content).map_err(|e| {
+                ScannerError::parsing_with_source(
+                    "TOML",
+                    &path.to_string_lossy(),
+                    "Invalid configuration format",
+                    Box::new(e),
+                )
+            })?
         } else {
-            serde_json::from_str(&content)
-                .map_err(|e| ScannerError::parsing_with_source("JSON", &path.to_string_lossy(), "Invalid configuration format", Box::new(e)))?
+            serde_json::from_str(&content).map_err(|e| {
+                ScannerError::parsing_with_source(
+                    "JSON",
+                    &path.to_string_lossy(),
+                    "Invalid configuration format",
+                    Box::new(e),
+                )
+            })?
         };
         Ok(config)
     }
 
     pub fn save_to_file(&self, path: &PathBuf) -> ScannerResult<()> {
         let content = if path.extension().and_then(|s| s.to_str()) == Some("toml") {
-            toml::to_string_pretty(self)
-                .map_err(|e| ScannerError::config_with_source("Failed to serialize TOML configuration", Box::new(e)))?
+            toml::to_string_pretty(self).map_err(|e| {
+                ScannerError::config_with_source(
+                    "Failed to serialize TOML configuration",
+                    Box::new(e),
+                )
+            })?
         } else {
-            serde_json::to_string_pretty(self)
-                .map_err(|e| ScannerError::config_with_source("Failed to serialize JSON configuration", Box::new(e)))?
+            serde_json::to_string_pretty(self).map_err(|e| {
+                ScannerError::config_with_source(
+                    "Failed to serialize JSON configuration",
+                    Box::new(e),
+                )
+            })?
         };
         std::fs::write(path, content)
             .map_err(|e| ScannerError::file_operation("write", &path.to_string_lossy(), e))?;
@@ -189,18 +209,28 @@ impl ScannerConfig {
     }
 
     pub fn should_ignore_path(&self, path: &PathBuf) -> bool {
-        self.ignore_paths.iter().any(|ignore| {
-            path.starts_with(ignore) || path.file_name() == ignore.file_name()
-        })
+        self.ignore_paths
+            .iter()
+            .any(|ignore| path.starts_with(ignore) || path.file_name() == ignore.file_name())
     }
 
     pub fn is_vulnerability_enabled(&self, check_name: &str) -> bool {
-        self.vulnerability_checks.enabled_checks.contains(&check_name.to_string()) &&
-        !self.vulnerability_checks.disabled_checks.contains(&check_name.to_string())
+        self.vulnerability_checks
+            .enabled_checks
+            .contains(&check_name.to_string())
+            && !self
+                .vulnerability_checks
+                .disabled_checks
+                .contains(&check_name.to_string())
     }
 
     pub fn is_invariant_enabled(&self, rule_name: &str) -> bool {
-        self.invariant_checks.enabled_rules.contains(&rule_name.to_string()) &&
-        !self.invariant_checks.disabled_rules.contains(&rule_name.to_string())
+        self.invariant_checks
+            .enabled_rules
+            .contains(&rule_name.to_string())
+            && !self
+                .invariant_checks
+                .disabled_rules
+                .contains(&rule_name.to_string())
     }
 }

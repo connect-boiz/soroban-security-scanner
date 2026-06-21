@@ -1,60 +1,115 @@
-import { useRef, useState, useEffect } from 'react';
+'use client';
+
+import { useState, useRef, useEffect } from 'react';
 
 interface LazyImageProps {
   src: string;
-  webpSrc?: string;
   alt: string;
+  className?: string;
   width?: number;
   height?: number;
-  sizes?: string;
-  className?: string;
+  placeholder?: string;
+  onLoad?: () => void;
+  onError?: () => void;
 }
 
 export default function LazyImage({
   src,
-  webpSrc,
   alt,
+  className = '',
   width,
   height,
-  sizes = '100vw',
-  className,
+  placeholder,
+  onLoad,
+  onError,
 }: LazyImageProps) {
-  const [loaded, setLoaded] = useState(false);
-  const [inView, setInView] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [isInView, setIsInView] = useState(false);
+  const [hasError, setHasError] = useState(false);
+  const imgRef = useRef<HTMLImageElement>(null);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
-          setInView(true);
+          setIsInView(true);
           observer.disconnect();
         }
       },
-      { rootMargin: '200px' }
+      {
+        threshold: 0.1,
+        rootMargin: '50px',
+      }
     );
-    if (ref.current) observer.observe(ref.current);
+
+    if (imgRef.current) {
+      observer.observe(imgRef.current);
+    }
+
     return () => observer.disconnect();
   }, []);
 
+  const handleLoad = () => {
+    setIsLoaded(true);
+    onLoad?.();
+  };
+
+  const handleError = () => {
+    setHasError(true);
+    onError?.();
+  };
+
+  // Generate optimized srcset for different screen sizes
+  const generateSrcSet = (baseSrc: string) => {
+    const widths = [320, 640, 768, 1024, 1280];
+    return widths.map(w => `${baseSrc}?w=${w} ${w}w`).join(', ');
+  };
+
+  // Generate sizes attribute for responsive images
+  const generateSizes = () => {
+    return '(max-width: 640px) 320px, (max-width: 768px) 640px, (max-width: 1024px) 768px, 1024px';
+  };
+
+  if (hasError) {
+    return (
+      <div
+        className={`flex items-center justify-center bg-gray-200 text-gray-500 ${className}`}
+        style={{ width, height }}
+      >
+        <span className="text-sm">Failed to load image</span>
+      </div>
+    );
+  }
+
   return (
-    <div ref={ref} style={{ width, height }} className={className}>
-      {inView && (
-        <picture>
-          {webpSrc && <source srcSet={webpSrc} type="image/webp" sizes={sizes} />}
-          <img
-            src={src}
-            alt={alt}
-            width={width}
-            height={height}
-            sizes={sizes}
-            loading="lazy"
-            decoding="async"
-            onLoad={() => setLoaded(true)}
-            style={{ opacity: loaded ? 1 : 0, transition: 'opacity 0.3s' }}
-          />
-        </picture>
+    <div className={`relative overflow-hidden ${className}`} style={{ width, height }}>
+      {/* Placeholder */}
+      {!isLoaded && (
+        <div className="absolute inset-0 bg-gray-200 skeleton" style={{ width, height }} />
       )}
+
+      {/* Actual image */}
+      <img
+        ref={imgRef}
+        src={isInView ? src : undefined}
+        srcSet={isInView ? generateSrcSet(src) : undefined}
+        sizes={generateSizes()}
+        alt={alt}
+        width={width}
+        height={height}
+        loading="lazy"
+        decoding="async"
+        onLoad={handleLoad}
+        onError={handleError}
+        className={`transition-opacity duration-300 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+        style={{
+          objectFit: 'cover',
+          width: '100%',
+          height: '100%',
+        }}
+      />
     </div>
   );
 }
+
+export type { LazyImageProps };

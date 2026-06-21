@@ -1,7 +1,7 @@
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
 use super::access_control::UserTier;
@@ -144,15 +144,29 @@ impl QuotaManager {
         operation: &QuotaOperation,
     ) -> QuotaStatus {
         self.reset_if_needed(user_id).await;
-        let config = self.tier_quotas.get(tier).cloned().unwrap_or_else(QuotaConfig::free);
+        let config = self
+            .tier_quotas
+            .get(tier)
+            .cloned()
+            .unwrap_or_else(QuotaConfig::free);
         let state = self.ensure_state(user_id).await;
 
         let (used, limit) = match operation {
             QuotaOperation::Fork => (state.forks_today, config.max_forks_per_day),
-            QuotaOperation::StateRetrieval => (state.retrievals_today, config.max_state_retrievals_per_day),
-            QuotaOperation::UpgradeSimulation => (state.simulations_today, config.max_upgrade_simulations_per_day),
-            QuotaOperation::StateInjection => (state.injections_today, config.max_state_injections_per_day),
-            QuotaOperation::OrphanedStateAnalysis => (state.orphaned_analyses_today, config.max_orphaned_state_analyses_per_day),
+            QuotaOperation::StateRetrieval => {
+                (state.retrievals_today, config.max_state_retrievals_per_day)
+            }
+            QuotaOperation::UpgradeSimulation => (
+                state.simulations_today,
+                config.max_upgrade_simulations_per_day,
+            ),
+            QuotaOperation::StateInjection => {
+                (state.injections_today, config.max_state_injections_per_day)
+            }
+            QuotaOperation::OrphanedStateAnalysis => (
+                state.orphaned_analyses_today,
+                config.max_orphaned_state_analyses_per_day,
+            ),
         };
 
         let remaining = limit.saturating_sub(used);
@@ -178,19 +192,25 @@ impl QuotaManager {
         operation: &QuotaOperation,
     ) -> QuotaStatus {
         self.reset_if_needed(user_id).await;
-        let config = self.tier_quotas.get(tier).cloned().unwrap_or_else(QuotaConfig::free);
+        let config = self
+            .tier_quotas
+            .get(tier)
+            .cloned()
+            .unwrap_or_else(QuotaConfig::free);
 
         let mut states = self.user_states.write().await;
-        let state = states.entry(user_id.to_string()).or_insert_with(|| UserQuotaState {
-            forks_today: 0,
-            retrievals_today: 0,
-            simulations_today: 0,
-            injections_today: 0,
-            orphaned_analyses_today: 0,
-            active_forks: 0,
-            storage_used_mb: 0,
-            last_reset: Instant::now(),
-        });
+        let state = states
+            .entry(user_id.to_string())
+            .or_insert_with(|| UserQuotaState {
+                forks_today: 0,
+                retrievals_today: 0,
+                simulations_today: 0,
+                injections_today: 0,
+                orphaned_analyses_today: 0,
+                active_forks: 0,
+                storage_used_mb: 0,
+                last_reset: Instant::now(),
+            });
 
         let (used, limit) = match operation {
             QuotaOperation::Fork => {
@@ -203,7 +223,10 @@ impl QuotaManager {
             }
             QuotaOperation::UpgradeSimulation => {
                 state.simulations_today += 1;
-                (state.simulations_today, config.max_upgrade_simulations_per_day)
+                (
+                    state.simulations_today,
+                    config.max_upgrade_simulations_per_day,
+                )
             }
             QuotaOperation::StateInjection => {
                 state.injections_today += 1;
@@ -211,7 +234,10 @@ impl QuotaManager {
             }
             QuotaOperation::OrphanedStateAnalysis => {
                 state.orphaned_analyses_today += 1;
-                (state.orphaned_analyses_today, config.max_orphaned_state_analyses_per_day)
+                (
+                    state.orphaned_analyses_today,
+                    config.max_orphaned_state_analyses_per_day,
+                )
             }
         };
 
@@ -230,19 +256,25 @@ impl QuotaManager {
 
     pub async fn check_concurrent_forks(&self, user_id: &str, tier: &UserTier) -> bool {
         self.reset_if_needed(user_id).await;
-        let config = self.tier_quotas.get(tier).cloned().unwrap_or_else(QuotaConfig::free);
+        let config = self
+            .tier_quotas
+            .get(tier)
+            .cloned()
+            .unwrap_or_else(QuotaConfig::free);
         let mut states = self.user_states.write().await;
 
-        let state = states.entry(user_id.to_string()).or_insert_with(|| UserQuotaState {
-            forks_today: 0,
-            retrievals_today: 0,
-            simulations_today: 0,
-            injections_today: 0,
-            orphaned_analyses_today: 0,
-            active_forks: 0,
-            storage_used_mb: 0,
-            last_reset: Instant::now(),
-        });
+        let state = states
+            .entry(user_id.to_string())
+            .or_insert_with(|| UserQuotaState {
+                forks_today: 0,
+                retrievals_today: 0,
+                simulations_today: 0,
+                injections_today: 0,
+                orphaned_analyses_today: 0,
+                active_forks: 0,
+                storage_used_mb: 0,
+                last_reset: Instant::now(),
+            });
 
         state.active_forks < config.max_concurrent_forks
     }
@@ -273,13 +305,14 @@ impl QuotaManager {
         additional_bytes: usize,
     ) -> bool {
         self.reset_if_needed(user_id).await;
-        let config = self.tier_quotas.get(tier).cloned().unwrap_or_else(QuotaConfig::free);
+        let config = self
+            .tier_quotas
+            .get(tier)
+            .cloned()
+            .unwrap_or_else(QuotaConfig::free);
         let states = self.user_states.read().await;
 
-        let current_mb = states
-            .get(user_id)
-            .map(|s| s.storage_used_mb)
-            .unwrap_or(0);
+        let current_mb = states.get(user_id).map(|s| s.storage_used_mb).unwrap_or(0);
         let additional_mb = (additional_bytes / (1024 * 1024)) as u32;
         (current_mb + additional_mb) <= config.max_storage_size_mb
     }

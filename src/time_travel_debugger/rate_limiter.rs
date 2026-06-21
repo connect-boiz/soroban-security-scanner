@@ -1,7 +1,7 @@
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -98,7 +98,9 @@ impl RateLimiter {
                 last_burst_refill: now,
             });
 
-        state.request_timestamps.retain(|t| now.duration_since(*t) < window);
+        state
+            .request_timestamps
+            .retain(|t| now.duration_since(*t) < window);
 
         if state.last_burst_refill.elapsed() > Duration::from_secs(1) {
             let refill = (now.duration_since(state.last_burst_refill).as_secs() as u32)
@@ -107,7 +109,8 @@ impl RateLimiter {
             state.last_burst_refill = now;
         }
 
-        let within_window = state.request_timestamps.len() < self.config.max_requests_per_window as usize;
+        let within_window =
+            state.request_timestamps.len() < self.config.max_requests_per_window as usize;
         let has_burst = state.burst_tokens > 0;
         let within_concurrent = state.concurrent_operations < self.config.max_concurrent_operations;
 
@@ -127,7 +130,8 @@ impl RateLimiter {
         } else {
             let retry = if !within_window {
                 let oldest = state.request_timestamps.first().copied().unwrap_or(now);
-                window.checked_duration_since(now.duration_since(oldest))
+                window
+                    .checked_duration_since(now.duration_since(oldest))
                     .map(|d| d.as_secs())
                     .unwrap_or(0)
             } else {

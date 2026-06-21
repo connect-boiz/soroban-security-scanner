@@ -1,7 +1,7 @@
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -101,14 +101,16 @@ impl MonitoringEngine {
         let mut patterns = self.access_patterns.write().await;
         let now = Instant::now();
 
-        let pattern = patterns.entry(user_id.to_string()).or_insert_with(|| AccessPattern {
-            user_id: user_id.to_string(),
-            timestamps: Vec::new(),
-            operations: Vec::new(),
-            contracts_accessed: Vec::new(),
-            ledger_sequences: Vec::new(),
-            ip_addresses: Vec::new(),
-        });
+        let pattern = patterns
+            .entry(user_id.to_string())
+            .or_insert_with(|| AccessPattern {
+                user_id: user_id.to_string(),
+                timestamps: Vec::new(),
+                operations: Vec::new(),
+                contracts_accessed: Vec::new(),
+                ledger_sequences: Vec::new(),
+                ip_addresses: Vec::new(),
+            });
 
         pattern.timestamps.push(now);
         pattern.operations.push(operation.to_string());
@@ -130,7 +132,8 @@ impl MonitoringEngine {
             pattern.ip_addresses.drain(..500);
         }
 
-        self.detect_rapid_fire(user_id).await
+        self.detect_rapid_fire(user_id)
+            .await
             .or_else(|| self.detect_sequential_scan(user_id).await)
             .or_else(|| self.detect_off_hours(user_id).await)
     }
@@ -215,7 +218,9 @@ impl MonitoringEngine {
                     .collect();
 
                 if recent.len() >= 3 {
-                    let sequential = recent.windows(3).all(|w| w[0] == w[1] + 1 && w[1] == w[2] + 1);
+                    let sequential = recent
+                        .windows(3)
+                        .all(|w| w[0] == w[1] + 1 && w[1] == w[2] + 1);
                     if sequential {
                         return Some(SuspiciousPattern {
                             pattern_type: SuspiciousPatternType::SequentialLedgerScan,

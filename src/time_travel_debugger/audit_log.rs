@@ -1,7 +1,7 @@
+use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::Instant;
-use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -164,9 +164,7 @@ impl AuditLogger {
                     }
                 }
                 if let Some(ref op) = query.operation {
-                    if !std::mem::discriminant(&e.operation)
-                        == std::mem::discriminant(op)
-                    {
+                    if !std::mem::discriminant(&e.operation) == std::mem::discriminant(op) {
                         return false;
                     }
                 }

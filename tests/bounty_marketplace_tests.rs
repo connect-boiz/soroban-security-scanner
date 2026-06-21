@@ -1,8 +1,8 @@
 //! Comprehensive tests for the Security Bounty Marketplace smart contract
 
-use soroban_sdk::{Address, Env, Symbol, contracterror};
+use soroban_sdk::{contracterror, Address, Env, Symbol};
 use stellar_security_scanner::bounty_marketplace::{
-    BountyMarketplace, Bounty, BountyStatus, Severity, MultiSigApproval
+    Bounty, BountyMarketplace, BountyStatus, MultiSigApproval, Severity,
 };
 
 #[test]
@@ -71,7 +71,13 @@ fn test_create_bounty_validation() {
     let result = env.try_invoke_contract::<u64>(
         &contract_id,
         &Symbol::new(&env, "create_bounty"),
-        (creator.clone(), -100i128, Symbol::new(&env, "Test"), Symbol::new(&env, "Test"), Severity::Critical)
+        (
+            creator.clone(),
+            -100i128,
+            Symbol::new(&env, "Test"),
+            Symbol::new(&env, "Test"),
+            Severity::Critical,
+        ),
     );
     assert!(result.is_err());
 
@@ -79,7 +85,13 @@ fn test_create_bounty_validation() {
     let result = env.try_invoke_contract::<u64>(
         &contract_id,
         &Symbol::new(&env, "create_bounty"),
-        (creator.clone(), 100i128, Symbol::new(&env, ""), Symbol::new(&env, "Test"), Severity::Critical)
+        (
+            creator.clone(),
+            100i128,
+            Symbol::new(&env, ""),
+            Symbol::new(&env, "Test"),
+            Severity::Critical,
+        ),
     );
     assert!(result.is_err());
 
@@ -87,7 +99,13 @@ fn test_create_bounty_validation() {
     let result = env.try_invoke_contract::<u64>(
         &contract_id,
         &Symbol::new(&env, "create_bounty"),
-        (creator, 100i128, Symbol::new(&env, "Test"), Symbol::new(&env, ""), Severity::Critical)
+        (
+            creator,
+            100i128,
+            Symbol::new(&env, "Test"),
+            Symbol::new(&env, ""),
+            Severity::Critical,
+        ),
     );
     assert!(result.is_err());
 }
@@ -111,7 +129,7 @@ fn test_timelock_mechanism() {
         &1000i128,
         &Symbol::new(&env, "Test Bounty"),
         &Symbol::new(&env, "Test Description"),
-        &Severity::Critical
+        &Severity::Critical,
     );
 
     // Check initial status (should be Timelocked)
@@ -119,7 +137,8 @@ fn test_timelock_mechanism() {
     assert_eq!(bounty.status, BountyStatus::Timelocked);
 
     // Advance time beyond timelock period (7 days)
-    env.ledger().set_timestamp(env.ledger().timestamp() + 7 * 24 * 60 * 60 + 1);
+    env.ledger()
+        .set_timestamp(env.ledger().timestamp() + 7 * 24 * 60 * 60 + 1);
 
     // Check timelock
     let timelock_passed = client.check_timelock(&bounty_id);
@@ -150,11 +169,12 @@ fn test_multi_sig_approval() {
         &1000i128,
         &Symbol::new(&env, "Test Bounty"),
         &Symbol::new(&env, "Test Description"),
-        &Severity::Critical
+        &Severity::Critical,
     );
 
     // Advance time beyond timelock
-    env.ledger().set_timestamp(env.ledger().timestamp() + 7 * 24 * 60 * 60 + 1);
+    env.ledger()
+        .set_timestamp(env.ledger().timestamp() + 7 * 24 * 60 * 60 + 1);
     client.check_timelock(&bounty_id);
 
     // Assign researcher
@@ -195,11 +215,12 @@ fn test_partial_rewards() {
         &1000i128,
         &Symbol::new(&env, "Medium Bounty"),
         &Symbol::new(&env, "Medium severity issue"),
-        &Severity::Medium
+        &Severity::Medium,
     );
 
     // Advance time and activate
-    env.ledger().set_timestamp(env.ledger().timestamp() + 7 * 24 * 60 * 60 + 1);
+    env.ledger()
+        .set_timestamp(env.ledger().timestamp() + 7 * 24 * 60 * 60 + 1);
     client.check_timelock(&medium_bounty_id);
     client.assign_researcher(&medium_bounty_id, &researcher);
     client.admin_approve(&admin, &medium_bounty_id);
@@ -211,11 +232,12 @@ fn test_partial_rewards() {
         &1000i128,
         &Symbol::new(&env, "Low Bounty"),
         &Symbol::new(&env, "Low severity issue"),
-        &Severity::Low
+        &Severity::Low,
     );
 
     // Advance time and activate
-    env.ledger().set_timestamp(env.ledger().timestamp() + 7 * 24 * 60 * 60 + 1);
+    env.ledger()
+        .set_timestamp(env.ledger().timestamp() + 7 * 24 * 60 * 60 + 1);
     client.check_timelock(&low_bounty_id);
     client.assign_researcher(&low_bounty_id, &researcher);
     client.admin_approve(&admin, &low_bounty_id);
@@ -247,7 +269,7 @@ fn test_researcher_assignments() {
         &1000i128,
         &Symbol::new(&env, "Bounty 1"),
         &Symbol::new(&env, "First bounty"),
-        &Severity::Critical
+        &Severity::Critical,
     );
 
     let bounty2_id = client.create_bounty(
@@ -255,11 +277,12 @@ fn test_researcher_assignments() {
         &1500i128,
         &Symbol::new(&env, "Bounty 2"),
         &Symbol::new(&env, "Second bounty"),
-        &Severity::High
+        &Severity::High,
     );
 
     // Advance time and activate
-    env.ledger().set_timestamp(env.ledger().timestamp() + 7 * 24 * 60 * 60 + 1);
+    env.ledger()
+        .set_timestamp(env.ledger().timestamp() + 7 * 24 * 60 * 60 + 1);
     client.check_timelock(&bounty1_id);
     client.check_timelock(&bounty2_id);
 
@@ -297,11 +320,12 @@ fn test_claim_reward() {
         &1000i128,
         &Symbol::new(&env, "Test Bounty"),
         &Symbol::new(&env, "Test Description"),
-        &Severity::Critical
+        &Severity::Critical,
     );
 
     // Advance time and activate
-    env.ledger().set_timestamp(env.ledger().timestamp() + 7 * 24 * 60 * 60 + 1);
+    env.ledger()
+        .set_timestamp(env.ledger().timestamp() + 7 * 24 * 60 * 60 + 1);
     client.check_timelock(&bounty_id);
 
     // Assign researcher and get approvals
@@ -337,7 +361,7 @@ fn test_withdraw_function() {
         &1000i128,
         &Symbol::new(&env, "Bounty 1"),
         &Symbol::new(&env, "Critical issue"),
-        &Severity::Critical
+        &Severity::Critical,
     );
 
     let bounty2_id = client.create_bounty(
@@ -345,11 +369,12 @@ fn test_withdraw_function() {
         &1000i128,
         &Symbol::new(&env, "Bounty 2"),
         &Symbol::new(&env, "Medium issue"),
-        &Severity::Medium
+        &Severity::Medium,
     );
 
     // Advance time and activate
-    env.ledger().set_timestamp(env.ledger().timestamp() + 7 * 24 * 60 * 60 + 1);
+    env.ledger()
+        .set_timestamp(env.ledger().timestamp() + 7 * 24 * 60 * 60 + 1);
     client.check_timelock(&bounty1_id);
     client.check_timelock(&bounty2_id);
 
@@ -368,7 +393,7 @@ fn test_withdraw_function() {
     let result = env.try_invoke_contract::<()>(
         &contract_id,
         &Symbol::new(&env, "withdraw"),
-        (researcher, 2000i128) // More than available
+        (researcher, 2000i128), // More than available
     );
     assert!(result.is_err());
 }
@@ -393,14 +418,14 @@ fn test_access_control() {
         &1000i128,
         &Symbol::new(&env, "Test Bounty"),
         &Symbol::new(&env, "Test Description"),
-        &Severity::Critical
+        &Severity::Critical,
     );
 
     // Test unauthorized admin approval
     let result = env.try_invoke_contract::<()>(
         &contract_id,
         &Symbol::new(&env, "admin_approve"),
-        (unauthorized_user, bounty_id)
+        (unauthorized_user, bounty_id),
     );
     assert!(result.is_err());
 
@@ -408,7 +433,7 @@ fn test_access_control() {
     let result = env.try_invoke_contract::<()>(
         &contract_id,
         &Symbol::new(&env, "owner_approve"),
-        (unauthorized_user, bounty_id)
+        (unauthorized_user, bounty_id),
     );
     assert!(result.is_err());
 }
@@ -427,7 +452,7 @@ fn test_edge_cases() {
     let result = env.try_invoke_contract::<()>(
         &contract_id,
         &Symbol::new(&env, "initialize"),
-        (admin, owner)
+        (admin, owner),
     );
     assert!(result.is_err());
 
@@ -435,7 +460,7 @@ fn test_edge_cases() {
     let result = env.try_invoke_contract::<()>(
         &contract_id,
         &Symbol::new(&env, "initialize"),
-        (Address::default(), owner)
+        (Address::default(), owner),
     );
     assert!(result.is_err());
 }

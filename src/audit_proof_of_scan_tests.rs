@@ -4,8 +4,9 @@ use soroban_sdk::{
 };
 
 use crate::audit_proof_of_scan::{
-    AuditProofOfScan, SecurityCertificate, SecurityReport, CertificateStatus, RiskScore, AuditError,
-    ADMIN, SCANNER_PUBLIC_KEY, CERTIFICATE_COUNTER, CERTIFICATES, CONTRACT_CERTIFICATES,
+    AuditProofOfScan, SecurityCertificate, SecurityReport, CertificateStatus,
+    RevocationReason, RiskScore, AuditError,
+    ADMIN, SCANNER_PUBLIC_KEY, CERTIFICATE_COUNTER, CERTIFICATES, CONTRACT_CERTIFICATES, CRL_REVOCATION_LIST,
     CERTIFICATE_MINTED, CERTIFICATE_REVOKED
 };
 
@@ -277,14 +278,13 @@ mod tests {
             None,
         );
 
-        // Revoke certificate as admin
-        let reason = String::from_str(&env, "Security vulnerability discovered");
-        AuditProofOfScan::revoke_certificate(env.clone(), cert_id, reason.clone());
+        // Revoke certificate as admin with KeyCompromise reason
+        AuditProofOfScan::revoke_certificate(env.clone(), cert_id, RevocationReason::KeyCompromise);
 
         // Verify certificate is revoked
         let certificate = AuditProofOfScan::get_certificate_by_id(env.clone(), cert_id);
         assert_eq!(certificate.status, CertificateStatus::Revoked);
-        assert_eq!(certificate.revoke_reason, Some(reason));
+        assert_eq!(certificate.revoke_reason, Some(RevocationReason::KeyCompromise));
 
         // Verify contract is no longer cleared
         assert!(!AuditProofOfScan::is_contract_cleared(env.clone(), contract_id));
@@ -307,9 +307,8 @@ mod tests {
         );
 
         // Try to revoke certificate as unauthorized user - should panic
-        let reason = String::from_str(&env, "Unauthorized revocation");
         let result = std::panic::catch_unwind(|| {
-            AuditProofOfScan::revoke_certificate(env.clone(), cert_id, reason);
+            AuditProofOfScan::revoke_certificate(env.clone(), cert_id, RevocationReason::Unspecified);
         });
         assert!(result.is_err());
     }
@@ -331,13 +330,11 @@ mod tests {
         );
 
         // Revoke certificate once
-        let reason = String::from_str(&env, "First revocation");
-        AuditProofOfScan::revoke_certificate(env.clone(), cert_id, reason);
+        AuditProofOfScan::revoke_certificate(env.clone(), cert_id, RevocationReason::KeyCompromise);
 
         // Try to revoke again - should panic
-        let reason2 = String::from_str(&env, "Second revocation");
         let result = std::panic::catch_unwind(|| {
-            AuditProofOfScan::revoke_certificate(env.clone(), cert_id, reason2);
+            AuditProofOfScan::revoke_certificate(env.clone(), cert_id, RevocationReason::Superseded);
         });
         assert!(result.is_err());
     }
@@ -432,8 +429,7 @@ mod tests {
         );
 
         // Revoke first certificate
-        let reason = String::from_str(&env, "Test revocation");
-        AuditProofOfScan::revoke_certificate(env.clone(), cert_id1, reason);
+        AuditProofOfScan::revoke_certificate(env.clone(), cert_id1, RevocationReason::Superseded);
 
         // Mint second certificate
         let cert_id2 = AuditProofOfScan::mint_certificate(
@@ -500,8 +496,7 @@ mod tests {
         assert_eq!(expired, 0);
 
         // Revoke one certificate
-        let reason = String::from_str(&env, "Test revocation");
-        AuditProofOfScan::revoke_certificate(env.clone(), cert_id1, reason);
+        AuditProofOfScan::revoke_certificate(env.clone(), cert_id1, RevocationReason::CessationOfOperation);
 
         // Check updated stats
         let (total, active, revoked, expired) = AuditProofOfScan::get_certificate_stats(env.clone());
@@ -563,6 +558,153 @@ mod tests {
             AuditProofOfScan::transfer_certificate(env.clone(), cert_id, recipient);
         });
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_revocation_reason_as_str() {
+        assert_eq!(RevocationReason::Unspecified.as_str(), "unspecified");
+        assert_eq!(RevocationReason::KeyCompromise.as_str(), "key_compromise");
+        assert_eq!(RevocationReason::CertificateAuthorityCompromise.as_str(), "ca_compromise");
+        assert_eq!(RevocationReason::AffiliationChanged.as_str(), "affiliation_changed");
+        assert_eq!(RevocationReason::Superseded.as_str(), "superseded");
+        assert_eq!(RevocationReason::CessationOfOperation.as_str(), "cessation_of_operation");
+    }
+
+    #[test]
+    fn test_crl_verify_certificate_not_revoked() {
+        let (env, admin, scanner) = create_test_env();
+        setup_contract(&env, admin, scanner);
+        
+        let contract_id = Address::random(&env);
+        let report = create_test_security_report(&env, contract_id, RiskScore::Low);
+
+        // Mint certificate
+        let cert_id = AuditProofOfScan::mint_certificate(
+            env.clone(),
+            contract_id,
+            report,
+            None,
+        );
+
+        // Certificate should not be revoked initially
+        assert!(AuditProofOfScan::verify_certificate_not_revoked(env.clone(), cert_id));
+
+        // Revoke the certificate
+        AuditProofOfScan::revoke_certificate(env.clone(), cert_id, RevocationReason::KeyCompromise);
+
+        // Certificate should now be revoked
+        assert!(!AuditProofOfScan::verify_certificate_not_revoked(env.clone(), cert_id));
+    }
+
+    #[test]
+    fn test_crl_get_revoked_count() {
+        let (env, admin, scanner) = create_test_env();
+        setup_contract(&env, admin, scanner);
+        
+        let contract1 = Address::random(&env);
+        let contract2 = Address::random(&env);
+        
+        let report1 = create_test_security_report(&env, contract1, RiskScore::Low);
+        let report2 = create_test_security_report(&env, contract2, RiskScore::Low);
+
+        // Initially 0 revoked
+        assert_eq!(AuditProofOfScan::get_revoked_count(env.clone()), 0);
+
+        // Mint two certificates
+        let cert_id1 = AuditProofOfScan::mint_certificate(
+            env.clone(),
+            contract1,
+            report1,
+            None,
+        );
+        let cert_id2 = AuditProofOfScan::mint_certificate(
+            env.clone(),
+            contract2,
+            report2,
+            None,
+        );
+
+        // Still 0 revoked
+        assert_eq!(AuditProofOfScan::get_revoked_count(env.clone()), 0);
+
+        // Revoke one
+        AuditProofOfScan::revoke_certificate(env.clone(), cert_id1, RevocationReason::AffiliationChanged);
+        assert_eq!(AuditProofOfScan::get_revoked_count(env.clone()), 1);
+
+        // Revoke the other
+        AuditProofOfScan::revoke_certificate(env.clone(), cert_id2, RevocationReason::CessationOfOperation);
+        assert_eq!(AuditProofOfScan::get_revoked_count(env.clone()), 2);
+    }
+
+    #[test]
+    fn test_crl_verify_nonexistent_certificate() {
+        let (env, admin, scanner) = create_test_env();
+        setup_contract(&env, admin, scanner);
+
+        // Non-existent certificate - should panic
+        let result = std::panic::catch_unwind(|| {
+            AuditProofOfScan::verify_certificate_not_revoked(env.clone(), 999);
+        });
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_crl_remove_from_crl() {
+        let (env, admin, scanner) = create_test_env();
+        setup_contract(&env, admin, scanner);
+        
+        let contract_id = Address::random(&env);
+        let report = create_test_security_report(&env, contract_id, RiskScore::Low);
+
+        // Mint and revoke a certificate
+        let cert_id = AuditProofOfScan::mint_certificate(
+            env.clone(),
+            contract_id,
+            report,
+            None,
+        );
+
+        AuditProofOfScan::revoke_certificate(env.clone(), cert_id, RevocationReason::KeyCompromise);
+        assert_eq!(AuditProofOfScan::get_revoked_count(env.clone()), 1);
+
+        // Remove from CRL (admin only)
+        AuditProofOfScan::remove_from_crl(env.clone(), cert_id);
+        assert_eq!(AuditProofOfScan::get_revoked_count(env.clone()), 0);
+
+        // Certificate status should still be Revoked (CRL removal is for error correction, not un-revocation)
+        let certificate = AuditProofOfScan::get_certificate_by_id(env.clone(), cert_id);
+        assert_eq!(certificate.status, CertificateStatus::Revoked);
+    }
+
+    #[test]
+    fn test_crl_get_revocation_record() {
+        let (env, admin, scanner) = create_test_env();
+        setup_contract(&env, admin, scanner);
+        
+        let contract_id = Address::random(&env);
+        let report = create_test_security_report(&env, contract_id, RiskScore::Low);
+
+        let cert_id = AuditProofOfScan::mint_certificate(
+            env.clone(),
+            contract_id,
+            report,
+            None,
+        );
+
+        // No record before revocation
+        let record_before = AuditProofOfScan::get_revocation_record(env.clone(), cert_id);
+        assert!(record_before.is_none());
+
+        // Revoke
+        AuditProofOfScan::revoke_certificate(env.clone(), cert_id, RevocationReason::CessationOfOperation);
+
+        // Record should exist after revocation
+        let record_after = AuditProofOfScan::get_revocation_record(env.clone(), cert_id);
+        assert!(record_after.is_some());
+        let record = record_after.unwrap();
+        assert_eq!(record.certificate_id, cert_id);
+        assert_eq!(record.reason, RevocationReason::CessationOfOperation);
+        assert_eq!(record.contract_id, contract_id);
     }
 
     #[test]

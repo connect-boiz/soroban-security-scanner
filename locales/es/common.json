@@ -1,0 +1,121 @@
+{
+  "scanner": {
+    "name": "Escáner de Seguridad Soroban",
+    "description": "Escáner de seguridad para contratos inteligentes Soroban",
+    "version": "1.0.0"
+  },
+  "commands": {
+    "scan": {
+      "description": "Buscar vulnerabilidades de seguridad",
+      "starting": "🔍 Iniciando Escáner de Seguridad Soroban...",
+      "emergency_stop_enabled": "🛑 Sistema de parada de emergencia habilitado",
+      "notifications_enabled": "📬 Notificaciones habilitadas",
+      "scan_stopped": "⚠️  El escaneo se detuvo debido a una condición de emergencia",
+      "partial_results": "📊 Resultados parciales: {{count}} vulnerabilidades encontradas",
+      "report_saved": "📄 Informe guardado en {{file}}",
+      "notifications_sent": "📬 Notificaciones de escaneo enviadas exitosamente",
+      "some_notifications_failed": "⚠️  Algunas notificaciones fallaron: {{channels}}",
+      "notification_error": "❌ Error al enviar notificaciones: {{error}}",
+      "error": "❌ Error: {{error}}"
+    },
+    "emergency_stop": {
+      "description": "Gestión de parada de emergencia",
+      "triggered": "🛑 PARADA DE EMERGENCIA ACTIVADA: {{reason}}",
+      "manual_trigger": "🛑 Parada de emergencia activada: {{reason}}",
+      "status_active": "🔴 La parada de emergencia está ACTIVA",
+      "status_inactive": "🟢 La parada de emergencia está INACTIVA",
+      "testing": "🧪 Probando funcionalidad de parada de emergencia...",
+      "test_initial_failed": "❌ La parada de emergencia debería estar inactiva inicialmente",
+      "test_trigger_failed": "❌ La parada de emergencia debería estar activa después de activarse",
+      "test_passed": "✅ Prueba de parada de emergencia superada"
+    },
+    "notifications": {
+      "description": "Gestión del servicio de notificaciones",
+      "test": {
+        "description": "Probar servicio de notificaciones",
+        "sent": "✅ Notificación de prueba enviada exitosamente",
+        "delivered_to": "📬 Entregado a: {{channels}}",
+        "failed": "❌ La notificación de prueba falló",
+        "failed_channels": "Canales fallidos: {{channels}}",
+        "test_failed": "❌ Prueba fallida: {{error}}"
+      },
+      "templates": {
+        "description": "Listar plantillas de notificación disponibles",
+        "available": "📋 Plantillas Disponibles:",
+        "template_info": "📄 {{name}} ({{id}})",
+        "no_description": "Sin descripción",
+        "channels": "Canales: {{channels}}",
+        "variables": "Variables: {{variables}}",
+        "list_failed": "❌ Error al listar plantillas: {{error}}"
+      },
+      "in_app": {
+        "list": {
+          "description": "Listar notificaciones en la aplicación para un usuario",
+          "notifications_for": "📬 Notificaciones en la aplicación para {{userId}}:",
+          "no_notifications": "No se encontraron notificaciones",
+          "list_failed": "❌ Error al listar notificaciones: {{error}}"
+        }
+      },
+      "provider_health": "🏥 Salud del Proveedor:",
+      "provider_stats": "📊 Estadísticas del Proveedor:",
+      "stats_info": "{{channel}}: {{sent}} enviados, {{failed}} fallidos"
+    }
+  },
+  "reporter": {
+    "no_vulnerabilities": "✅ ¡No se encontraron vulnerabilidades de ataque basado en tiempo!",
+    "found_vulnerabilities": "🚨 Se encontraron {{count}} vulnerabilidades de ataque basado en tiempo:",
+    "severity": "SEVERIDAD {{severity}} ({{count}}):",
+    "file": "Archivo: {{file}}:{{line}}",
+    "code": "Código: {{code}}",
+    "recommendations": "📋 RECOMENDACIONES:",
+    "high_priority": "ALTA PRIORIDAD:",
+    "medium_priority": "PRIORIDAD MEDIA:",
+    "general_protection": "MEDIDAS DE PROTECCIÓN GENERAL:",
+    "timestamp_validation": "Implementar validación de marcas de tiempo usando oráculos confiables",
+    "timestamp_bounds": "Agregar límites mínimos/máximos de marcas de tiempo",
+    "block_heights": "Usar alturas de bloque en lugar de marcas de tiempo cuando sea posible",
+    "replay_protection": "Implementar protección contra ataques de repetición",
+    "timestamp_drift": "Agregar tolerancia de deriva de marcas de tiempo",
+    "time_window": "Implementar validación de ventana de tiempo",
+    "monotonic_counters": "Usar contadores monótonos para operaciones críticas",
+    "validate_ranges": "Validar siempre rangos de marcas de tiempo",
+    "multiple_sources": "Usar múltiples fuentes de tiempo cuando sea posible",
+    "rate_limiting": "Implementar limitación de velocidad para operaciones sensibles al tiempo",
+    "consider_blocks": "Considerar usar números de bloque en lugar de marcas de tiempo"
+  },
+  "notification_service": {
+    "initialized": "📬 Servicio de notificaciones inicializado",
+    "templates": {
+      "vulnerability_alert": {
+        "name": "Alerta de Vulnerabilidad",
+        "description": "Plantilla para notificaciones de vulnerabilidad",
+        "subject": "🚨 Vulnerabilidad {{severity}} Encontrada en {{contract_name}}",
+        "body": "Hola {{user_name}},\n\nSe ha detectado una vulnerabilidad {{severity}} en su contrato inteligente:\n\nContrato: {{contract_name}}\nTipo: {{vulnerability_type}}\nDescripción: {{description}}\nPuntuación de Riesgo: {{risk_score}}\n\n{{#critical}}⚠️ ¡Esta es una vulnerabilidad crítica que requiere atención inmediata!\n{{/critical}}\n\nPor favor revise el informe de escaneo completo en: {{report_url}}\n\nSaludos cordiales,\nEscáner de Seguridad Soroban"
+      },
+      "scan_completed": {
+        "name": "Escaneo Completado",
+        "description": "Plantilla para notificaciones de completion de escaneo",
+        "subject": "✅ Escaneo de Seguridad Completado para {{file_path}}",
+        "body": "Hola {{user_name}},\n\nSu escaneo de seguridad ha completado:\n\nArchivo: {{file_path}}\nProblemas Totales: {{total_issues}}\nCríticos: {{critical_count}}\nAltos: {{high_count}}\nMedios: {{medium_count}}\n\n{{#has_issues}}⚠️ Se encontraron problemas que requieren su atención. Por favor revise el informe detallado.\n{{/has_issues}}{{^has_issues}}✅ ¡No se encontraron problemas de seguridad! Su contrato parece seguro.\n{{/has_issues}}\n\nVea los resultados completos en: {{report_url}}\n\nSaludos cordiales,\nEscáner de Seguridad Soroban"
+      }
+    }
+  },
+  "errors": {
+    "deprecated_usage": "⚠️  El uso de argumento directo está obsoleto. Use el comando \"scan\" en su lugar.",
+    "template_not_found": "Plantilla no encontrada: {{id}}",
+    "compilation_failed": "Falló la compilación de la plantilla: {{error}}",
+    "render_failed": "Falló el renderizado de la plantilla: {{error}}",
+    "invalid_template": "La plantilla del cuerpo no puede estar vacía",
+    "variable_not_found": "Variable requerida '{{variable}}' no encontrada en la plantilla",
+    "missing_variable": "Variable requerida '{{variable}}' falta en el contexto"
+  },
+  "formats": {
+    "currency": {
+      "USD": "es-ES"
+    },
+    "date": {
+      "short": "es-ES",
+      "long": "es-ES"
+    }
+  }
+}

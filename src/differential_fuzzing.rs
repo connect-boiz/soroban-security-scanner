@@ -1,31 +1,31 @@
 //! Differential Fuzzing Module for Soroban Security Scanner
-//! 
+//!
 //! This module implements differential testing against multiple versions of the Soroban SDK
 //! to detect discrepancies in execution behavior, gas consumption, and state changes.
 
-pub mod test_runner;
-pub mod input_generator;
-pub mod execution_tracer;
-pub mod discrepancy_detector;
 pub mod cross_contract_simulator;
-pub mod ledger_snapshot_integration;
 pub mod deterministic_detector;
+pub mod discrepancy_detector;
+pub mod execution_tracer;
+pub mod input_generator;
+pub mod ledger_snapshot_integration;
+pub mod test_runner;
 
 #[cfg(test)]
 mod tests;
 
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::Instant;
-use anyhow::Result;
 
-pub use test_runner::{DifferentialTestRunner, TestConfig, TestResult};
-pub use input_generator::{InputGenerator, EdgeCaseType};
-pub use execution_tracer::{ExecutionTracer, ExecutionTrace, TraceEvent};
-pub use discrepancy_detector::{DiscrepancyDetector, DiscrepancyType, DiscrepancyReport};
-pub use cross_contract_simulator::{CrossContractSimulator, ReentrancyPattern, CallGraph};
-pub use ledger_snapshot_integration::{LedgerSnapshotIntegration, NetworkState};
+pub use cross_contract_simulator::{CallGraph, CrossContractSimulator, ReentrancyPattern};
 pub use deterministic_detector::{DeterministicDetector, NonDeterministicBehavior};
+pub use discrepancy_detector::{DiscrepancyDetector, DiscrepancyReport, DiscrepancyType};
+pub use execution_tracer::{ExecutionTrace, ExecutionTracer, TraceEvent};
+pub use input_generator::{CompositeScenario, EdgeCaseType, InputGenerator};
+pub use ledger_snapshot_integration::{LedgerSnapshotIntegration, NetworkState};
+pub use test_runner::{DifferentialTestRunner, TestConfig, TestResult};
 
 /// SDK version information for differential testing
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -147,6 +147,9 @@ pub struct DifferentialFuzzingConfig {
     pub enable_deterministic_detection: bool,
     pub edge_case_types: Vec<EdgeCaseType>,
     pub gas_threshold_percentage: f64,
+    pub combinatorial_depth: usize,
+    pub enable_composite_edge_cases: bool,
+    pub max_composite_inputs: usize,
 }
 
 impl Default for DifferentialFuzzingConfig {
@@ -171,6 +174,9 @@ impl Default for DifferentialFuzzingConfig {
                 EdgeCaseType::ZeroValue,
             ],
             gas_threshold_percentage: 10.0,
+            combinatorial_depth: 2,
+            enable_composite_edge_cases: true,
+            max_composite_inputs: 500,
         }
     }
 }
@@ -225,7 +231,9 @@ impl DifferentialFuzzer {
         let mut non_deterministic_behaviors = Vec::new();
 
         // Generate test inputs
-        let test_inputs = self.input_generator.generate_test_inputs(self.config.test_count)?;
+        let test_inputs = self
+            .input_generator
+            .generate_test_inputs(self.config.test_count)?;
 
         for (index, input) in test_inputs.into_iter().enumerate() {
             if index % 100 == 0 {
@@ -236,7 +244,9 @@ impl DifferentialFuzzer {
             let test_results = self.test_runner.execute_test(&input, &self.config).await?;
 
             // Detect discrepancies
-            let detected_discrepancies = self.discrepancy_detector.detect_discrepancies(&test_results)?;
+            let detected_discrepancies = self
+                .discrepancy_detector
+                .detect_discrepancies(&test_results)?;
             discrepancies.extend(detected_discrepancies);
 
             // Detect non-deterministic behavior
@@ -246,8 +256,13 @@ impl DifferentialFuzzer {
             }
 
             // Run cross-contract simulation if enabled
-            if let (Some(simulator), true) = (&mut self.cross_contract_simulator, self.config.enable_cross_contract_simulation) {
-                let reentrancy_results = simulator.simulate_cross_contract_calls(&input, &self.config).await?;
+            if let (Some(simulator), true) = (
+                &mut self.cross_contract_simulator,
+                self.config.enable_cross_contract_simulation,
+            ) {
+                let reentrancy_results = simulator
+                    .simulate_cross_contract_calls(&input, &self.config)
+                    .await?;
                 // Process reentrancy results...
             }
 
@@ -262,7 +277,11 @@ impl DifferentialFuzzer {
             test_results: all_results,
             discrepancies,
             non_deterministic_behaviors,
-            summary: self.generate_summary(&all_results, &discrepancies, &non_deterministic_behaviors),
+            summary: self.generate_summary(
+                &all_results,
+                &discrepancies,
+                &non_deterministic_behaviors,
+            ),
         })
     }
 
@@ -276,16 +295,22 @@ impl DifferentialFuzzer {
             total_tests: test_results.len(),
             total_discrepancies: discrepancies.len(),
             total_non_deterministic: non_deterministic_behaviors.len(),
-            high_priority_issues: discrepancies.iter()
-                .filter(|d| d.severity == crate::Severity::High || d.severity == crate::Severity::Critical)
+            high_priority_issues: discrepancies
+                .iter()
+                .filter(|d| {
+                    d.severity == crate::Severity::High || d.severity == crate::Severity::Critical
+                })
                 .count(),
-            gas_discrepancies: discrepancies.iter()
+            gas_discrepancies: discrepancies
+                .iter()
                 .filter(|d| matches!(d.discrepancy_type, DiscrepancyType::GasConsumption))
                 .count(),
-            state_discrepancies: discrepancies.iter()
+            state_discrepancies: discrepancies
+                .iter()
                 .filter(|d| matches!(d.discrepancy_type, DiscrepancyType::StateChange))
                 .count(),
-            logic_discrepancies: discrepancies.iter()
+            logic_discrepancies: discrepancies
+                .iter()
                 .filter(|d| matches!(d.discrepancy_type, DiscrepancyType::LogicDivergence))
                 .count(),
         }
