@@ -393,7 +393,6 @@ impl BackupRecoveryTestSuite {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::backup_testing::scenarios;
 
     #[test]

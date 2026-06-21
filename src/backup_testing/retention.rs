@@ -97,6 +97,7 @@ impl RetentionPolicy {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Duration;
 
     fn make_record(id: &str, tier: RetentionTier, age: Duration) -> BackupRecord {
         BackupRecord {
