@@ -2,7 +2,6 @@
 
 use crate::analysis::AnalysisResult;
 use crate::ScanResult;
-use crate::error::{ScannerResult, ScannerError};
 use colored::*;
 use serde_json;
 use std::fs;
@@ -25,7 +24,11 @@ impl SecurityReport {
         Self { format }
     }
 
-    pub fn generate(&self, analysis: &AnalysisResult, output_path: Option<&Path>) -> ScannerResult<()> {
+    pub fn generate(
+        &self,
+        analysis: &AnalysisResult,
+        output_path: Option<&Path>,
+    ) -> anyhow::Result<()> {
         match self.format {
             ReportFormat::Console => self.generate_console_report(analysis),
             ReportFormat::Json => self.generate_json_report(analysis, output_path),
@@ -34,7 +37,7 @@ impl SecurityReport {
         }
     }
 
-    fn generate_console_report(&self, analysis: &AnalysisResult) -> ScannerResult<()> {
+    fn generate_console_report(&self, analysis: &AnalysisResult) -> anyhow::Result<()> {
         println!("\n{}", "🔍 STELLAR SECURITY SCAN REPORT".bold().cyan());
         println!("{}", "═".repeat(50).cyan());
 
@@ -54,22 +57,45 @@ impl SecurityReport {
         self.print_recommendations(&analysis.recommendations);
 
         println!("\n{}", "═".repeat(50).cyan());
-        println!("Scan completed in {}ms", analysis.scan_summary.scan_duration_ms);
+        println!(
+            "Scan completed in {}ms",
+            analysis.scan_summary.scan_duration_ms
+        );
 
         Ok(())
     }
 
     fn print_executive_summary(&self, analysis: &AnalysisResult) {
         println!("\n{}", "📊 EXECUTIVE SUMMARY".bold().yellow());
-        println!("Files Scanned: {}", analysis.scan_summary.total_files_scanned);
-        println!("Files with Issues: {}", analysis.scan_summary.files_with_issues.to_string().red());
-        println!("Total Vulnerabilities: {}", analysis.scan_summary.total_vulnerabilities.to_string().red());
-        println!("Total Invariant Violations: {}", analysis.scan_summary.total_invariant_violations.to_string().yellow());
+        println!(
+            "Files Scanned: {}",
+            analysis.scan_summary.total_files_scanned
+        );
+        println!(
+            "Files with Issues: {}",
+            analysis.scan_summary.files_with_issues.to_string().red()
+        );
+        println!(
+            "Total Vulnerabilities: {}",
+            analysis
+                .scan_summary
+                .total_vulnerabilities
+                .to_string()
+                .red()
+        );
+        println!(
+            "Total Invariant Violations: {}",
+            analysis
+                .scan_summary
+                .total_invariant_violations
+                .to_string()
+                .yellow()
+        );
     }
 
     fn print_risk_score(&self, risk_score: &crate::analysis::RiskScore) {
         println!("\n{}", "🎯 RISK ASSESSMENT".bold().yellow());
-        
+
         let risk_level_color = match risk_score.risk_level {
             crate::analysis::RiskLevel::Critical => "red",
             crate::analysis::RiskLevel::High => "yellow",
@@ -77,9 +103,14 @@ impl SecurityReport {
             crate::analysis::RiskLevel::Low => "green",
         };
 
-        println!("Overall Risk Level: {}", 
-            format!("{:?} ({:.1}/10)", risk_score.risk_level, risk_score.overall_score)
-                .color(risk_level_color).bold()
+        println!(
+            "Overall Risk Level: {}",
+            format!(
+                "{:?} ({:.1}/10)",
+                risk_score.risk_level, risk_score.overall_score
+            )
+            .color(risk_level_color)
+            .bold()
         );
         println!("Security Score: {:.1}/10", risk_score.security_score);
         println!("Invariant Score: {:.1}/10", risk_score.invariant_score);
@@ -87,7 +118,7 @@ impl SecurityReport {
 
     fn print_vulnerability_summary(&self, analysis: &crate::analysis::VulnerabilityAnalysis) {
         println!("\n{}", "🚨 VULNERABILITY ANALYSIS".bold().red());
-        
+
         if analysis.most_common_vulnerabilities.is_empty() {
             println!("{}", "✅ No vulnerabilities found!".green().bold());
             return;
@@ -95,8 +126,9 @@ impl SecurityReport {
 
         println!("\n{}", "Top Vulnerabilities:".bold());
         for (vuln, count) in &analysis.most_common_vulnerabilities {
-            println!("  • {}: {} ({})", 
-                vuln.to_string().red(), 
+            println!(
+                "  • {}: {} ({})",
+                vuln.to_string().red(),
                 count.to_string().yellow(),
                 vuln.severity().as_str()
             );
@@ -112,7 +144,7 @@ impl SecurityReport {
 
     fn print_invariant_summary(&self, analysis: &crate::analysis::InvariantAnalysis) {
         println!("\n{}", "🔒 INVARIANT ANALYSIS".bold().yellow());
-        
+
         if analysis.most_violated_invariants.is_empty() {
             println!("{}", "✅ All invariants properly enforced!".green().bold());
             return;
@@ -120,8 +152,9 @@ impl SecurityReport {
 
         println!("\n{}", "Most Violated Invariants:".bold());
         for (invariant, count) in &analysis.most_violated_invariants {
-            println!("  • {}: {} ({})", 
-                invariant.to_string().yellow(), 
+            println!(
+                "  • {}: {} ({})",
+                invariant.to_string().yellow(),
                 count.to_string().blue(),
                 invariant.severity().as_str()
             );
@@ -130,9 +163,14 @@ impl SecurityReport {
 
     fn print_recommendations(&self, recommendations: &[crate::analysis::Recommendation]) {
         println!("\n{}", "💡 RECOMMENDATIONS".bold().green());
-        
+
         if recommendations.is_empty() {
-            println!("{}", "✅ No recommendations - contract appears secure!".green().bold());
+            println!(
+                "{}",
+                "✅ No recommendations - contract appears secure!"
+                    .green()
+                    .bold()
+            );
             return;
         }
 
@@ -144,7 +182,8 @@ impl SecurityReport {
                 crate::Severity::Low => "white",
             };
 
-            println!("\n{}. {} [{}]", 
+            println!(
+                "\n{}. {} [{}]",
                 i + 1,
                 rec.category.bold(),
                 rec.priority.as_str().color(priority_color).bold()
@@ -161,43 +200,49 @@ impl SecurityReport {
         }
     }
 
-    fn generate_json_report(&self, analysis: &AnalysisResult, output_path: Option<&Path>) -> ScannerResult<()> {
-        let json = serde_json::to_string_pretty(analysis)
-            .map_err(|e| ScannerError::config_with_source("Failed to serialize JSON report", Box::new(e)))?;
-        
+    fn generate_json_report(
+        &self,
+        analysis: &AnalysisResult,
+        output_path: Option<&Path>,
+    ) -> anyhow::Result<()> {
+        let json = serde_json::to_string_pretty(analysis)?;
+
         match output_path {
             Some(path) => {
-                fs::write(path, json)
-                    .map_err(|e| ScannerError::file_operation("write", &path.to_string_lossy(), e))?;
+                fs::write(path, json)?;
                 println!("JSON report saved to: {}", path.display());
             }
             None => {
                 println!("{}", json);
             }
         }
-        
+
         Ok(())
     }
 
-    fn generate_html_report(&self, analysis: &AnalysisResult, output_path: Option<&Path>) -> ScannerResult<()> {
+    fn generate_html_report(
+        &self,
+        analysis: &AnalysisResult,
+        output_path: Option<&Path>,
+    ) -> anyhow::Result<()> {
         let html = self.create_html_content(analysis);
-        
+
         match output_path {
             Some(path) => {
-                fs::write(path, html)
-                    .map_err(|e| ScannerError::file_operation("write", &path.to_string_lossy(), e))?;
+                fs::write(path, html)?;
                 println!("HTML report saved to: {}", path.display());
             }
             None => {
                 println!("HTML report generated (no output path specified)");
             }
         }
-        
+
         Ok(())
     }
 
     fn create_html_content(&self, analysis: &AnalysisResult) -> String {
-        format!(r#"
+        format!(
+            r#"
 <!DOCTYPE html>
 <html>
 <head>
@@ -291,7 +336,10 @@ impl SecurityReport {
         }
     }
 
-    fn format_vulnerabilities_html(&self, analysis: &crate::analysis::VulnerabilityAnalysis) -> String {
+    fn format_vulnerabilities_html(
+        &self,
+        analysis: &crate::analysis::VulnerabilityAnalysis,
+    ) -> String {
         if analysis.most_common_vulnerabilities.is_empty() {
             return "<p>✅ No vulnerabilities found!</p>".to_string();
         }
@@ -333,7 +381,10 @@ impl SecurityReport {
         html
     }
 
-    fn format_recommendations_html(&self, recommendations: &[crate::analysis::Recommendation]) -> String {
+    fn format_recommendations_html(
+        &self,
+        recommendations: &[crate::analysis::Recommendation],
+    ) -> String {
         if recommendations.is_empty() {
             return "<p>✅ No recommendations - contract appears secure!</p>".to_string();
         }
@@ -358,25 +409,29 @@ impl SecurityReport {
         html
     }
 
-    fn generate_markdown_report(&self, analysis: &AnalysisResult, output_path: Option<&Path>) -> ScannerResult<()> {
+    fn generate_markdown_report(
+        &self,
+        analysis: &AnalysisResult,
+        output_path: Option<&Path>,
+    ) -> anyhow::Result<()> {
         let markdown = self.create_markdown_content(analysis);
-        
+
         match output_path {
             Some(path) => {
-                fs::write(path, markdown)
-                    .map_err(|e| ScannerError::file_operation("write", &path.to_string_lossy(), e))?;
+                fs::write(path, markdown)?;
                 println!("Markdown report saved to: {}", path.display());
             }
             None => {
                 println!("{}", markdown);
             }
         }
-        
+
         Ok(())
     }
 
     fn create_markdown_content(&self, analysis: &AnalysisResult) -> String {
-        format!(r#"
+        format!(
+            r#"
 # 🔍 Stellar Security Scan Report
 
 Generated on: {}
@@ -425,7 +480,10 @@ Generated on: {}
         )
     }
 
-    fn format_vulnerabilities_markdown(&self, analysis: &crate::analysis::VulnerabilityAnalysis) -> String {
+    fn format_vulnerabilities_markdown(
+        &self,
+        analysis: &crate::analysis::VulnerabilityAnalysis,
+    ) -> String {
         if analysis.most_common_vulnerabilities.is_empty() {
             return "✅ No vulnerabilities found!".to_string();
         }
@@ -463,7 +521,10 @@ Generated on: {}
         markdown
     }
 
-    fn format_recommendations_markdown(&self, recommendations: &[crate::analysis::Recommendation]) -> String {
+    fn format_recommendations_markdown(
+        &self,
+        recommendations: &[crate::analysis::Recommendation],
+    ) -> String {
         if recommendations.is_empty() {
             return "✅ No recommendations - contract appears secure!".to_string();
         }

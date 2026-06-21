@@ -1,10 +1,10 @@
 //! Comprehensive tests for enhanced balance checking functionality
-//! 
+//!
 //! This test suite validates the improved balance check patterns and
 //! ensures they catch all edge cases mentioned in the issue.
 
-use stellar_security_scanner::{scanners::SecurityScanner, vulnerabilities::VulnerabilityType};
 use std::path::Path;
+use stellar_security_scanner::{scanners::SecurityScanner, vulnerabilities::VulnerabilityType};
 
 #[test]
 fn test_insufficient_balance_detection() {
@@ -20,14 +20,18 @@ fn test_insufficient_balance_detection() {
             balances.insert(to, to_balance + amount);
         }
     "#;
-    
+
     let test_file = Path::new("test_transfer.rs");
     std::fs::write(test_file, test_code).unwrap();
-    
+
     let result = scanner.scan_file(test_file).unwrap();
-    assert!(result.vulnerabilities.contains(&VulnerabilityType::InsufficientBalance));
-    assert!(result.vulnerabilities.contains(&VulnerabilityType::TransferWithoutBalanceCheck));
-    
+    assert!(result
+        .vulnerabilities
+        .contains(&VulnerabilityType::InsufficientBalance));
+    assert!(result
+        .vulnerabilities
+        .contains(&VulnerabilityType::TransferWithoutBalanceCheck));
+
     std::fs::remove_file(test_file).unwrap();
 }
 
@@ -43,13 +47,15 @@ fn test_balance_underflow_detection() {
             balances.insert(env::current_contract_address(), new_balance);
         }
     "#;
-    
+
     let test_file = Path::new("test_withdraw.rs");
     std::fs::write(test_file, test_code).unwrap();
-    
+
     let result = scanner.scan_file(test_file).unwrap();
-    assert!(result.vulnerabilities.contains(&VulnerabilityType::BalanceUnderflow));
-    
+    assert!(result
+        .vulnerabilities
+        .contains(&VulnerabilityType::BalanceUnderflow));
+
     std::fs::remove_file(test_file).unwrap();
 }
 
@@ -65,13 +71,15 @@ fn test_balance_overflow_detection() {
             balances.insert(env::current_contract_address(), new_balance);
         }
     "#;
-    
+
     let test_file = Path::new("test_deposit.rs");
     std::fs::write(test_file, test_code).unwrap();
-    
+
     let result = scanner.scan_file(test_file).unwrap();
-    assert!(result.vulnerabilities.contains(&VulnerabilityType::BalanceOverflow));
-    
+    assert!(result
+        .vulnerabilities
+        .contains(&VulnerabilityType::BalanceOverflow));
+
     std::fs::remove_file(test_file).unwrap();
 }
 
@@ -95,15 +103,21 @@ fn test_proper_balance_check_passes() {
             balances.insert(to, new_to_balance);
         }
     "#;
-    
+
     let test_file = Path::new("test_safe_transfer.rs");
     std::fs::write(test_file, test_code).unwrap();
-    
+
     let result = scanner.scan_file(test_file).unwrap();
-    assert!(!result.vulnerabilities.contains(&VulnerabilityType::InsufficientBalance));
-    assert!(!result.vulnerabilities.contains(&VulnerabilityType::BalanceUnderflow));
-    assert!(!result.vulnerabilities.contains(&VulnerabilityType::BalanceOverflow));
-    
+    assert!(!result
+        .vulnerabilities
+        .contains(&VulnerabilityType::InsufficientBalance));
+    assert!(!result
+        .vulnerabilities
+        .contains(&VulnerabilityType::BalanceUnderflow));
+    assert!(!result
+        .vulnerabilities
+        .contains(&VulnerabilityType::BalanceOverflow));
+
     std::fs::remove_file(test_file).unwrap();
 }
 
@@ -128,14 +142,18 @@ fn test_multiple_balance_operations_edge_cases() {
             balances.insert(from, final_balance - fee);     // Unsafe
         }
     "#;
-    
+
     let test_file = Path::new("test_complex_transfer.rs");
     std::fs::write(test_file, test_code).unwrap();
-    
+
     let result = scanner.scan_file(test_file).unwrap();
-    assert!(result.vulnerabilities.contains(&VulnerabilityType::InsufficientBalance));
-    assert!(result.vulnerabilities.contains(&VulnerabilityType::BalanceUnderflow));
-    
+    assert!(result
+        .vulnerabilities
+        .contains(&VulnerabilityType::InsufficientBalance));
+    assert!(result
+        .vulnerabilities
+        .contains(&VulnerabilityType::BalanceUnderflow));
+
     std::fs::remove_file(test_file).unwrap();
 }
 
@@ -154,12 +172,14 @@ fn test_bounds_validation_missing() {
             balances.insert(env::current_contract_address(), new_balance);
         }
     "#;
-    
+
     let test_file = Path::new("test_mint_unbounded.rs");
     std::fs::write(test_file, test_code).unwrap();
-    
+
     let result = scanner.scan_file(test_file).unwrap();
-    assert!(result.vulnerabilities.contains(&VulnerabilityType::BalanceOverflow));
-    
+    assert!(result
+        .vulnerabilities
+        .contains(&VulnerabilityType::BalanceOverflow));
+
     std::fs::remove_file(test_file).unwrap();
 }

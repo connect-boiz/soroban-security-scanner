@@ -1,15 +1,15 @@
 //! State Injection Module
-//! 
+//!
 //! This module handles injecting fetched ledger data into the local WASM runner
 //! for contract testing against historical network states.
 
+use crate::time_travel_debugger::{ContractState, TimeTravelConfig};
+use anyhow::{anyhow, Result};
+use soroban_sdk::xdr::{ContractDataStellarAssetEntry, EnvMeta, ScEnvMeta, ScVal};
+use soroban_sdk::{Bytes, Env};
 use std::collections::HashMap;
 use std::sync::Arc;
-use anyhow::{Result, anyhow};
 use tokio::sync::RwLock;
-use soroban_sdk::xdr::{ScVal, ScEnvMeta, EnvMeta, ContractDataStellarAssetEntry};
-use soroban_sdk::{Bytes, Env};
-use crate::time_travel_debugger::{ContractState, TimeTravelConfig};
 
 /// Handles injection of contract state into local WASM environment
 pub struct StateInjector {
@@ -30,19 +30,19 @@ impl StateInjector {
     pub async fn inject_state(&self, state: &ContractState) -> Result<()> {
         // Create a mock environment for testing
         let env = self.create_mock_environment(state).await?;
-        
+
         // Inject storage entries
         self.inject_storage_entries(&env, &state.storage).await?;
-        
+
         // Inject contract code
         self.inject_contract_code(&env, &state.wasm_hash).await?;
-        
+
         // Store the injected state for reference
         {
             let mut injected = self.injected_states.write().await;
             injected.insert(state.contract_id.clone(), state.clone());
         }
-        
+
         Ok(())
     }
 
@@ -50,38 +50,43 @@ impl StateInjector {
     async fn create_mock_environment(&self, state: &ContractState) -> Result<Env> {
         // Create environment with historical ledger context
         let env = Env::default();
-        
+
         // Set ledger information to match the historical state
         env.ledger().set_sequence(state.ledger_sequence);
-        
+
         // Configure network passphrase
         env.set_network(&self.config.network_passphrase);
-        
+
         // Set up mock accounts and contracts as needed
         self.setup_mock_accounts(&env).await?;
-        
+
         Ok(env)
     }
 
     /// Inject storage entries into the environment
-    async fn inject_storage_entries(&self, env: &Env, storage: &HashMap<String, ScVal>) -> Result<()> {
+    async fn inject_storage_entries(
+        &self,
+        env: &Env,
+        storage: &HashMap<String, ScVal>,
+    ) -> Result<()> {
         for (key, value) in storage {
             if key == "instance" {
                 // Handle instance storage
                 self.inject_instance_storage(env, value).await?;
             } else {
                 // Handle regular storage entries
-                let storage_key = hex::decode(key)
-                    .map_err(|e| anyhow!("Invalid storage key hex: {}", e))?;
-                
+                let storage_key =
+                    hex::decode(key).map_err(|e| anyhow!("Invalid storage key hex: {}", e))?;
+
                 // Convert ScVal to Soroban SDK compatible format
                 let sdk_value = self.convert_scval_to_sdk(value)?;
-                
+
                 // Store in environment
-                env.storage().set(&Bytes::from_slice(&env, &storage_key), &sdk_value);
+                env.storage()
+                    .set(&Bytes::from_slice(&env, &storage_key), &sdk_value);
             }
         }
-        
+
         Ok(())
     }
 
@@ -89,11 +94,11 @@ impl StateInjector {
     async fn inject_instance_storage(&self, env: &Env, instance_data: &ScVal) -> Result<()> {
         // Convert instance data and set it in the environment
         let sdk_value = self.convert_scval_to_sdk(instance_data)?;
-        
+
         // Set instance storage in the contract
         // Note: This would need to be adapted based on the specific Soroban SDK version
         // and how instance storage is accessed
-        
+
         Ok(())
     }
 
@@ -103,15 +108,14 @@ impl StateInjector {
         // 1. Load the WASM code using the hash
         // 2. Deploy it to the mock environment
         // 3. Set up the contract for execution
-        
+
         // For now, we'll simulate this process
-        let hash_bytes = hex::decode(wasm_hash)
-            .map_err(|e| anyhow!("Invalid WASM hash: {}", e))?;
-        
+        let hash_bytes = hex::decode(wasm_hash).map_err(|e| anyhow!("Invalid WASM hash: {}", e))?;
+
         // TODO: Implement actual WASM code loading and deployment
         // This would involve loading the WASM from a cache or RPC endpoint
         // and deploying it to the mock environment
-        
+
         Ok(())
     }
 
@@ -139,16 +143,16 @@ impl StateInjector {
     async fn setup_mock_accounts(&self, env: &Env) -> Result<()> {
         // Create mock accounts that would exist at the historical ledger
         // This is important for contracts that depend on specific account states
-        
+
         // For example, create a mock admin account
         let admin_account = "GADMIN1234567890ABCDEFGHJKLMNPQRSTU";
         let admin_secret = "SADMIN1234567890ABCDEFGHJKLMNPQRSTU";
-        
+
         // In a real implementation, you would:
         // 1. Create the account in the mock environment
         // 2. Set appropriate balances and permissions
         // 3. Configure any required trustlines
-        
+
         Ok(())
     }
 
@@ -173,29 +177,29 @@ impl StateInjector {
     /// Validate that the injected state is consistent
     pub async fn validate_injected_state(&self, contract_id: &str) -> Result<Vec<String>> {
         let injected = self.injected_states.read().await;
-        
+
         if let Some(state) = injected.get(contract_id) {
             let mut issues = Vec::new();
-            
+
             // Validate storage entries
             for (key, value) in &state.storage {
                 if key.is_empty() {
                     issues.push("Empty storage key found".to_string());
                 }
-                
+
                 // Validate ScVal structure
                 if let Err(e) = self.validate_scval(value) {
                     issues.push(format!("Invalid ScVal for key {}: {}", key, e));
                 }
             }
-            
+
             // Validate WASM hash
             if state.wasm_hash.is_empty() {
                 issues.push("Empty WASM hash".to_string());
             } else if state.wasm_hash.len() != 64 {
                 issues.push("Invalid WASM hash length".to_string());
             }
-            
+
             Ok(issues)
         } else {
             Err(anyhow!("Contract state not injected: {}", contract_id))
@@ -234,16 +238,16 @@ impl StateInjector {
     /// Get storage statistics for injected state
     pub async fn get_storage_stats(&self, contract_id: &str) -> Option<StorageStats> {
         let injected = self.injected_states.read().await;
-        
+
         injected.get(contract_id).map(|state| {
             let mut total_size = 0;
             let mut entry_count = 0;
-            
+
             for (key, value) in &state.storage {
                 entry_count += 1;
                 total_size += key.len() + self.estimate_scval_size(value);
             }
-            
+
             StorageStats {
                 entry_count,
                 total_size_bytes: total_size,
@@ -296,7 +300,7 @@ mod tests {
     async fn test_scval_conversion() {
         let config = crate::time_travel_debugger::TimeTravelConfig::default();
         let injector = StateInjector::new(config);
-        
+
         let scval = ScVal::U32(42);
         let result = injector.convert_scval_to_sdk(&scval);
         assert!(result.is_ok());
@@ -306,7 +310,7 @@ mod tests {
     async fn test_storage_stats() {
         let config = crate::time_travel_debugger::TimeTravelConfig::default();
         let injector = StateInjector::new(config);
-        
+
         let contract_id = "test_contract";
         let stats = injector.get_storage_stats(contract_id).await;
         assert!(stats.is_none());

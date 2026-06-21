@@ -1,14 +1,14 @@
 //! Discrepancy Detector for Differential Fuzzing
-//! 
+//!
 //! Identifies discrepancies in execution results between different SDK versions.
 
 use crate::differential_fuzzing::{
-    ExecutionResult, SdkVersion, StateChange, StateChangeType, ArgumentValue
+    ArgumentValue, ExecutionResult, SdkVersion, StateChange, StateChangeType,
 };
 use crate::Severity;
-use serde::{Serialize, Deserialize};
-use std::collections::HashMap;
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// Types of discrepancies that can be detected
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -173,9 +173,12 @@ impl DiscrepancyDetector {
     }
 
     /// Detect discrepancies across multiple execution results
-    pub fn detect_discrepancies(&self, results: &[ExecutionResult]) -> Result<Vec<DiscrepancyReport>> {
+    pub fn detect_discrepancies(
+        &self,
+        results: &[ExecutionResult],
+    ) -> Result<Vec<DiscrepancyReport>> {
         let mut discrepancies = Vec::new();
-        
+
         if results.len() < 2 {
             return Ok(discrepancies);
         }
@@ -195,7 +198,11 @@ impl DiscrepancyDetector {
     }
 
     /// Compare two execution results for discrepancies
-    fn compare_pair(&self, result1: &ExecutionResult, result2: &ExecutionResult) -> Result<Vec<DiscrepancyReport>> {
+    fn compare_pair(
+        &self,
+        result1: &ExecutionResult,
+        result2: &ExecutionResult,
+    ) -> Result<Vec<DiscrepancyReport>> {
         let mut discrepancies = Vec::new();
 
         // Check gas consumption differences
@@ -242,7 +249,11 @@ impl DiscrepancyDetector {
     }
 
     /// Detect gas consumption discrepancies
-    fn detect_gas_discrepancy(&self, result1: &ExecutionResult, result2: &ExecutionResult) -> Result<Option<DiscrepancyReport>> {
+    fn detect_gas_discrepancy(
+        &self,
+        result1: &ExecutionResult,
+        result2: &ExecutionResult,
+    ) -> Result<Option<DiscrepancyReport>> {
         let gas1 = result1.gas_consumed;
         let gas2 = result2.gas_consumed;
 
@@ -276,8 +287,10 @@ impl DiscrepancyDetector {
                 affected_versions: vec![result1.sdk_version.clone(), result2.sdk_version.clone()],
                 test_input: "test_input".to_string(), // Would be populated with actual input
                 details: DiscrepancyDetails::GasDiscrepancy(details),
-                recommendation: "Investigate gas optimization differences between SDK versions".to_string(),
-                confidence: self.calculate_confidence(percentage_diff, self.gas_threshold_percentage),
+                recommendation: "Investigate gas optimization differences between SDK versions"
+                    .to_string(),
+                confidence: self
+                    .calculate_confidence(percentage_diff, self.gas_threshold_percentage),
             }))
         } else {
             Ok(None)
@@ -285,7 +298,11 @@ impl DiscrepancyDetector {
     }
 
     /// Detect state change discrepancies
-    fn detect_state_discrepancy(&self, result1: &ExecutionResult, result2: &ExecutionResult) -> Result<Option<DiscrepancyReport>> {
+    fn detect_state_discrepancy(
+        &self,
+        result1: &ExecutionResult,
+        result2: &ExecutionResult,
+    ) -> Result<Option<DiscrepancyReport>> {
         let state1 = &result1.state_changes;
         let state2 = &result2.state_changes;
 
@@ -297,10 +314,12 @@ impl DiscrepancyDetector {
         state_changes_by_version.insert(result1.sdk_version.version.clone(), state1.clone());
         state_changes_by_version.insert(result2.sdk_version.version.clone(), state2.clone());
 
-        let (missing_changes, extra_changes, different_values) = self.compare_state_changes(state1, state2);
+        let (missing_changes, extra_changes, different_values) =
+            self.compare_state_changes(state1, state2);
 
-        let total_differences = missing_changes.len() + extra_changes.len() + different_values.len();
-        
+        let total_differences =
+            missing_changes.len() + extra_changes.len() + different_values.len();
+
         if total_differences > 0 {
             let mut missing_map = HashMap::new();
             missing_map.insert(result1.sdk_version.version.clone(), missing_changes);
@@ -323,7 +342,8 @@ impl DiscrepancyDetector {
                 affected_versions: vec![result1.sdk_version.clone(), result2.sdk_version.clone()],
                 test_input: "test_input".to_string(),
                 details: DiscrepancyDetails::StateDiscrepancy(details),
-                recommendation: "Review state management logic for consistency across SDK versions".to_string(),
+                recommendation: "Review state management logic for consistency across SDK versions"
+                    .to_string(),
                 confidence: 0.9,
             }))
         } else {
@@ -341,13 +361,11 @@ impl DiscrepancyDetector {
         let mut extra_changes = Vec::new();
         let mut different_values = Vec::new();
 
-        let state1_map: HashMap<Vec<u8>, &StateChange> = state1.iter()
-            .map(|sc| (sc.key.clone(), sc))
-            .collect();
-        
-        let state2_map: HashMap<Vec<u8>, &StateChange> = state2.iter()
-            .map(|sc| (sc.key.clone(), sc))
-            .collect();
+        let state1_map: HashMap<Vec<u8>, &StateChange> =
+            state1.iter().map(|sc| (sc.key.clone(), sc)).collect();
+
+        let state2_map: HashMap<Vec<u8>, &StateChange> =
+            state2.iter().map(|sc| (sc.key.clone(), sc)).collect();
 
         // Find missing and different changes
         for (key, change1) in &state1_map {
@@ -376,15 +394,29 @@ impl DiscrepancyDetector {
     }
 
     /// Detect logic divergence through trace analysis
-    fn detect_logic_divergence(&self, result1: &ExecutionResult, result2: &ExecutionResult) -> Result<Option<DiscrepancyReport>> {
-        let similarity = result1.execution_trace.similarity_score(&result2.execution_trace);
-        
+    fn detect_logic_divergence(
+        &self,
+        result1: &ExecutionResult,
+        result2: &ExecutionResult,
+    ) -> Result<Option<DiscrepancyReport>> {
+        let similarity = result1
+            .execution_trace
+            .similarity_score(&result2.execution_trace);
+
         if similarity < self.trace_similarity_threshold {
-            let divergence_point = result1.execution_trace.find_divergence_point(&result2.execution_trace);
-            
+            let divergence_point = result1
+                .execution_trace
+                .find_divergence_point(&result2.execution_trace);
+
             let mut different_paths = HashMap::new();
-            different_paths.insert(result1.sdk_version.version.clone(), vec!["path1".to_string()]);
-            different_paths.insert(result2.sdk_version.version.clone(), vec!["path2".to_string()]);
+            different_paths.insert(
+                result1.sdk_version.version.clone(),
+                vec!["path1".to_string()],
+            );
+            different_paths.insert(
+                result2.sdk_version.version.clone(),
+                vec!["path2".to_string()],
+            );
 
             let details = LogicDivergenceDetails {
                 divergence_point,
@@ -396,11 +428,16 @@ impl DiscrepancyDetector {
             Ok(Some(DiscrepancyReport {
                 discrepancy_type: DiscrepancyType::LogicDivergence,
                 severity: self.calculate_logic_severity(similarity),
-                description: format!("Logic divergence detected with {:.2}% trace similarity", similarity * 100.0),
+                description: format!(
+                    "Logic divergence detected with {:.2}% trace similarity",
+                    similarity * 100.0
+                ),
                 affected_versions: vec![result1.sdk_version.clone(), result2.sdk_version.clone()],
                 test_input: "test_input".to_string(),
                 details: DiscrepancyDetails::LogicDivergence(details),
-                recommendation: "Review execution flow and conditional logic for SDK version compatibility".to_string(),
+                recommendation:
+                    "Review execution flow and conditional logic for SDK version compatibility"
+                        .to_string(),
                 confidence: 1.0 - similarity,
             }))
         } else {
@@ -409,7 +446,11 @@ impl DiscrepancyDetector {
     }
 
     /// Detect return value differences
-    fn detect_return_value_difference(&self, result1: &ExecutionResult, result2: &ExecutionResult) -> Result<Option<DiscrepancyReport>> {
+    fn detect_return_value_difference(
+        &self,
+        result1: &ExecutionResult,
+        result2: &ExecutionResult,
+    ) -> Result<Option<DiscrepancyReport>> {
         match (&result1.return_value, &result2.return_value) {
             (Some(val1), Some(val2)) if val1 != val2 => {
                 let mut return_values = HashMap::new();
@@ -428,18 +469,27 @@ impl DiscrepancyDetector {
                     discrepancy_type: DiscrepancyType::ReturnValue,
                     severity: Severity::Medium,
                     description: "Return values differ between SDK versions".to_string(),
-                    affected_versions: vec![result1.sdk_version.clone(), result2.sdk_version.clone()],
+                    affected_versions: vec![
+                        result1.sdk_version.clone(),
+                        result2.sdk_version.clone(),
+                    ],
                     test_input: "test_input".to_string(),
                     details: DiscrepancyDetails::ReturnValueDifference(details),
                     recommendation: "Verify return value handling across SDK versions".to_string(),
                     confidence: 0.8,
                 }))
-            },
+            }
             (None, None) => Ok(None),
             (Some(_), None) | (None, Some(_)) => {
                 let mut return_values = HashMap::new();
-                return_values.insert(result1.sdk_version.version.clone(), result1.return_value.clone());
-                return_values.insert(result2.sdk_version.version.clone(), result2.return_value.clone());
+                return_values.insert(
+                    result1.sdk_version.version.clone(),
+                    result1.return_value.clone(),
+                );
+                return_values.insert(
+                    result2.sdk_version.version.clone(),
+                    result2.return_value.clone(),
+                );
 
                 let details = ReturnValueDifferenceDetails {
                     return_values,
@@ -450,20 +500,28 @@ impl DiscrepancyDetector {
                 Ok(Some(DiscrepancyReport {
                     discrepancy_type: DiscrepancyType::ReturnValue,
                     severity: Severity::High,
-                    description: "One version returns a value while another returns None".to_string(),
-                    affected_versions: vec![result1.sdk_version.clone(), result2.sdk_version.clone()],
+                    description: "One version returns a value while another returns None"
+                        .to_string(),
+                    affected_versions: vec![
+                        result1.sdk_version.clone(),
+                        result2.sdk_version.clone(),
+                    ],
                     test_input: "test_input".to_string(),
                     details: DiscrepancyDetails::ReturnValueDifference(details),
                     recommendation: "Investigate why return value behavior differs".to_string(),
                     confidence: 0.9,
                 }))
-            },
+            }
             _ => Ok(None),
         }
     }
 
     /// Detect error differences
-    fn detect_error_difference(&self, result1: &ExecutionResult, result2: &ExecutionResult) -> Result<Option<DiscrepancyReport>> {
+    fn detect_error_difference(
+        &self,
+        result1: &ExecutionResult,
+        result2: &ExecutionResult,
+    ) -> Result<Option<DiscrepancyReport>> {
         let success_mismatch = result1.success != result2.success;
         let errors_match = match (&result1.error, &result2.error) {
             (Some(err1), Some(err2)) => err1 == err2,
@@ -484,7 +542,11 @@ impl DiscrepancyDetector {
 
             Ok(Some(DiscrepancyReport {
                 discrepancy_type: DiscrepancyType::ErrorDifference,
-                severity: if success_mismatch { Severity::High } else { Severity::Medium },
+                severity: if success_mismatch {
+                    Severity::High
+                } else {
+                    Severity::Medium
+                },
                 description: if success_mismatch {
                     "Success status differs between SDK versions".to_string()
                 } else {
@@ -502,12 +564,22 @@ impl DiscrepancyDetector {
     }
 
     /// Detect execution order differences
-    fn detect_execution_order_difference(&self, result1: &ExecutionResult, result2: &ExecutionResult) -> Result<Option<DiscrepancyReport>> {
-        let trace1_events: Vec<String> = result1.execution_trace.events.iter()
+    fn detect_execution_order_difference(
+        &self,
+        result1: &ExecutionResult,
+        result2: &ExecutionResult,
+    ) -> Result<Option<DiscrepancyReport>> {
+        let trace1_events: Vec<String> = result1
+            .execution_trace
+            .events
+            .iter()
             .map(|e| format!("{:?}:{:?}", e.event_type, e.function_name))
             .collect();
-        
-        let trace2_events: Vec<String> = result2.execution_trace.events.iter()
+
+        let trace2_events: Vec<String> = result2
+            .execution_trace
+            .events
+            .iter()
             .map(|e| format!("{:?}:{:?}", e.event_type, e.function_name))
             .collect();
 
@@ -539,7 +611,11 @@ impl DiscrepancyDetector {
     }
 
     /// Detect memory usage differences
-    fn detect_memory_usage_difference(&self, result1: &ExecutionResult, result2: &ExecutionResult) -> Result<Option<DiscrepancyReport>> {
+    fn detect_memory_usage_difference(
+        &self,
+        result1: &ExecutionResult,
+        result2: &ExecutionResult,
+    ) -> Result<Option<DiscrepancyReport>> {
         let mem1 = result1.execution_trace.memory_usage.peak_memory;
         let mem2 = result2.execution_trace.memory_usage.peak_memory;
 
@@ -551,7 +627,8 @@ impl DiscrepancyDetector {
         let absolute_diff = mem1.abs_diff(mem2) as f64;
         let percentage_diff = (absolute_diff / avg_mem) * 100.0;
 
-        if percentage_diff > 20.0 { // 20% threshold for memory differences
+        if percentage_diff > 20.0 {
+            // 20% threshold for memory differences
             let mut memory_usage = HashMap::new();
             memory_usage.insert(result1.sdk_version.version.clone(), mem1);
             memory_usage.insert(result2.sdk_version.version.clone(), mem2);
@@ -561,8 +638,14 @@ impl DiscrepancyDetector {
             peak_memory.insert(result2.sdk_version.version.clone(), mem2);
 
             let mut allocation_count = HashMap::new();
-            allocation_count.insert(result1.sdk_version.version.clone(), result1.execution_trace.memory_usage.allocations.len());
-            allocation_count.insert(result2.sdk_version.version.clone(), result2.execution_trace.memory_usage.allocations.len());
+            allocation_count.insert(
+                result1.sdk_version.version.clone(),
+                result1.execution_trace.memory_usage.allocations.len(),
+            );
+            allocation_count.insert(
+                result2.sdk_version.version.clone(),
+                result2.execution_trace.memory_usage.allocations.len(),
+            );
 
             let details = MemoryUsageDifferenceDetails {
                 memory_usage,
@@ -587,7 +670,11 @@ impl DiscrepancyDetector {
     }
 
     /// Detect external call differences
-    fn detect_external_call_difference(&self, result1: &ExecutionResult, result2: &ExecutionResult) -> Result<Option<DiscrepancyReport>> {
+    fn detect_external_call_difference(
+        &self,
+        result1: &ExecutionResult,
+        result2: &ExecutionResult,
+    ) -> Result<Option<DiscrepancyReport>> {
         let external_calls1 = self.extract_external_calls(&result1.execution_trace);
         let external_calls2 = self.extract_external_calls(&result2.execution_trace);
 
@@ -618,8 +705,13 @@ impl DiscrepancyDetector {
     }
 
     /// Extract external calls from execution trace
-    fn extract_external_calls(&self, trace: &crate::differential_fuzzing::ExecutionTrace) -> Vec<ExternalCallInfo> {
-        trace.events.iter()
+    fn extract_external_calls(
+        &self,
+        trace: &crate::differential_fuzzing::ExecutionTrace,
+    ) -> Vec<ExternalCallInfo> {
+        trace
+            .events
+            .iter()
             .filter(|e| e.event_type == crate::differential_fuzzing::TraceEventType::ExternalCall)
             .map(|e| ExternalCallInfo {
                 contract_address: "unknown".to_string(), // Would be extracted from trace
@@ -660,7 +752,11 @@ impl DiscrepancyDetector {
         (actual_diff / threshold).min(1.0)
     }
 
-    fn calculate_numeric_difference(&self, val1: &ArgumentValue, val2: &ArgumentValue) -> Option<i128> {
+    fn calculate_numeric_difference(
+        &self,
+        val1: &ArgumentValue,
+        val2: &ArgumentValue,
+    ) -> Option<i128> {
         match (val1, val2) {
             (ArgumentValue::I128(n1), ArgumentValue::I128(n2)) => Some(n1.abs_diff(*n2) as i128),
             (ArgumentValue::U64(n1), ArgumentValue::U64(n2)) => Some(n1.abs_diff(*n2) as i128),
@@ -676,7 +772,8 @@ impl DiscrepancyDetector {
     fn deduplicate_and_merge(&self, discrepancies: &mut Vec<DiscrepancyReport>) {
         // Sort by type and affected versions
         discrepancies.sort_by(|a, b| {
-            a.discrepancy_type.cmp(&b.discrepancy_type)
+            a.discrepancy_type
+                .cmp(&b.discrepancy_type)
                 .then_with(|| a.affected_versions.cmp(&b.affected_versions))
         });
 
@@ -698,8 +795,8 @@ impl DiscrepancyDetector {
     }
 
     fn should_merge(&self, disc1: &DiscrepancyReport, disc2: &DiscrepancyReport) -> bool {
-        disc1.discrepancy_type == disc2.discrepancy_type &&
-        disc1.affected_versions == disc2.affected_versions
+        disc1.discrepancy_type == disc2.discrepancy_type
+            && disc1.affected_versions == disc2.affected_versions
     }
 
     fn merge_discrepancies(&self, target: &mut DiscrepancyReport, source: &DiscrepancyReport) {

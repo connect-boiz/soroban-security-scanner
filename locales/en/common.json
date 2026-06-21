@@ -1,0 +1,121 @@
+{
+  "scanner": {
+    "name": "Soroban Security Scanner",
+    "description": "Security scanner for Soroban smart contracts",
+    "version": "1.0.0"
+  },
+  "commands": {
+    "scan": {
+      "description": "Scan for security vulnerabilities",
+      "starting": "🔍 Starting Soroban Security Scanner...",
+      "emergency_stop_enabled": "🛑 Emergency stop system enabled",
+      "notifications_enabled": "📬 Notifications enabled",
+      "scan_stopped": "⚠️  Scan was stopped due to emergency condition",
+      "partial_results": "📊 Partial results: {{count}} vulnerabilities found",
+      "report_saved": "📄 Report saved to {{file}}",
+      "notifications_sent": "📬 Scan notifications sent successfully",
+      "some_notifications_failed": "⚠️  Some notifications failed: {{channels}}",
+      "notification_error": "❌ Failed to send notifications: {{error}}",
+      "error": "❌ Error: {{error}}"
+    },
+    "emergency_stop": {
+      "description": "Emergency stop management",
+      "triggered": "🛑 EMERGENCY STOP TRIGGERED: {{reason}}",
+      "manual_trigger": "🛑 Emergency stop triggered: {{reason}}",
+      "status_active": "🔴 Emergency stop is ACTIVE",
+      "status_inactive": "🟢 Emergency stop is INACTIVE",
+      "testing": "🧪 Testing emergency stop functionality...",
+      "test_initial_failed": "❌ Emergency stop should be inactive initially",
+      "test_trigger_failed": "❌ Emergency stop should be active after trigger",
+      "test_passed": "✅ Emergency stop test passed"
+    },
+    "notifications": {
+      "description": "Notification service management",
+      "test": {
+        "description": "Test notification service",
+        "sent": "✅ Test notification sent successfully",
+        "delivered_to": "📬 Delivered to: {{channels}}",
+        "failed": "❌ Test notification failed",
+        "failed_channels": "Failed channels: {{channels}}",
+        "test_failed": "❌ Test failed: {{error}}"
+      },
+      "templates": {
+        "description": "List available notification templates",
+        "available": "📋 Available Templates:",
+        "template_info": "📄 {{name}} ({{id}})",
+        "no_description": "No description",
+        "channels": "Channels: {{channels}}",
+        "variables": "Variables: {{variables}}",
+        "list_failed": "❌ Failed to list templates: {{error}}"
+      },
+      "in_app": {
+        "list": {
+          "description": "List in-app notifications for a user",
+          "notifications_for": "📬 In-app notifications for {{userId}}:",
+          "no_notifications": "No notifications found",
+          "list_failed": "❌ Failed to list notifications: {{error}}"
+        }
+      },
+      "provider_health": "🏥 Provider Health:",
+      "provider_stats": "📊 Provider Statistics:",
+      "stats_info": "{{channel}}: {{sent}} sent, {{failed}} failed"
+    }
+  },
+  "reporter": {
+    "no_vulnerabilities": "✅ No time-based attack vulnerabilities found!",
+    "found_vulnerabilities": "🚨 Found {{count}} time-based attack vulnerabilities:",
+    "severity": "{{severity}} SEVERITY ({{count}}):",
+    "file": "File: {{file}}:{{line}}",
+    "code": "Code: {{code}}",
+    "recommendations": "📋 RECOMMENDATIONS:",
+    "high_priority": "HIGH PRIORITY:",
+    "medium_priority": "MEDIUM PRIORITY:",
+    "general_protection": "GENERAL PROTECTION MEASURES:",
+    "timestamp_validation": "Implement timestamp validation using trusted oracles",
+    "timestamp_bounds": "Add minimum/maximum timestamp bounds",
+    "block_heights": "Use block heights instead of timestamps when possible",
+    "replay_protection": "Implement replay attack protection",
+    "timestamp_drift": "Add timestamp drift tolerance",
+    "time_window": "Implement time window validation",
+    "monotonic_counters": "Use monotonic counters for critical operations",
+    "validate_ranges": "Always validate timestamp ranges",
+    "multiple_sources": "Use multiple time sources when possible",
+    "rate_limiting": "Implement rate limiting for time-sensitive operations",
+    "consider_blocks": "Consider using block numbers instead of timestamps"
+  },
+  "notification_service": {
+    "initialized": "📬 Notification service initialized",
+    "templates": {
+      "vulnerability_alert": {
+        "name": "Vulnerability Alert",
+        "description": "Template for vulnerability notifications",
+        "subject": "🚨 {{severity}} Vulnerability Found in {{contract_name}}",
+        "body": "Hello {{user_name}},\n\nA {{severity}} vulnerability has been detected in your smart contract:\n\nContract: {{contract_name}}\nType: {{vulnerability_type}}\nDescription: {{description}}\nRisk Score: {{risk_score}}\n\n{{#critical}}⚠️ This is a critical vulnerability that requires immediate attention!\n{{/critical}}\n\nPlease review the full scan report at: {{report_url}}\n\nBest regards,\nSoroban Security Scanner"
+      },
+      "scan_completed": {
+        "name": "Scan Completed",
+        "description": "Template for scan completion notifications",
+        "subject": "✅ Security Scan Completed for {{file_path}}",
+        "body": "Hello {{user_name}},\n\nYour security scan has completed:\n\nFile: {{file_path}}\nTotal Issues: {{total_issues}}\nCritical: {{critical_count}}\nHigh: {{high_count}}\nMedium: {{medium_count}}\n\n{{#has_issues}}⚠️ Issues were found that require your attention. Please review the detailed report.\n{{/has_issues}}{{^has_issues}}✅ No security issues were found. Your contract looks secure!\n{{/has_issues}}\n\nView full results at: {{report_url}}\n\nBest regards,\nSoroban Security Scanner"
+      }
+    }
+  },
+  "errors": {
+    "deprecated_usage": "⚠️  Direct argument usage is deprecated. Use \"scan\" command instead.",
+    "template_not_found": "Template not found: {{id}}",
+    "compilation_failed": "Template compilation failed: {{error}}",
+    "render_failed": "Template rendering failed: {{error}}",
+    "invalid_template": "Body template cannot be empty",
+    "variable_not_found": "Required variable '{{variable}}' not found in template",
+    "missing_variable": "Required variable '{{variable}}' is missing from context"
+  },
+  "formats": {
+    "currency": {
+      "USD": "en-US"
+    },
+    "date": {
+      "short": "en-US",
+      "long": "en-US"
+    }
+  }
+}

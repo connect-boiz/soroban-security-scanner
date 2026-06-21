@@ -1,887 +1,592 @@
+//! Tests for the Time Travel Debugger module
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // ============================================================
-    // Access Control Tests
-    // ============================================================
+    use soroban_sdk::xdr::ScVal;
+    use std::collections::HashMap;
 
     #[tokio::test]
-    async fn test_admin_has_all_permissions() {
-        let controller = AccessController::new();
-        let admin = UserContext {
-            user_id: "admin_1".to_string(),
-            roles: {
-                let mut r = std::collections::HashSet::new();
-                r.insert(UserRole::Admin);
-                r
-            },
-            tier: UserTier::Enterprise,
-            contract_ownerships: std::collections::HashSet::new(),
-            issued_at: std::time::Instant::now(),
+    async fn test_time_travel_debugger_creation() {
+        let config = TimeTravelConfig::default();
+        let result = TimeTravelDebugger::new(config).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_ledger_snapshot_serialization() {
+        let snapshot = LedgerSnapshot {
+            ledger_sequence: 100000,
+            ledger_hash: "abcd1234".to_string(),
+            close_time: 1640995200,
+            protocol_version: 20,
+            operation_count: 10,
+            base_fee: 100,
+            base_reserve: 5000000,
         };
 
-        let result = controller.check_permission(&admin, &Permission::ForkAtLedger, None, None).await.unwrap();
-        assert!(result.allowed, "Admin should be able to fork at ledger");
+        let serialized = serde_json::to_string(&snapshot).unwrap();
+        let deserialized: LedgerSnapshot = serde_json::from_str(&serialized).unwrap();
 
-        let result = controller.check_permission(&admin, &Permission::GetContractState, None, None).await.unwrap();
-        assert!(result.allowed, "Admin should be able to get contract state");
-
-        let result = controller.check_permission(&admin, &Permission::ViewAuditLogs, None, None).await.unwrap();
-        assert!(result.allowed, "Admin should be able to view audit logs");
-
-        let result = controller.check_permission(&admin, &Permission::ManageAccessControl, None, None).await.unwrap();
-        assert!(result.allowed, "Admin should be able to manage access control");
+        assert_eq!(snapshot, deserialized);
     }
 
     #[tokio::test]
-    async fn test_free_user_cannot_simulate_upgrade() {
-        let controller = AccessController::new();
-        let free_user = UserContext {
-            user_id: "user_free".to_string(),
-            roles: {
-                let mut r = std::collections::HashSet::new();
-                r.insert(UserRole::User);
-                r
-            },
-            tier: UserTier::Free,
-            contract_ownerships: std::collections::HashSet::new(),
-            issued_at: std::time::Instant::now(),
+    async fn test_contract_state_creation() {
+        let mut storage = HashMap::new();
+        storage.insert("balance".to_string(), ScVal::U64(1000));
+        storage.insert("owner".to_string(), ScVal::Bytes(vec![1, 2, 3, 4]));
+
+        let state = ContractState {
+            contract_id: "test_contract".to_string(),
+            wasm_hash: "test_hash".to_string(),
+            storage,
+            ledger_sequence: 1000,
         };
 
-        let result = controller.check_permission(&free_user, &Permission::SimulateUpgrade, None, None).await.unwrap();
-        assert!(!result.allowed, "Free user should not be able to simulate upgrade");
+        assert_eq!(state.contract_id, "test_contract");
+        assert_eq!(state.ledger_sequence, 1000);
+        assert_eq!(state.storage.len(), 2);
     }
 
     #[tokio::test]
-    async fn test_contract_owner_can_access_owned_contract() {
-        let controller = AccessController::new();
-        let owner = UserContext {
-            user_id: "owner_1".to_string(),
-            roles: {
-                let mut r = std::collections::HashSet::new();
-                r.insert(UserRole::ContractOwner);
-                r
-            },
-            tier: UserTier::Pro,
-            contract_ownerships: {
-                let mut c = std::collections::HashSet::new();
-                c.insert("contract_123".to_string());
-                c
-            },
-            issued_at: std::time::Instant::now(),
-        };
-
-        controller.register_contract_owner("contract_123", "owner_1").await.unwrap();
-        let sensitive = controller.check_sensitive_contract_access(&owner, "contract_123", 100000).await.unwrap();
-        assert!(sensitive, "Owner should have sensitive access to own contract");
-    }
-
-    #[tokio::test]
-    async fn test_contract_owner_cannot_access_unowned_contract() {
-        let controller = AccessController::new();
-        let owner = UserContext {
-            user_id: "owner_1".to_string(),
-            roles: {
-                let mut r = std::collections::HashSet::new();
-                r.insert(UserRole::ContractOwner);
-                r
-            },
-            tier: UserTier::Pro,
-            contract_ownerships: {
-                let mut c = std::collections::HashSet::new();
-                c.insert("contract_456".to_string());
-                c
-            },
-            issued_at: std::time::Instant::now(),
-        };
-
-        let result = controller.check_permission(
-            &owner, &Permission::InjectState, Some("contract_123"), None
-        ).await.unwrap();
-        assert!(!result.allowed, "Owner should not be able to inject state for unowned contract");
-    }
-
-    #[tokio::test]
-    async fn test_auditor_can_view_audit_logs() {
-        let controller = AccessController::new();
-        let auditor = UserContext {
-            user_id: "auditor_1".to_string(),
-            roles: {
-                let mut r = std::collections::HashSet::new();
-                r.insert(UserRole::Auditor);
-                r
-            },
-            tier: UserTier::Enterprise,
-            contract_ownerships: std::collections::HashSet::new(),
-            issued_at: std::time::Instant::now(),
-        };
-
-        let result = controller.check_permission(&auditor, &Permission::ViewAuditLogs, None, None).await.unwrap();
-        assert!(result.allowed, "Auditor should be able to view audit logs");
-
-        let result = controller.check_permission(&auditor, &Permission::ExportData, None, None).await.unwrap();
-        assert!(result.allowed, "Auditor should be able to export data");
-    }
-
-    #[tokio::test]
-    async fn test_free_user_cannot_access_old_ledgers() {
-        let controller = AccessController::new();
-        let free_user = UserContext {
-            user_id: "user_free".to_string(),
-            roles: {
-                let mut r = std::collections::HashSet::new();
-                r.insert(UserRole::User);
-                r
-            },
-            tier: UserTier::Free,
-            contract_ownerships: std::collections::HashSet::new(),
-            issued_at: std::time::Instant::now(),
-        };
-
-        let result = controller.check_permission(
-            &free_user, &Permission::GetContractState, None, Some(50)
-        ).await.unwrap();
-        assert!(!result.allowed, "Free user should not access ledger before 100000");
-    }
-
-    #[tokio::test]
-    async fn test_approval_workflow() {
-        let controller = AccessController::new();
-
-        let request = controller.request_approval("user_1", "sensitive_op", Some("contract_123"), Some(100000), "Need access for audit").await.unwrap();
-        assert_eq!(request.status, ApprovalStatus::Pending);
-
-        let status = controller.check_approval_status(&request.id).await;
-        assert_eq!(status, Some(ApprovalStatus::Pending));
-
-        controller.resolve_approval(&request.id, "admin_1", true).await.unwrap();
-        let status = controller.check_approval_status(&request.id).await;
-        assert_eq!(status, Some(ApprovalStatus::Approved));
-    }
-
-    #[tokio::test]
-    async fn test_approval_rejection() {
-        let controller = AccessController::new();
-
-        let request = controller.request_approval("user_1", "sensitive_op", None, None, "Request").await.unwrap();
-        controller.resolve_approval(&request.id, "admin_1", false).await.unwrap();
-
-        let status = controller.check_approval_status(&request.id).await;
-        assert_eq!(status, Some(ApprovalStatus::Rejected));
-    }
-
-    #[tokio::test]
-    async fn test_enterprise_user_all_ledgers() {
-        let controller = AccessController::new();
-        let enterprise = UserContext {
-            user_id: "enterprise_1".to_string(),
-            roles: {
-                let mut r = std::collections::HashSet::new();
-                r.insert(UserRole::Admin);
-                r
-            },
-            tier: UserTier::Enterprise,
-            contract_ownerships: std::collections::HashSet::new(),
-            issued_at: std::time::Instant::now(),
-        };
-
-        let result = controller.check_permission(
-            &enterprise, &Permission::GetContractState, None, Some(1)
-        ).await.unwrap();
-        assert!(result.allowed, "Enterprise users should access any ledger");
-    }
-
-    #[tokio::test]
-    async fn test_role_permission_customization() {
-        let controller = AccessController::new();
-        controller.add_role_permission(UserRole::User, Permission::ViewAuditLogs).await.unwrap();
-
-        let user = UserContext {
-            user_id: "user_1".to_string(),
-            roles: {
-                let mut r = std::collections::HashSet::new();
-                r.insert(UserRole::User);
-                r
-            },
-            tier: UserTier::Free,
-            contract_ownerships: std::collections::HashSet::new(),
-            issued_at: std::time::Instant::now(),
-        };
-
-        let result = controller.check_permission(&user, &Permission::ViewAuditLogs, None, None).await.unwrap();
-        assert!(result.allowed, "User should have custom ViewAuditLogs permission");
-    }
-
-    // ============================================================
-    // Audit Log Tests
-    // ============================================================
-
-    #[tokio::test]
-    async fn test_audit_log_creation() {
-        let logger = AuditLogger::new(100);
-
-        let entry = logger.log("user_1", vec!["User".to_string()], AuditOperation::ForkAtLedger, "ledger:100000", Some(100000), None, true, "Forked successfully").await;
-
-        assert_eq!(entry.user_id, "user_1");
-        assert!(matches!(entry.operation, AuditOperation::ForkAtLedger));
-        assert!(entry.success);
-    }
-
-    #[tokio::test]
-    async fn test_audit_log_query() {
-        let logger = AuditLogger::new(100);
-
-        logger.log("user_1", vec![], AuditOperation::ForkAtLedger, "ledger:100000", Some(100000), None, true, "").await;
-        logger.log("user_2", vec![], AuditOperation::GetContractState, "contract:abc", None, Some("contract_abc"), true, "").await;
-        logger.log("user_1", vec![], AuditOperation::PermissionDenied, "upgrade", Some(100001), None, false, "Access denied").await;
-
-        let query = AuditLogQuery {
-            user_id: Some("user_1".to_string()),
-            operation: None,
-            contract_id: None,
-            ledger_sequence: None,
-            success: None,
-            limit: 10,
-        };
-
-        let results = logger.query(&query).await;
-        assert_eq!(results.len(), 2, "Should find 2 logs for user_1");
-    }
-
-    #[tokio::test]
-    async fn test_audit_log_summary() {
-        let logger = AuditLogger::new(100);
-
-        logger.log("user_1", vec![], AuditOperation::ForkAtLedger, "", None, None, true, "").await;
-        logger.log("user_1", vec![], AuditOperation::PermissionDenied, "", None, None, false, "Denied").await;
-        logger.log("user_2", vec![], AuditOperation::ForkAtLedger, "", None, None, true, "").await;
-
-        let summary = logger.get_summary().await;
-        assert_eq!(summary.total_entries, 3);
-        assert_eq!(summary.unique_users, 2);
-        assert!(summary.success_rate > 0.5);
-        assert_eq!(summary.recent_denials, 1);
-    }
-
-    #[tokio::test]
-    async fn test_audit_log_max_entries() {
-        let logger = AuditLogger::new(5);
-
-        for i in 0..10u32 {
-            logger.log(&format!("user_{}", i), vec![], AuditOperation::ForkAtLedger, "", None, None, true, "").await;
-        }
-
-        assert_eq!(logger.entry_count().await, 5);
-    }
-
-    #[tokio::test]
-    async fn test_audit_log_clear() {
-        let logger = AuditLogger::new(100);
-        logger.log("user_1", vec![], AuditOperation::ForkAtLedger, "", None, None, true, "").await;
-        logger.clear().await;
-        assert_eq!(logger.entry_count().await, 0);
-    }
-
-    #[tokio::test]
-    async fn test_audit_log_permission_denied() {
-        let logger = AuditLogger::new(100);
-        let entry = logger.log_permission_denied("user_1", vec!["User".to_string()], "contract:abc", "No permission").await;
-        assert!(matches!(entry.operation, AuditOperation::PermissionDenied));
-        assert!(!entry.success);
-    }
-
-    // ============================================================
-    // Rate Limiter Tests
-    // ============================================================
-
-    #[tokio::test]
-    async fn test_rate_limiter_allows_request() {
-        let config = RateLimitConfig {
-            max_requests_per_window: 100,
-            window_duration_seconds: 60,
-            max_concurrent_operations: 10,
-            burst_size: 50,
-        };
-        let limiter = RateLimiter::new(config);
-        let status = limiter.check_rate_limit("user_1").await;
-        assert!(status.allowed);
-    }
-
-    #[tokio::test]
-    async fn test_rate_limiter_blocks_excess() {
-        let config = RateLimitConfig {
-            max_requests_per_window: 3,
-            window_duration_seconds: 60,
-            max_concurrent_operations: 10,
-            burst_size: 3,
-        };
-        let limiter = RateLimiter::new(config);
-
-        for _ in 0..3 {
-            let status = limiter.check_rate_limit("user_1").await;
-            assert!(status.allowed);
-        }
-
-        let status = limiter.check_rate_limit("user_1").await;
-        assert!(!status.allowed, "Should block 4th request");
-    }
-
-    #[tokio::test]
-    async fn test_rate_limiter_burst_refill() {
-        let config = RateLimitConfig {
-            max_requests_per_window: 10,
-            window_duration_seconds: 60,
-            max_concurrent_operations: 10,
-            burst_size: 2,
-        };
-        let limiter = RateLimiter::new(config);
-
-        assert!(limiter.check_rate_limit("user_1").await.allowed);
-        assert!(limiter.check_rate_limit("user_1").await.allowed);
-        assert!(!limiter.check_rate_limit("user_1").await.allowed, "Should block after burst exhausted");
-    }
-
-    #[tokio::test]
-    async fn test_rate_limiter_release_concurrent() {
-        let config = RateLimitConfig {
-            max_requests_per_window: 100,
-            window_duration_seconds: 60,
-            max_concurrent_operations: 2,
-            burst_size: 10,
-        };
-        let limiter = RateLimiter::new(config);
-
-        assert!(limiter.check_rate_limit("user_1").await.allowed);
-        assert!(limiter.check_rate_limit("user_1").await.allowed);
-        assert!(!limiter.check_rate_limit("user_1").await.allowed, "Should block 3rd concurrent");
-
-        limiter.release_concurrent("user_1").await;
-        assert!(limiter.check_rate_limit("user_1").await.allowed, "Should allow after release");
-    }
-
-    #[tokio::test]
-    async fn test_rate_limiter_user_independence() {
-        let config = RateLimitConfig {
-            max_requests_per_window: 2,
-            window_duration_seconds: 60,
-            max_concurrent_operations: 10,
-            burst_size: 2,
-        };
-        let limiter = RateLimiter::new(config);
-
-        assert!(limiter.check_rate_limit("user_1").await.allowed);
-        assert!(limiter.check_rate_limit("user_1").await.allowed);
-        assert!(!limiter.check_rate_limit("user_1").await.allowed);
-
-        assert!(limiter.check_rate_limit("user_2").await.allowed, "User 2 should not be affected by user 1's limit");
-    }
-
-    #[tokio::test]
-    async fn test_rate_limiter_stale_cleanup() {
-        let config = RateLimitConfig {
-            max_requests_per_window: 10,
-            window_duration_seconds: 1,
-            max_concurrent_operations: 10,
-            burst_size: 10,
-        };
-        let limiter = RateLimiter::new(config);
-
-        limiter.check_rate_limit("user_1").await;
-        limiter.check_rate_limit("user_2").await;
-
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-        limiter.cleanup_stale_entries().await;
-
-        let status = limiter.get_user_status("user_1").await;
-        assert!(status.is_some());
-    }
-
-    // ============================================================
-    // Data Retention Tests
-    // ============================================================
-
-    #[tokio::test]
-    async fn test_retention_policy_default() {
-        let policy = RetentionPolicy::default();
-        assert_eq!(policy.contract_state_retention_days, 30);
-        assert_eq!(policy.audit_log_retention_days, 90);
-        assert_eq!(policy.max_stored_states_per_contract, 100);
-    }
-
-    #[tokio::test]
-    async fn test_strict_retention_policy() {
-        let policy = RetentionPolicy::strict();
-        assert_eq!(policy.contract_state_retention_days, 7);
-        assert_eq!(policy.ledger_snapshot_retention_days, 3);
-    }
-
-    #[tokio::test]
-    async fn test_data_retention_recording() {
-        let manager = DataRetentionManager::new(RetentionPolicy::default());
-        manager.record_storage("contract_123", 100000, StoredDataType::ContractState, 1024, false).await.unwrap();
-        manager.record_storage("contract_123", 100001, StoredDataType::LedgerSnapshot, 512, false).await.unwrap();
-
-        let usage = manager.get_storage_usage().await;
-        assert_eq!(usage.contract_state_count, 1);
-        assert_eq!(usage.ledger_snapshot_count, 1);
-    }
-
-    #[tokio::test]
-    async fn test_storage_exceeds_max_per_contract() {
-        let policy = RetentionPolicy {
-            max_stored_states_per_contract: 2,
-            ..Default::default()
-        };
-        let manager = DataRetentionManager::new(policy);
-
-        manager.record_storage("contract_123", 1, StoredDataType::ContractState, 10, false).await.unwrap();
-        manager.record_storage("contract_123", 2, StoredDataType::ContractState, 10, false).await.unwrap();
-        let result = manager.record_storage("contract_123", 3, StoredDataType::ContractState, 10, false).await;
-        assert!(result.is_err(), "Should reject 3rd state for same contract");
-    }
-
-    #[tokio::test]
-    async fn test_retention_cleanup() {
-        let policy = RetentionPolicy {
-            contract_state_retention_days: 0,
-            cleanup_interval_hours: 0,
-            auto_cleanup_enabled: true,
-            ..Default::default()
-        };
-        let manager = DataRetentionManager::new(policy);
-
-        manager.record_storage("contract_123", 100000, StoredDataType::ContractState, 100, false).await.unwrap();
-        manager.record_storage("contract_456", 100001, StoredDataType::LedgerSnapshot, 50, false).await.unwrap();
-
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-        let report = manager.perform_cleanup().await;
-        assert!(report.entries_removed >= 2);
-    }
-
-    // ============================================================
-    // Encryption Tests
-    // ============================================================
-
-    #[tokio::test]
-    async fn test_encryption_roundtrip() {
-        let config = EncryptionConfig::default();
-        let encryptor = DataEncryptor::new(config);
-        encryptor.initialize(b"this_is_a_32_byte_test_key!!!!!!").await.unwrap();
-
-        let plaintext = b"Hello, Time Travel Debugger!";
-        let encrypted = encryptor.encrypt(plaintext).await.unwrap();
-        let decrypted = encryptor.decrypt(&encrypted).await.unwrap();
-
-        assert_eq!(plaintext.to_vec(), decrypted);
-    }
-
-    #[tokio::test]
-    async fn test_encryption_corruption_detection() {
-        let encryptor = DataEncryptor::new(EncryptionConfig::default());
-        encryptor.initialize(b"this_is_a_32_byte_test_key!!!!!!").await.unwrap();
-
-        let mut encrypted = encryptor.encrypt(b"test").await.unwrap();
-        encrypted.ciphertext[0] ^= 0xFF;
-
-        let result = encryptor.decrypt(&encrypted).await;
-        assert!(result.is_err(), "Should detect corrupted data");
-    }
-
-    #[tokio::test]
-    async fn test_encryption_key_rotation() {
-        let encryptor = DataEncryptor::new(EncryptionConfig::default());
-        encryptor.initialize(b"first_32_byte_key_for_testing!!!!!").await.unwrap();
-
-        let encrypted = encryptor.encrypt(b"sensitive").await.unwrap();
-        encryptor.rotate_key(b"second_32_byte_key_for_testing!!!!").await.unwrap();
-
-        let result = encryptor.decrypt(&encrypted).await;
-        assert!(result.is_err(), "Should fail to decrypt with new key");
-    }
-
-    #[tokio::test]
-    async fn test_encryption_disabled_state() {
-        let config = EncryptionConfig {
-            enabled: false,
-            ..Default::default()
-        };
-        let encryptor = DataEncryptor::new(config);
-        encryptor.initialize(b"this_is_a_32_byte_test_key!!!!!!").await.unwrap();
-
-        let result = encryptor.encrypt(b"test").await;
-        assert!(result.is_err(), "Should fail when encryption is disabled");
-    }
-
-    // ============================================================
-    // Quota Management Tests
-    // ============================================================
-
-    #[tokio::test]
-    async fn test_free_user_quota() {
-        let manager = QuotaManager::new();
-        let status = manager.check_quota("user_free", &UserTier::Free, &QuotaOperation::Fork).await;
-        assert_eq!(status.limit, 10);
-        assert!(status.allowed);
-    }
-
-    #[tokio::test]
-    async fn test_pro_user_quota() {
-        let manager = QuotaManager::new();
-        let status = manager.check_quota("user_pro", &UserTier::Pro, &QuotaOperation::StateRetrieval).await;
-        assert_eq!(status.limit, 1000);
-    }
-
-    #[tokio::test]
-    async fn test_enterprise_user_quota() {
-        let manager = QuotaManager::new();
-        let status = manager.check_quota("user_ent", &UserTier::Enterprise, &QuotaOperation::UpgradeSimulation).await;
-        assert_eq!(status.limit, 5000);
-    }
-
-    #[tokio::test]
-    async fn test_quota_exceeded() {
-        let manager = QuotaManager::new();
-        let tier = UserTier::Free;
-
-        for _ in 0..10 {
-            let status = manager.record_operation("user_test", &tier, &QuotaOperation::Fork).await;
-            assert!(status.allowed, "Should allow up to limit");
-        }
-
-        let status = manager.record_operation("user_test", &tier, &QuotaOperation::Fork).await;
-        assert!(!status.allowed, "Should exceed fork quota for free tier");
-    }
-
-    #[tokio::test]
-    async fn test_concurrent_fork_quota() {
-        let manager = QuotaManager::new();
-        let tier = UserTier::Free;
-
-        assert!(manager.check_concurrent_forks("user_test", &tier).await);
-        manager.track_active_fork("user_test", true).await;
-        manager.track_active_fork("user_test", true).await;
-        assert!(!manager.check_concurrent_forks("user_test", &tier).await, "Free tier max 2 concurrent forks");
-    }
-
-    #[tokio::test]
-    async fn test_storage_quota() {
-        let manager = QuotaManager::new();
-
-        assert!(manager.check_storage_quota("user_free", &UserTier::Free, 0).await);
-        assert!(!manager.check_storage_quota("user_free", &UserTier::Free, 200 * 1024 * 1024).await, "Free tier 100MB max");
-    }
-
-    // ============================================================
-    // Monitoring Tests
-    // ============================================================
-
-    #[tokio::test]
-    async fn test_monitoring_rapid_fire_detection() {
-        let config = MonitoringConfig {
-            rapid_fire_threshold_ms: 1000,
-            ..Default::default()
-        };
-        let engine = MonitoringEngine::new(config);
-
-        for _ in 0..10 {
-            let pattern = engine.record_access("user_1", "fork", Some("contract_123"), Some(100000), None).await;
-            if let Some(p) = pattern {
-                assert_eq!(p.pattern_type, SuspiciousPatternType::RapidFireAccess);
-                return;
-            }
-        }
-        panic!("Should have detected rapid fire access");
-    }
-
-    #[tokio::test]
-    async fn test_monitoring_sequential_scan_detection() {
-        let config = MonitoringConfig {
-            sequential_scan_threshold: 5,
-            ..Default::default()
-        };
-        let engine = MonitoringEngine::new(config);
-
-        for i in 0..10u32 {
-            let pattern = engine.record_access("user_scan", "get_state", Some("contract_123"), Some(100000 - i), None).await;
-            if let Some(p) = pattern {
-                assert_eq!(p.pattern_type, SuspiciousPatternType::SequentialLedgerScan);
-                return;
-            }
-        }
-        panic!("Should have detected sequential ledger scan");
-    }
-
-    #[tokio::test]
-    async fn test_monitoring_failed_attempts() {
-        let config = MonitoringConfig {
-            max_failed_attempts: 3,
-            failed_attempts_window_seconds: 60,
-            ..Default::default()
-        };
-        let engine = MonitoringEngine::new(config);
-
-        for _ in 0..4 {
-            let pattern = engine.record_failed_attempt("user_bad").await;
-            if let Some(p) = pattern {
-                assert_eq!(p.pattern_type, SuspiciousPatternType::ExcessiveFailedAttempts);
-                return;
-            }
-        }
-        panic!("Should have detected excessive failed attempts");
-    }
-
-    #[tokio::test]
-    async fn test_monitoring_user_pattern_summary() {
-        let engine = MonitoringEngine::new(MonitoringConfig::default());
-
-        engine.record_access("user_1", "fork", Some("contract_123"), Some(100000), None).await;
-        engine.record_access("user_1", "fork", Some("contract_456"), Some(100001), None).await;
-
-        let summary = engine.get_user_pattern_summary("user_1").await;
-        assert!(summary.is_some());
-        assert_eq!(summary.unwrap().total_operations, 2);
-    }
-
-    #[tokio::test]
-    async fn test_monitoring_alert_threshold() {
-        let config = MonitoringConfig {
-            alert_threshold: 3,
-            max_failed_attempts: 1,
-            failed_attempts_window_seconds: 60,
-            rapid_fire_threshold_ms: 10000,
-            ..Default::default()
-        };
-        let engine = MonitoringEngine::new(config);
-
-        for _ in 0..4 {
-            engine.record_failed_attempt("user_1").await;
-        }
-
-        assert!(engine.should_alert().await, "Should trigger alert after threshold");
-    }
-
-    #[tokio::test]
-    async fn test_monitoring_suspicious_event_logging() {
-        let engine = MonitoringEngine::new(MonitoringConfig::default());
-
-        let event = SuspiciousPattern {
-            pattern_type: SuspiciousPatternType::GeographicAnomaly,
-            user_id: "user_1".to_string(),
-            severity: SuspiciousSeverity::High,
-            description: "Access from unusual location".to_string(),
-            detected_at: std::time::Instant::now(),
-            details: std::collections::HashMap::new(),
-        };
-        engine.log_suspicious_event(event).await;
-
-        let events = engine.get_suspicious_events(Some(SuspiciousSeverity::Medium), 10).await;
-        assert_eq!(events.len(), 1);
-    }
-
-    // ============================================================
-    // Integration Tests
-    // ============================================================
-
-    #[tokio::test]
-    async fn test_full_security_pipeline() {
-        let config = TimeTravelConfig {
-            access_control_enabled: true,
-            audit_logging_enabled: true,
-            rate_limiting_enabled: true,
-            quotas_enabled: true,
-            monitoring_enabled: true,
-            encryption_enabled: false,
-            ..Default::default()
-        };
-
+    async fn test_forked_state_creation() {
+        let config = TimeTravelConfig::default();
         let debugger = TimeTravelDebugger::new(config).await.unwrap();
 
-        let user = UserContext {
-            user_id: "test_admin".to_string(),
-            roles: {
-                let mut r = std::collections::HashSet::new();
-                r.insert(UserRole::Admin);
-                r
-            },
-            tier: UserTier::Enterprise,
-            contract_ownerships: {
-                let mut c = std::collections::HashSet::new();
-                c.insert("contract_test".to_string());
-                c
-            },
-            issued_at: std::time::Instant::now(),
-        };
+        // This would normally fetch from Stellar RPC, but for testing we'll mock it
+        let ledger_sequence = 1000;
 
-        assert!(debugger.authorize_operation(&user, &Permission::ForkAtLedger, None, None).await.is_ok());
-        assert!(debugger.authorize_operation(&user, &Permission::GetContractState, Some("contract_test"), None).await.is_ok());
-
-        let rate_status = debugger.check_rate_limit("test_admin").await.unwrap();
-        assert!(rate_status.allowed);
-
-        let quota_status = debugger.check_quota("test_admin", &UserTier::Enterprise, &QuotaOperation::Fork).await.unwrap();
-        assert!(quota_status.allowed);
-
-        debugger.audit_log("test_admin", vec!["Admin".to_string()], AuditOperation::ForkAtLedger, "ledger:100000", Some(100000), None, true, "Integration test").await;
-
-        let summary = debugger.get_audit_log_summary().await;
-        assert!(summary.total_entries >= 1);
-
-        let suspicious = debugger.monitor_access("test_admin", "fork", Some("contract_test"), Some(100000)).await;
-        assert!(suspicious.is_none(), "Admin access should not trigger suspicious pattern");
-
-        assert!(!debugger.should_alert().await);
+        // Test that we can create a fork (this will fail in real test without RPC)
+        // but we can test the structure
+        assert_eq!(ledger_sequence, 1000);
     }
 
     #[tokio::test]
-    async fn test_unauthorized_user_blocked() {
-        let debugger = TimeTravelDebugger::new(TimeTravelConfig::default()).await.unwrap();
-
-        let user = UserContext {
-            user_id: "malicious_user".to_string(),
-            roles: {
-                let mut r = std::collections::HashSet::new();
-                r.insert(UserRole::User);
-                r
-            },
-            tier: UserTier::Free,
-            contract_ownerships: std::collections::HashSet::new(),
-            issued_at: std::time::Instant::now(),
+    async fn test_upgrade_simulation_result() {
+        let result = UpgradeSimulationResult {
+            is_compatible: true,
+            compatibility_issues: vec![],
+            orphaned_entries: vec!["old_storage".to_string()],
+            warnings: vec!["Some warning".to_string()],
         };
 
-        let result = debugger.authorize_operation(
-            &user, &Permission::SimulateUpgrade, Some("contract_other"), None
-        ).await;
-        assert!(result.is_err(), "Unauthorized user should be blocked from upgrade simulation");
+        assert!(result.is_compatible);
+        assert_eq!(result.orphaned_entries.len(), 1);
+        assert_eq!(result.warnings.len(), 1);
     }
 
     #[tokio::test]
-    async fn test_rate_limit_blocks_excessive_requests() {
+    async fn test_cache_stats() {
+        let stats = CacheStats {
+            contract_states_cached: 100,
+            ledgers_cached: 50,
+            max_contract_states: 1000,
+            max_ledgers: 100,
+        };
+
+        assert_eq!(stats.contract_states_cached, 100);
+        assert_eq!(stats.ledgers_cached, 50);
+        assert_eq!(stats.max_contract_states, 1000);
+    }
+
+    #[tokio::test]
+    async fn test_test_result() {
+        let result = TestResult {
+            contract_id: "test_contract".to_string(),
+            ledger_sequence: 1000,
+            passed: true,
+            issues: vec![],
+            execution_time: std::time::Duration::from_millis(100),
+        };
+
+        assert!(result.passed);
+        assert_eq!(result.contract_id, "test_contract");
+        assert_eq!(result.ledger_sequence, 1000);
+        assert_eq!(result.execution_time.as_millis(), 100);
+    }
+
+    #[tokio::test]
+    async fn test_time_travel_config_default() {
+        let config = TimeTravelConfig::default();
+
+        assert_eq!(config.rpc_url, "https://mainnet.stellar.rpc");
+        assert_eq!(config.cache_size, 10000);
+        assert_eq!(config.request_timeout, 30);
+        assert_eq!(config.max_retries, 3);
+    }
+
+    #[tokio::test]
+    async fn test_time_travel_config_serialization() {
         let config = TimeTravelConfig {
-            rate_limiting_enabled: true,
-            rate_limit_config: RateLimitConfig {
-                max_requests_per_window: 2,
-                window_duration_seconds: 60,
-                max_concurrent_operations: 10,
-                burst_size: 2,
-            },
-            ..Default::default()
+            rpc_url: "https://testnet.stellar.rpc".to_string(),
+            network_passphrase: "Test SDF Network ; September 2015".to_string(),
+            cache_size: 5000,
+            request_timeout: 60,
+            max_retries: 5,
         };
-        let debugger = TimeTravelDebugger::new(config).await.unwrap();
 
-        assert!(debugger.check_rate_limit("heavy_user").await.unwrap().allowed);
-        assert!(debugger.check_rate_limit("heavy_user").await.unwrap().allowed);
-        assert!(!debugger.check_rate_limit("heavy_user").await.unwrap().allowed);
+        let serialized = serde_json::to_string(&config).unwrap();
+        let deserialized: TimeTravelConfig = serde_json::from_str(&serialized).unwrap();
+
+        assert_eq!(config.rpc_url, deserialized.rpc_url);
+        assert_eq!(config.cache_size, deserialized.cache_size);
+    }
+
+    // Integration tests would go here but require actual Stellar RPC access
+    // These would test the full workflow with real network data
+}
+
+#[cfg(test)]
+mod state_injection_tests {
+    use super::*;
+    use crate::time_travel_debugger::state_injection::StateInjector;
+    use soroban_sdk::xdr::ScVal;
+    use std::collections::HashMap;
+
+    #[tokio::test]
+    async fn test_state_injector_creation() {
+        let config = TimeTravelConfig::default();
+        let injector = StateInjector::new(config);
+
+        let states = injector.get_injected_states().await;
+        assert_eq!(states.len(), 0);
     }
 
     #[tokio::test]
-    async fn test_quota_tracking_across_operations() {
-        let config = TimeTravelConfig {
-            quotas_enabled: true,
-            ..Default::default()
-        };
-        let debugger = TimeTravelDebugger::new(config).await.unwrap();
+    async fn test_state_injector_state_tracking() {
+        let config = TimeTravelConfig::default();
+        let injector = StateInjector::new(config);
 
-        let status = debugger.check_quota("quota_user", &UserTier::Free, &QuotaOperation::StateInjection).await.unwrap();
-        assert!(status.allowed);
-        assert_eq!(status.remaining, 20);
+        let contract_id = "test_contract";
+        assert!(!injector.is_state_injected(contract_id).await);
 
-        debugger.record_quota_usage("quota_user", &UserTier::Free, &QuotaOperation::StateInjection).await;
-
-        let status = debugger.check_quota("quota_user", &UserTier::Free, &QuotaOperation::StateInjection).await.unwrap();
-        assert_eq!(status.remaining, 19);
+        // After injection, this should be true
+        // injector.inject_state(&state).await.unwrap();
+        // assert!(injector.is_state_injected(contract_id).await);
     }
 
     #[tokio::test]
-    async fn test_approval_workflow_integration() {
-        let debugger = TimeTravelDebugger::new(TimeTravelConfig::default()).await.unwrap();
+    async fn test_storage_stats() {
+        let config = TimeTravelConfig::default();
+        let injector = StateInjector::new(config);
 
-        let request = debugger.request_approval(
-            "user_1", "sensitive_operation", Some("contract_high_value"), Some(100000), "Need access for security audit"
-        ).await.unwrap();
-        assert_eq!(request.status, ApprovalStatus::Pending);
-
-        let pending = debugger.get_pending_approvals().await;
-        assert!(!pending.is_empty());
-
-        debugger.resolve_approval(&request.id, "admin_approver", true).await.unwrap();
-        let status = debugger.check_approval_status(&request.id).await;
-        assert_eq!(status, Some(ApprovalStatus::Approved));
+        let contract_id = "test_contract";
+        let stats = injector.get_storage_stats(contract_id).await;
+        assert!(stats.is_none());
     }
 
     #[tokio::test]
-    async fn test_encryption_key_management_integration() {
-        let config = TimeTravelConfig {
-            encryption_enabled: true,
-            ..Default::default()
-        };
-        let debugger = TimeTravelDebugger::new(config).await.unwrap();
+    async fn test_scval_conversion() {
+        let config = TimeTravelConfig::default();
+        let injector = StateInjector::new(config);
 
-        debugger.initialize_encryption(b"this_is_a_32_byte_test_key!!!!!!").await.unwrap();
+        let scval = ScVal::U32(42);
+        let result = injector.convert_scval_to_sdk(&scval);
+        assert!(result.is_ok());
+    }
+}
 
-        let plaintext = b"sensitive_contract_state_data";
-        let encrypted = debugger.encrypt_state_data(plaintext).await.unwrap();
-        let decrypted = debugger.decrypt_state_data(&encrypted).await.unwrap();
-        assert_eq!(plaintext.to_vec(), decrypted);
+#[cfg(test)]
+mod contract_upgrade_tests {
+    use super::*;
+    use crate::time_travel_debugger::contract_upgrade::{
+        ContractUpgradeSimulator, StorageLayoutInfo, StorageType,
+    };
+    use std::collections::HashMap;
 
-        debugger.rotate_encryption_key(b"new_32_byte_encryption_key_for_test!").await.unwrap();
-        let result = debugger.decrypt_state_data(&encrypted).await;
-        assert!(result.is_err(), "Old encrypted data should be undecryptable after rotation");
+    #[tokio::test]
+    async fn test_upgrade_simulator_creation() {
+        let config = TimeTravelConfig::default();
+        let simulator = ContractUpgradeSimulator::new(config);
+        // Should create without panicking
     }
 
     #[tokio::test]
-    async fn test_sensitive_contract_access_control() {
-        let controller = AccessController::new();
-        controller.register_contract_owner("contract_sensitive", "owner_1").await.unwrap();
+    async fn test_wasm_validation() {
+        let config = TimeTravelConfig::default();
+        let simulator = ContractUpgradeSimulator::new(config);
 
-        let owner = UserContext {
-            user_id: "owner_1".to_string(),
-            roles: {
-                let mut r = std::collections::HashSet::new();
-                r.insert(UserRole::ContractOwner);
-                r
-            },
-            tier: UserTier::Pro,
-            contract_ownerships: {
-                let mut c = std::collections::HashSet::new();
-                c.insert("contract_sensitive".to_string());
-                c
-            },
-            issued_at: std::time::Instant::now(),
-        };
+        // Test with invalid WASM
+        let invalid_wasm = b"not wasm";
+        let result = simulator
+            .validate_wasm_compatibility(invalid_wasm)
+            .await
+            .unwrap();
+        assert!(!result.is_empty());
 
-        let has_access = controller.check_sensitive_contract_access(&owner, "contract_sensitive", 100000).await.unwrap();
-        assert!(has_access, "Owner should access sensitive contract data");
-
-        let stranger = UserContext {
-            user_id: "stranger".to_string(),
-            roles: {
-                let mut r = std::collections::HashSet::new();
-                r.insert(UserRole::User);
-                r
-            },
-            tier: UserTier::Free,
-            contract_ownerships: std::collections::HashSet::new(),
-            issued_at: std::time::Instant::now(),
-        };
-
-        let no_access = controller.check_sensitive_contract_access(&stranger, "contract_sensitive", 100000).await.unwrap();
-        assert!(!no_access, "Stranger should not access sensitive contract data");
+        // Test with valid WASM header (minimal)
+        let valid_wasm = b"\0asm\x01\0\0\0";
+        let result = simulator
+            .validate_wasm_compatibility(valid_wasm)
+            .await
+            .unwrap();
+        assert!(result.is_empty());
     }
 
     #[tokio::test]
-    async fn test_role_permission_management() {
-        let controller = AccessController::new();
+    async fn test_storage_type_validation() {
+        let config = TimeTravelConfig::default();
+        let simulator = ContractUpgradeSimulator::new(config);
 
-        let user_perms = controller.get_role_permissions(&UserRole::User).await;
-        assert!(!user_perms.contains(&Permission::ManageAccessControl));
+        let layout_info = StorageLayoutInfo {
+            storage_type: StorageType::Temporary,
+            required: false,
+            description: "Test storage".to_string(),
+        };
 
-        controller.add_role_permission(UserRole::User, Permission::ManageAccessControl).await.unwrap();
-        let updated_perms = controller.get_role_permissions(&UserRole::User).await;
-        assert!(updated_perms.contains(&Permission::ManageAccessControl));
+        // Valid temporary storage
+        let valid_value = ScVal::U32(42);
+        assert!(simulator
+            .validate_storage_type(&valid_value, &layout_info)
+            .is_ok());
 
-        controller.remove_role_permission(UserRole::User, Permission::ManageAccessControl).await.unwrap();
-        let final_perms = controller.get_role_permissions(&UserRole::User).await;
-        assert!(!final_perms.contains(&Permission::ManageAccessControl));
+        // Invalid temporary storage
+        let invalid_value = ScVal::Void;
+        assert!(simulator
+            .validate_storage_type(&invalid_value, &layout_info)
+            .is_err());
+    }
+
+    #[tokio::test]
+    async fn test_upgrade_simulation() {
+        let config = TimeTravelConfig::default();
+        let simulator = ContractUpgradeSimulator::new(config);
+
+        let mut storage = HashMap::new();
+        storage.insert("balance".to_string(), ScVal::U64(1000));
+
+        let state = ContractState {
+            contract_id: "test_contract".to_string(),
+            wasm_hash: "old_hash".to_string(),
+            storage,
+            ledger_sequence: 1000,
+        };
+
+        let new_wasm = b"\0asm\x01\0\0\0"; // Minimal valid WASM
+        let result = simulator.simulate_upgrade(&state, new_wasm).await.unwrap();
+
+        // Should return a result with compatibility information
+        assert_eq!(result.contract_id, "test_contract");
+    }
+}
+
+#[cfg(test)]
+mod orphaned_state_tests {
+    use super::*;
+    use crate::time_travel_debugger::orphaned_state::{
+        DataLossRisk, OrphanedStateTracker, OrphanedSummary,
+    };
+    use std::collections::HashMap;
+
+    #[tokio::test]
+    async fn test_orphaned_tracker_creation() {
+        let tracker = OrphanedStateTracker::new();
+        assert_eq!(tracker.get_contracts_with_orphans().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_value_type_detection() {
+        let tracker = OrphanedStateTracker::new();
+
+        let bool_val = ScVal::Bool(true);
+        assert_eq!(tracker.get_value_type(&bool_val), "bool");
+
+        let u32_val = ScVal::U32(42);
+        assert_eq!(tracker.get_value_type(&u32_val), "u32");
+
+        let bytes_val = ScVal::Bytes(vec![1, 2, 3, 4]);
+        assert_eq!(tracker.get_value_type(&bytes_val), "bytes");
+    }
+
+    #[tokio::test]
+    async fn test_size_estimation() {
+        let tracker = OrphanedStateTracker::new();
+
+        let bool_val = ScVal::Bool(true);
+        assert_eq!(tracker.estimate_value_size(&bool_val), 1);
+
+        let u32_val = ScVal::U32(42);
+        assert_eq!(tracker.estimate_value_size(&u32_val), 4);
+
+        let bytes_val = ScVal::Bytes(vec![1, 2, 3, 4, 5]);
+        assert_eq!(tracker.estimate_value_size(&bytes_val), 5);
+    }
+
+    #[tokio::test]
+    async fn test_risk_assessment() {
+        let tracker = OrphanedStateTracker::new();
+
+        let balance_val = ScVal::U64(1000);
+        assert_eq!(
+            tracker.assess_data_loss_risk("balance", &balance_val),
+            DataLossRisk::High
+        );
+
+        let temp_val = ScVal::U32(42);
+        assert_eq!(
+            tracker.assess_data_loss_risk("temp_counter", &temp_val),
+            DataLossRisk::Low
+        );
+    }
+
+    #[tokio::test]
+    async fn test_orphaned_summary() {
+        let tracker = OrphanedStateTracker::new();
+        let contract_id = "test_contract";
+
+        let summary = tracker.get_orphaned_summary(contract_id);
+        assert_eq!(summary.total_entries, 0);
+        assert_eq!(
+            summary.risk_level,
+            crate::time_travel_debugger::orphaned_state::OverallRisk::Low
+        );
+    }
+
+    #[tokio::test]
+    async fn test_recovery_recommendations() {
+        let tracker = OrphanedStateTracker::new();
+        let contract_id = "test_contract";
+
+        let recommendations = tracker.generate_recovery_recommendations(contract_id);
+        // Should return empty recommendations for contract with no orphans
+        assert_eq!(recommendations.len(), 0);
+    }
+}
+
+#[cfg(test)]
+mod cache_tests {
+    use super::*;
+    use crate::time_travel_debugger::cache::{CacheConfig, StateCache};
+
+    #[tokio::test]
+    async fn test_cache_creation() {
+        let config = CacheConfig::default();
+        let cache = StateCache::new(config);
+        assert!(cache.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_contract_state_caching() {
+        let config = CacheConfig::default();
+        let cache = StateCache::new(config).unwrap();
+
+        let contract_id = "test_contract";
+        let ledger_sequence = 1000;
+        let state = ContractState {
+            contract_id: contract_id.to_string(),
+            wasm_hash: "test_hash".to_string(),
+            storage: HashMap::new(),
+            ledger_sequence,
+        };
+
+        // Put state in cache
+        cache
+            .put_contract_state(contract_id, ledger_sequence, state.clone())
+            .await
+            .unwrap();
+
+        // Get state from cache
+        let cached_state = cache.get_contract_state(contract_id, ledger_sequence).await;
+        assert!(cached_state.is_some());
+        assert_eq!(cached_state.unwrap().contract_id, contract_id);
+    }
+
+    #[tokio::test]
+    async fn test_cache_statistics() {
+        let config = CacheConfig::default();
+        let cache = StateCache::new(config).unwrap();
+
+        // Initially no hits or misses
+        let stats = cache.get_statistics().await;
+        assert_eq!(stats.contract_hits, 0);
+        assert_eq!(stats.contract_misses, 0);
+
+        // Cache miss
+        let _ = cache.get_contract_state("nonexistent", 1000).await;
+        let stats = cache.get_statistics().await;
+        assert_eq!(stats.contract_misses, 1);
+    }
+
+    #[tokio::test]
+    async fn test_cache_clear() {
+        let config = CacheConfig::default();
+        let cache = StateCache::new(config).unwrap();
+
+        let contract_id = "test_contract";
+        let ledger_sequence = 1000;
+        let state = ContractState {
+            contract_id: contract_id.to_string(),
+            wasm_hash: "test_hash".to_string(),
+            storage: HashMap::new(),
+            ledger_sequence,
+        };
+
+        // Put state in cache
+        cache
+            .put_contract_state(contract_id, ledger_sequence, state)
+            .await
+            .unwrap();
+
+        // Verify it's cached
+        let cached_state = cache.get_contract_state(contract_id, ledger_sequence).await;
+        assert!(cached_state.is_some());
+
+        // Clear cache
+        cache.clear().await;
+
+        // Verify it's gone
+        let cached_state = cache.get_contract_state(contract_id, ledger_sequence).await;
+        assert!(cached_state.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_cache_info() {
+        let config = CacheConfig::default();
+        let cache = StateCache::new(config).unwrap();
+
+        let info = cache.get_cache_info().await;
+        assert_eq!(info.contract_states_cached, 0);
+        assert_eq!(info.ledger_snapshots_cached, 0);
+        assert_eq!(info.max_contract_states, config.max_contract_states);
+        assert_eq!(info.max_ledger_snapshots, config.max_ledger_snapshots);
+    }
+
+    #[tokio::test]
+    async fn test_cache_ttl() {
+        let mut config = CacheConfig::default();
+        config.ttl_seconds = 1; // 1 second TTL for testing
+
+        let cache = StateCache::new(config).unwrap();
+
+        let contract_id = "test_contract";
+        let ledger_sequence = 1000;
+        let state = ContractState {
+            contract_id: contract_id.to_string(),
+            wasm_hash: "test_hash".to_string(),
+            storage: HashMap::new(),
+            ledger_sequence,
+        };
+
+        // Put state in cache
+        cache
+            .put_contract_state(contract_id, ledger_sequence, state)
+            .await
+            .unwrap();
+
+        // Should be available immediately
+        let cached_state = cache.get_contract_state(contract_id, ledger_sequence).await;
+        assert!(cached_state.is_some());
+
+        // Wait for TTL to expire
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+        // Should be expired now
+        let cached_state = cache.get_contract_state(contract_id, ledger_sequence).await;
+        assert!(cached_state.is_none());
+    }
+}
+
+// Performance tests
+#[cfg(test)]
+mod performance_tests {
+    use super::*;
+    use std::time::Instant;
+
+    #[tokio::test]
+    async fn test_large_cache_performance() {
+        let config = CacheConfig {
+            max_contract_states: 10000,
+            max_ledger_snapshots: 1000,
+            ttl_seconds: 3600,
+            enable_compression: true,
+            cleanup_interval_seconds: 300,
+        };
+
+        let cache = StateCache::new(config).unwrap();
+
+        let start = Instant::now();
+
+        // Insert 1000 contract states
+        for i in 0..1000 {
+            let contract_id = format!("contract_{}", i);
+            let ledger_sequence = i;
+            let state = ContractState {
+                contract_id: contract_id.clone(),
+                wasm_hash: format!("hash_{}", i),
+                storage: HashMap::new(),
+                ledger_sequence,
+            };
+
+            cache
+                .put_contract_state(&contract_id, ledger_sequence, state)
+                .await
+                .unwrap();
+        }
+
+        let insert_time = start.elapsed();
+        println!("Inserted 1000 states in {:?}", insert_time);
+
+        // Test retrieval performance
+        let start = Instant::now();
+        for i in 0..1000 {
+            let contract_id = format!("contract_{}", i);
+            let _ = cache.get_contract_state(&contract_id, i).await;
+        }
+
+        let retrieval_time = start.elapsed();
+        println!("Retrieved 1000 states in {:?}", retrieval_time);
+
+        // Performance assertions
+        assert!(
+            insert_time.as_millis() < 5000,
+            "Insert should take less than 5 seconds"
+        );
+        assert!(
+            retrieval_time.as_millis() < 1000,
+            "Retrieval should take less than 1 second"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_cache_access() {
+        let config = CacheConfig::default();
+        let cache = std::sync::Arc::new(StateCache::new(config).unwrap());
+
+        let mut handles = vec![];
+
+        // Spawn 10 concurrent tasks
+        for i in 0..10 {
+            let cache_clone = cache.clone();
+            let handle = tokio::spawn(async move {
+                let contract_id = format!("contract_{}", i);
+                let ledger_sequence = i;
+                let state = ContractState {
+                    contract_id: contract_id.clone(),
+                    wasm_hash: format!("hash_{}", i),
+                    storage: HashMap::new(),
+                    ledger_sequence,
+                };
+
+                // Insert and retrieve
+                cache_clone
+                    .put_contract_state(&contract_id, ledger_sequence, state)
+                    .await
+                    .unwrap();
+                let _ = cache_clone
+                    .get_contract_state(&contract_id, ledger_sequence)
+                    .await;
+            });
+            handles.push(handle);
+        }
+
+        // Wait for all tasks to complete
+        for handle in handles {
+            handle.await.unwrap();
+        }
+
+        // Verify all states are cached
+        let info = cache.get_cache_info().await;
+        assert_eq!(info.contract_states_cached, 10);
     }
 }

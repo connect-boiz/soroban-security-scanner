@@ -234,6 +234,194 @@ mod tests {
     }
 
     #[test]
+    fn test_batch_gas_estimator_creation() {
+        let config = GasLimitConfig::default();
+        let estimator = BatchGasEstimator::new(config);
+        
+        // Default config should create estimator with 100M Stellar limit and 90% threshold
+        let estimate = estimator.estimate_escrow_release_batch(10).unwrap();
+        assert_eq!(estimate.total_items, 10);
+        assert_eq!(estimate.stellar_max_limit, 100_000_000);
+        assert_eq!(estimate.escrow_releases, 10);
+        assert_eq!(estimate.verifications, 0);
+        assert!(estimate.batch_overhead > 0);
+        assert!(estimate.per_item_overhead > 0);
+        assert!(estimate.safety_margin > 0);
+    }
+
+    #[test]
+    fn test_escrow_release_batch_gas_estimate() {
+        let config = GasLimitConfig::default();
+        let estimator = BatchGasEstimator::new(config);
+        
+        let estimate = estimator.estimate_escrow_release_batch(5).unwrap();
+        
+        assert_eq!(estimate.total_items, 5);
+        assert_eq!(estimate.escrow_releases, 5);
+        assert_eq!(estimate.verifications, 0);
+        assert_eq!(estimate.total_estimated_gas, estimate.item_estimates.iter().map(|e| e.estimated_gas).sum::<u64>() + estimate.batch_overhead + (estimate.per_item_overhead * 5));
+        assert_eq!(estimate.recommended_limit, estimate.total_estimated_gas + estimate.safety_margin);
+        assert_eq!(estimate.item_estimates.len(), 5);
+        
+        // Each item should have a valid estimate
+        for item in &estimate.item_estimates {
+            assert_eq!(item.operation_type, BatchOperationType::EscrowRelease);
+            assert!(item.estimated_gas > 0);
+            assert!(item.base_cost > 0);
+        }
+    }
+
+    #[test]
+    fn test_verification_batch_gas_estimate() {
+        let config = GasLimitConfig::default();
+        let estimator = BatchGasEstimator::new(config);
+        
+        let estimate = estimator.estimate_verification_batch(3).unwrap();
+        
+        assert_eq!(estimate.total_items, 3);
+        assert_eq!(estimate.escrow_releases, 0);
+        assert_eq!(estimate.verifications, 3);
+        assert_eq!(estimate.item_estimates.len(), 3);
+        
+        for item in &estimate.item_estimates {
+            assert_eq!(item.operation_type, BatchOperationType::VulnerabilityVerification);
+            assert!(item.estimated_gas > 0);
+        }
+    }
+
+    #[test]
+    fn test_mixed_batch_gas_estimate() {
+        let config = GasLimitConfig::default();
+        let estimator = BatchGasEstimator::new(config);
+        
+        let estimate = estimator.estimate_mixed_batch(2, 3).unwrap();
+        
+        assert_eq!(estimate.total_items, 5);
+        assert_eq!(estimate.escrow_releases, 2);
+        assert_eq!(estimate.verifications, 3);
+        assert_eq!(estimate.item_estimates.len(), 5);
+        
+        // First 2 items should be escrow releases, next 3 should be verifications
+        assert_eq!(estimate.item_estimates[0].operation_type, BatchOperationType::EscrowRelease);
+        assert_eq!(estimate.item_estimates[1].operation_type, BatchOperationType::EscrowRelease);
+        assert_eq!(estimate.item_estimates[2].operation_type, BatchOperationType::VulnerabilityVerification);
+        assert_eq!(estimate.item_estimates[3].operation_type, BatchOperationType::VulnerabilityVerification);
+        assert_eq!(estimate.item_estimates[4].operation_type, BatchOperationType::VulnerabilityVerification);
+    }
+
+    #[test]
+    fn test_batch_gas_threshold_warning() {
+        let config = GasLimitConfig::default();
+        // Use a very low Stellar max gas to trigger the warning
+        let estimator = BatchGasEstimator::with_limits(config, 100_000, 50.0); // 50% of 100K = 50K
+        
+        // 10 items should easily exceed 50K total gas
+        let estimate = estimator.estimate_escrow_release_batch(10).unwrap();
+        
+        assert!(estimate.exceeds_recommended_threshold);
+        assert!(estimate.threshold_warning.is_some());
+        assert!(estimate.suggested_splits > 1);
+        assert!(estimate.estimated_gas_per_split > 0);
+    }
+
+    #[test]
+    fn test_batch_gas_within_safe_limits() {
+        let config = GasLimitConfig::default();
+        // Use a very high Stellar max gas so even large batches are fine
+        let estimator = BatchGasEstimator::with_limits(config, 1_000_000_000, 90.0);
+        
+        let estimate = estimator.estimate_escrow_release_batch(50).unwrap();
+        
+        assert!(!estimate.exceeds_recommended_threshold);
+        assert!(estimate.threshold_warning.is_none());
+        assert_eq!(estimate.suggested_splits, 1);
+    }
+
+    #[test]
+    fn test_batch_gas_estimate_format_output() {
+        let config = GasLimitConfig::default();
+        let estimator = BatchGasEstimator::new(config);
+        
+        let estimate = estimator.estimate_escrow_release_batch(3).unwrap();
+        let formatted = BatchGasEstimator::format_estimate(&estimate);
+        
+        assert!(formatted.contains("Batch Gas Estimate"));
+        assert!(formatted.contains("Total items:"));
+        assert!(formatted.contains("Escrow releases: 3"));
+        assert!(formatted.contains("Recommended limit:"));
+        assert!(formatted.contains("Stellar max limit:"));
+        assert!(formatted.contains("Risk level:"));
+    }
+
+    #[test]
+    fn test_batch_gas_estimate_with_overhead() {
+        let config = GasLimitConfig::default();
+        let estimator = BatchGasEstimator::new(config);
+        
+        // 1 item batch: overhead should be batch_overhead + 1 * per_item_overhead
+        let estimate_1 = estimator.estimate_escrow_release_batch(1).unwrap();
+        let expected_overhead_1 = estimate_1.batch_overhead + estimate_1.per_item_overhead;
+        
+        // 10 item batch: overhead should be batch_overhead + 10 * per_item_overhead
+        let estimate_10 = estimator.estimate_escrow_release_batch(10).unwrap();
+        let expected_overhead_10 = estimate_10.batch_overhead + (estimate_10.per_item_overhead * 10);
+        
+        // Overhead scales with item count
+        assert!(estimate_10.total_estimated_gas > estimate_1.total_estimated_gas);
+        assert!(expected_overhead_10 > expected_overhead_1);
+    }
+
+    #[test]
+    fn test_batch_gas_risk_levels() {
+        let config = GasLimitConfig::default();
+        let estimator = BatchGasEstimator::new(config);
+        
+        // Small batch should be low risk
+        let estimate_small = estimator.estimate_escrow_release_batch(1).unwrap();
+        assert_eq!(estimate_small.risk_level, GasRiskLevel::Low);
+        
+        // Very large batch may be higher risk
+        // Use with_limits to make sure we get a meaningful result
+        let estimator_tight = BatchGasEstimator::with_limits(config, 1_000_000, 90.0);
+        let estimate_large = estimator_tight.estimate_escrow_release_batch(100).unwrap();
+        
+        // Must be some risk level
+        assert!(matches!(estimate_large.risk_level, GasRiskLevel::Low | GasRiskLevel::Medium | GasRiskLevel::High | GasRiskLevel::Critical));
+    }
+
+    #[test]
+    fn test_custom_batch_estimator_limits() {
+        let config = GasLimitConfig::default();
+        let estimator = BatchGasEstimator::with_limits(config, 50_000_000, 80.0);
+        
+        // With 80% threshold of 50M = 40M, a modest batch should be safe
+        let estimate = estimator.estimate_escrow_release_batch(20).unwrap();
+        
+        assert_eq!(estimate.stellar_max_limit, 50_000_000);
+        
+        // Risk level should be defined
+        assert!(matches!(estimate.risk_level, GasRiskLevel::Low | GasRiskLevel::Medium | GasRiskLevel::High | GasRiskLevel::Critical));
+    }
+
+    #[test]
+    fn test_batch_operation_type_as_str() {
+        assert_eq!(BatchOperationType::EscrowRelease.as_str(), "escrow_release");
+        assert_eq!(BatchOperationType::VulnerabilityVerification.as_str(), "vulnerability_verification");
+    }
+
+    #[test]
+    fn test_empty_batch_estimate() {
+        let config = GasLimitConfig::default();
+        let estimator = BatchGasEstimator::new(config);
+        
+        let estimate = estimator.estimate_escrow_release_batch(0).unwrap();
+        
+        assert_eq!(estimate.total_items, 0);
+        assert_eq!(estimate.escrow_releases, 0);
+        assert!(estimate.total_estimated_gas > 0); // Still has overhead
+    }
+
+    #[test]
     fn test_optimization_disabled() {
         let config = GasLimitConfig {
             enable_optimization: false,

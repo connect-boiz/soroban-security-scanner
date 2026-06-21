@@ -1,0 +1,229 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  NODE_VERSION: '18'
+  RUST_VERSION: 'stable'
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.changes.outputs.backend_any_changed }}
+      frontend: ${{ steps.changes.outputs.frontend_any_changed }}
+      contracts: ${{ steps.changes.outputs.contracts_any_changed }}
+      component_library: ${{ steps.changes.outputs.component_library_any_changed }}
+      root: ${{ steps.changes.outputs.root_any_changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Detect changed files
+        id: changes
+        uses: tj-actions/changed-files@v44
+        with:
+          files_yaml: |
+            backend:
+              - 'src/**/*.rs'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'src/**/*.js'
+              - 'package.json'
+              - 'package-lock.json'
+            frontend:
+              - 'frontend/**'
+            contracts:
+              - 'contracts/**'
+            component_library:
+              - 'component-library/**'
+            root:
+              - '.github/workflows/**'
+              - '.eslintrc*'
+              - '.prettier*'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'jest.config.js'
+              - 'scripts/**'
+              - 'docs/**'
+              - 'tests/**'
+
+  contracts:
+    needs: detect-changes
+    if: |
+      needs.detect-changes.outputs.contracts == 'true' ||
+      needs.detect-changes.outputs.root == 'true' ||
+      github.ref_name == 'main' || github.ref_name == 'master' || github.ref_name == 'develop'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./contracts
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          targets: wasm32-unknown-unknown
+          components: clippy, rustfmt
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: './contracts -> target'
+          key: contracts-${{ hashFiles('contracts/Cargo.toml') }}
+          shared-key: contracts-cache
+      - name: cargo fmt
+        run: cargo fmt --check
+      - name: cargo clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: cargo test
+        run: cargo test --features testutils
+      - name: cargo build (WASM)
+        run: cargo build --target wasm32-unknown-unknown --release
+
+  backend:
+    needs: detect-changes
+    if: |
+      needs.detect-changes.outputs.backend == 'true' ||
+      needs.detect-changes.outputs.root == 'true' ||
+      github.ref_name == 'main' || github.ref_name == 'master' || github.ref_name == 'develop'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          components: rustfmt
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: backend-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}
+          shared-key: backend-cache
+      - name: cargo fmt
+        run: cargo fmt --check
+      - name: cargo check
+        run: cargo check --lib
+      - name: cargo test
+        run: cargo test --lib
+
+  backup-recovery:
+    needs: detect-changes
+    if: |
+      needs.detect-changes.outputs.backend == 'true' ||
+      needs.detect-changes.outputs.root == 'true' ||
+      github.ref_name == 'main' || github.ref_name == 'master' || github.ref_name == 'develop'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: backup-recovery-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}
+          shared-key: backend-cache
+      - name: Run backup recovery test suite
+        run: |
+          chmod +x ./scripts/backup_recovery_test.sh
+          ./scripts/backup_recovery_test.sh
+      - name: Upload backup recovery report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backup-recovery-report
+          path: target/backup-recovery-report.md
+
+  node-backend:
+    needs: detect-changes
+    if: |
+      needs.detect-changes.outputs.backend == 'true' ||
+      needs.detect-changes.outputs.root == 'true' ||
+      github.ref_name == 'main' || github.ref_name == 'master' || github.ref_name == 'develop'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - name: npm ci
+        run: npm ci --no-audit --no-fund
+      - name: ESLint
+        run: npm run lint
+      - name: Prettier
+        run: npm run format:check
+      - name: Tests
+        run: npm test
+
+  frontend:
+    needs: detect-changes
+    if: |
+      needs.detect-changes.outputs.frontend == 'true' ||
+      needs.detect-changes.outputs.component_library == 'true' ||
+      needs.detect-changes.outputs.root == 'true' ||
+      github.ref_name == 'main' || github.ref_name == 'master' || github.ref_name == 'develop'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build component-library
+        working-directory: ./component-library
+        run: npm ci --no-audit --no-fund && npm run build
+      - name: npm ci
+        run: npm ci --no-audit --no-fund
+      - name: ESLint
+        run: npm run lint
+      - name: Tests
+        run: npm test
+      - name: Production build
+        run: npm run build
+
+  component-library:
+    needs: detect-changes
+    if: |
+      needs.detect-changes.outputs.component_library == 'true' ||
+      needs.detect-changes.outputs.root == 'true' ||
+      github.ref_name == 'main' || github.ref_name == 'master' || github.ref_name == 'develop'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./component-library
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: component-library/package-lock.json
+      - name: npm ci
+        run: npm ci --no-audit --no-fund
+      - name: ESLint
+        run: npm run lint
+      - name: TypeScript
+        run: npx tsc --noEmit
+      - name: Tests
+        run: npm test
+      - name: Build
+        run: npm run build

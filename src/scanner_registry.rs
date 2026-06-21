@@ -1,12 +1,12 @@
 //! Scanner Registry & Versioning Smart Contract
-//! 
-//! This contract acts as the source of truth for "Certified" scanner versions 
-//! and vulnerability database hashes. It provides integrity checking and 
+//!
+//! This contract acts as the source of truth for "Certified" scanner versions
+//! and vulnerability database hashes. It provides integrity checking and
 //! version management for the Soroban Security Scanner ecosystem.
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, Address, Env, Symbol, panic_with_error, 
-    Map, Vec, BytesN, String, u64, i128
+    contract, contractimpl, contracttype, i128, panic_with_error, u64, Address, BytesN, Env, Map,
+    String, Symbol, Vec,
 };
 
 // Contract state keys
@@ -32,7 +32,7 @@ pub enum VersionStatus {
 #[derive(Clone, Debug, PartialEq, Eq, contracttype)]
 pub struct ScannerVersion {
     pub version: String,
-    pub wasm_hash: BytesN<32>, // SHA-256 hash of WASM binary
+    pub wasm_hash: BytesN<32>,             // SHA-256 hash of WASM binary
     pub vulnerability_db_hash: BytesN<32>, // SHA-256 hash of vulnerability database
     pub status: VersionStatus,
     pub registered_at: u64, // Unix timestamp
@@ -66,7 +66,7 @@ pub struct ScannerRegistry;
 #[contractimpl]
 impl ScannerRegistry {
     /// Initialize the registry with an admin address
-    /// 
+    ///
     /// # Arguments
     /// * `admin` - The address that can manage versions
     pub fn initialize(env: Env, admin: Address) {
@@ -77,24 +77,28 @@ impl ScannerRegistry {
 
         // Set admin
         env.storage().instance().set(&ADMIN, &admin);
-        
+
         // Initialize version counter
         env.storage().instance().set(&VERSION_COUNTER, &0u64);
-        
+
         // Initialize empty versions map
-        env.storage().instance().set(&VERSIONS, &Map::<String, ScannerVersion>::new(&env));
-        env.storage().instance().set(&CLEANUP_TIMESTAMP, &env.ledger().timestamp());
+        env.storage()
+            .instance()
+            .set(&VERSIONS, &Map::<String, ScannerVersion>::new(&env));
+        env.storage()
+            .instance()
+            .set(&CLEANUP_TIMESTAMP, &env.ledger().timestamp());
     }
 
     /// Register a new scanner version (admin only)
-    /// 
+    ///
     /// # Arguments
     /// * `version` - Semantic version string (e.g., "1.2.3")
     /// * `wasm_hash` - SHA-256 hash of the WASM binary
     /// * `vulnerability_db_hash` - SHA-256 hash of vulnerability database
     /// * `changelog` - Version changelog
     /// * `min_stellar_protocol` - Minimum Stellar protocol version required
-    /// 
+    ///
     /// # Events
     /// Emits VERSION_REGISTERED event with version details
     pub fn register_version(
@@ -136,7 +140,11 @@ impl ScannerRegistry {
         env.storage().instance().set(&VERSIONS, &updated_versions);
 
         // Update version counter
-        let mut counter = env.storage().instance().get(&VERSION_COUNTER).unwrap_or(0u64);
+        let mut counter = env
+            .storage()
+            .instance()
+            .get(&VERSION_COUNTER)
+            .unwrap_or(0u64);
         counter += 1;
         env.storage().instance().set(&VERSION_COUNTER, &counter);
 
@@ -146,40 +154,48 @@ impl ScannerRegistry {
         // Emit event
         env.events().publish(
             (VERSION_REGISTERED, version.clone()),
-            (admin, wasm_hash, vulnerability_db_hash, env.ledger().timestamp()),
+            (
+                admin,
+                wasm_hash,
+                vulnerability_db_hash,
+                env.ledger().timestamp(),
+            ),
         );
     }
 
     /// Get the latest scanner version
-    /// 
+    ///
     /// # Returns
     /// ScannerVersion of the latest active version
     pub fn get_latest(env: Env) -> ScannerVersion {
-        let latest_version = env.storage()
+        let latest_version = env
+            .storage()
             .instance()
             .get(&LATEST_VERSION)
             .unwrap_or_else(|| panic_with_error!(&env, RegistryError::VersionNotFound));
 
         let versions = Self::get_versions(&env);
-        versions.get(latest_version)
+        versions
+            .get(latest_version)
             .unwrap_or_else(|| panic_with_error!(&env, RegistryError::VersionNotFound))
     }
 
     /// Get a specific version by version string
-    /// 
+    ///
     /// # Arguments
     /// * `version` - Version string to retrieve
-    /// 
+    ///
     /// # Returns
     /// ScannerVersion for the requested version
     pub fn get_version(env: Env, version: String) -> ScannerVersion {
         let versions = Self::get_versions(&env);
-        versions.get(version)
+        versions
+            .get(version)
             .unwrap_or_else(|| panic_with_error!(&env, RegistryError::VersionNotFound))
     }
 
     /// Get all versions (for admin use)
-    /// 
+    ///
     /// # Returns
     /// Map of all versions
     pub fn get_all_versions(env: Env) -> Map<String, ScannerVersion> {
@@ -187,11 +203,11 @@ impl ScannerRegistry {
     }
 
     /// Deprecate a version (admin only)
-    /// 
+    ///
     /// # Arguments
     /// * `version` - Version to deprecate
     /// * `reason` - Reason for deprecation
-    /// 
+    ///
     /// # Events
     /// Emits VERSION_DEPRECATED event
     pub fn deprecate_version(env: Env, version: String, reason: String) {
@@ -200,7 +216,8 @@ impl ScannerRegistry {
         admin.require_auth();
 
         // Cannot deprecate the latest version
-        let latest_version = env.storage()
+        let latest_version = env
+            .storage()
             .instance()
             .get(&LATEST_VERSION)
             .unwrap_or_else(|| panic_with_error!(&env, RegistryError::VersionNotFound));
@@ -211,11 +228,13 @@ impl ScannerRegistry {
 
         // Get and update version
         let mut versions = Self::get_versions(&env);
-        let mut scanner_version = versions.get(version.clone())
+        let mut scanner_version = versions
+            .get(version.clone())
             .unwrap_or_else(|| panic_with_error!(&env, RegistryError::VersionNotFound));
 
         scanner_version.status = VersionStatus::Deprecated;
-        scanner_version.changelog = format!("DEPRECATED: {} - {}", reason, scanner_version.changelog);
+        scanner_version.changelog =
+            format!("DEPRECATED: {} - {}", reason, scanner_version.changelog);
 
         versions.set(version.clone(), scanner_version);
         env.storage().instance().set(&VERSIONS, &versions);
@@ -228,7 +247,7 @@ impl ScannerRegistry {
     }
 
     /// Mark a version as insecure (admin only)
-    /// 
+    ///
     /// # Arguments
     /// * `version` - Version to mark as insecure
     /// * `security_issue` - Description of the security issue
@@ -239,17 +258,22 @@ impl ScannerRegistry {
 
         // Get and update version
         let mut versions = Self::get_versions(&env);
-        let mut scanner_version = versions.get(version.clone())
+        let mut scanner_version = versions
+            .get(version.clone())
             .unwrap_or_else(|| panic_with_error!(&env, RegistryError::VersionNotFound));
 
         scanner_version.status = VersionStatus::Insecure;
-        scanner_version.changelog = format!("INSECURE: {} - {}", security_issue, scanner_version.changelog);
+        scanner_version.changelog = format!(
+            "INSECURE: {} - {}",
+            security_issue, scanner_version.changelog
+        );
 
         versions.set(version.clone(), scanner_version);
         env.storage().instance().set(&VERSIONS, &versions);
 
         // If this was the latest version, we need to set a new latest
-        let latest_version = env.storage()
+        let latest_version = env
+            .storage()
             .instance()
             .get(&LATEST_VERSION)
             .unwrap_or_else(|| panic_with_error!(&env, RegistryError::VersionNotFound));
@@ -267,19 +291,25 @@ impl ScannerRegistry {
             }
 
             if !latest_active.is_empty() {
-                env.storage().instance().set(&LATEST_VERSION, &latest_active);
+                env.storage()
+                    .instance()
+                    .set(&LATEST_VERSION, &latest_active);
             }
         }
 
         // Emit deprecation event with security context
         env.events().publish(
             (VERSION_DEPRECATED, version.clone()),
-            (admin, format!("SECURITY: {}", security_issue), env.ledger().timestamp()),
+            (
+                admin,
+                format!("SECURITY: {}", security_issue),
+                env.ledger().timestamp(),
+            ),
         );
     }
 
     /// Update vulnerability database hash for a version (admin only)
-    /// 
+    ///
     /// # Arguments
     /// * `version` - Version to update
     /// * `new_db_hash` - New vulnerability database hash
@@ -290,7 +320,8 @@ impl ScannerRegistry {
 
         // Get and update version
         let mut versions = Self::get_versions(&env);
-        let mut scanner_version = versions.get(version.clone())
+        let mut scanner_version = versions
+            .get(version.clone())
             .unwrap_or_else(|| panic_with_error!(&env, RegistryError::VersionNotFound));
 
         scanner_version.vulnerability_db_hash = new_db_hash;
@@ -299,7 +330,7 @@ impl ScannerRegistry {
     }
 
     /// Get vulnerability database hash for latest version
-    /// 
+    ///
     /// # Returns
     /// SHA-256 hash of the latest vulnerability database
     pub fn get_latest_vulnerability_db_hash(env: Env) -> BytesN<32> {
@@ -308,10 +339,10 @@ impl ScannerRegistry {
     }
 
     /// Verify if a WASM hash matches the latest version
-    /// 
+    ///
     /// # Arguments
     /// * `wasm_hash` - Hash to verify
-    /// 
+    ///
     /// # Returns
     /// Boolean indicating if the hash matches the latest version
     pub fn verify_latest_wasm(env: Env, wasm_hash: BytesN<32>) -> bool {
@@ -320,11 +351,11 @@ impl ScannerRegistry {
     }
 
     /// Verify if a WASM hash matches a specific version
-    /// 
+    ///
     /// # Arguments
     /// * `version` - Version to check against
     /// * `wasm_hash` - Hash to verify
-    /// 
+    ///
     /// # Returns
     /// Boolean indicating if the hash matches the version
     pub fn verify_version_wasm(env: Env, version: String, wasm_hash: BytesN<32>) -> bool {
@@ -333,7 +364,7 @@ impl ScannerRegistry {
     }
 
     /// Get all active versions
-    /// 
+    ///
     /// # Returns
     /// Vector of active version strings
     pub fn get_active_versions(env: Env) -> Vec<String> {
@@ -350,7 +381,7 @@ impl ScannerRegistry {
     }
 
     /// Get registry statistics
-    /// 
+    ///
     /// # Returns
     /// Tuple of (total_versions, active_versions, deprecated_versions, insecure_versions)
     pub fn get_registry_stats(env: Env) -> (u64, u64, u64, u64) {
@@ -374,7 +405,7 @@ impl ScannerRegistry {
     }
 
     /// Transfer admin rights (admin only)
-    /// 
+    ///
     /// # Arguments
     /// * `new_admin` - Address of the new admin
     pub fn transfer_admin(env: Env, new_admin: Address) {
@@ -405,34 +436,38 @@ impl ScannerRegistry {
         let now = env.ledger().timestamp();
         let retention_seconds = VERSION_RETENTION_DAYS * 24 * 60 * 60;
         let cutoff_time = now.saturating_sub(retention_seconds);
-        
+
         let mut cleaned_count = 0u64;
-        
+
         // Get all versions
         let mut versions = Self::get_versions(&env);
-        
+
         // Find old deprecated versions
-        let old_versions: Vec<String> = versions.iter()
+        let old_versions: Vec<String> = versions
+            .iter()
             .filter(|(_, version)| {
-                (version.status == VersionStatus::Deprecated || version.status == VersionStatus::Insecure) &&
-                version.registered_at < cutoff_time
+                (version.status == VersionStatus::Deprecated
+                    || version.status == VersionStatus::Insecure)
+                    && version.registered_at < cutoff_time
             })
             .map(|(version_str, _)| version_str.clone())
             .collect();
-        
+
         // Remove old versions (but keep some history)
         let deprecated_count = old_versions.len() as u64;
         if deprecated_count > MAX_DEPRECATED_VERSIONS {
             // Sort by registration date (oldest first)
-            let mut sorted_versions: Vec<(String, u64)> = versions.iter()
+            let mut sorted_versions: Vec<(String, u64)> = versions
+                .iter()
                 .filter(|(_, version)| {
-                    version.status == VersionStatus::Deprecated || version.status == VersionStatus::Insecure
+                    version.status == VersionStatus::Deprecated
+                        || version.status == VersionStatus::Insecure
                 })
                 .map(|(version_str, version)| (version_str.clone(), version.registered_at))
                 .collect();
-            
+
             sorted_versions.sort_by_key(|&(_, timestamp)| timestamp);
-            
+
             // Remove oldest versions beyond the limit
             let excess_count = deprecated_count - MAX_DEPRECATED_VERSIONS;
             for i in 0..excess_count {
@@ -441,36 +476,37 @@ impl ScannerRegistry {
                 cleaned_count += 1;
             }
         }
-        
+
         // Remove very old insecure versions immediately
-        let insecure_versions: Vec<String> = versions.iter()
+        let insecure_versions: Vec<String> = versions
+            .iter()
             .filter(|(_, version)| {
                 version.status == VersionStatus::Insecure && version.registered_at < cutoff_time
             })
             .map(|(version_str, _)| version_str.clone())
             .collect();
-        
+
         for version_str in insecure_versions {
             versions.remove(&version_str);
             cleaned_count += 1;
         }
-        
+
         // Update storage
         env.storage().instance().set(&VERSIONS, &versions);
         env.storage().instance().set(&CLEANUP_TIMESTAMP, &now);
-        
+
         cleaned_count
     }
 
     /// Get version storage statistics
     pub fn get_storage_stats(env: Env) -> VersionStorageStats {
         let versions = Self::get_versions(&env);
-        
+
         let mut active_count = 0u64;
         let mut deprecated_count = 0u64;
         let mut insecure_count = 0u64;
         let mut beta_count = 0u64;
-        
+
         for version in versions.iter() {
             match version.1.status {
                 VersionStatus::Active => active_count += 1,
@@ -479,14 +515,18 @@ impl ScannerRegistry {
                 VersionStatus::Beta => beta_count += 1,
             }
         }
-        
+
         VersionStorageStats {
             total_versions: versions.len(),
             active_versions: active_count,
             deprecated_versions: deprecated_count,
             insecure_versions: insecure_count,
             beta_versions: beta_count,
-            last_cleanup: env.storage().instance().get(&CLEANUP_TIMESTAMP).unwrap_or(0),
+            last_cleanup: env
+                .storage()
+                .instance()
+                .get(&CLEANUP_TIMESTAMP)
+                .unwrap_or(0),
         }
     }
 
@@ -494,12 +534,18 @@ impl ScannerRegistry {
         // Basic semantic versioning validation
         let parts: Vec<&str> = version.split('.').collect();
         if parts.len() != 3 {
-            panic_with_error!(soroban_sdk::Env::default(), RegistryError::InvalidVersionFormat);
+            panic_with_error!(
+                soroban_sdk::Env::default(),
+                RegistryError::InvalidVersionFormat
+            );
         }
 
         for part in parts {
             if part.is_empty() {
-                panic_with_error!(soroban_sdk::Env::default(), RegistryError::InvalidVersionFormat);
+                panic_with_error!(
+                    soroban_sdk::Env::default(),
+                    RegistryError::InvalidVersionFormat
+                );
             }
         }
     }

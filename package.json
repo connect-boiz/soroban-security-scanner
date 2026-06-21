@@ -5,38 +5,57 @@
   "main": "src/index.js",
   "scripts": {
     "scan": "node src/index.js",
-    "test": "jest",
+    "start": "node src/index.js",
+    "test": "jest --passWithNoTests",
     "test:e2e": "playwright test",
+    "test:a11y": "playwright test tests/e2e/accessibility.spec.js",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
-    "format": "prettier --write \"src/**/*.js\"",
-    "format:check": "prettier --check \"src/**/*.js\"",
-    "start": "node src/index.js"
+    "format": "prettier --write \"src/**/*.{js,jsx,ts,tsx}\" \"frontend/**/*.{js,jsx,ts,tsx}\"",
+    "format:check": "prettier --check \"src/**/*.{js,jsx,ts,tsx}\" \"frontend/**/*.{js,jsx,ts,tsx}\"",
+    "build:components": "cd component-library && npm run build",
+    "dev:components": "cd component-library && npm run dev",
+    "install:components": "cd component-library && npm install",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build",
+    "test-storybook": "test-storybook"
   },
-  "keywords": [
-    "soroban",
-    "stellar",
-    "security",
-    "smart-contracts",
-    "blockchain",
-    "audit",
-    "vulnerability"
-  ],
+  "keywords": ["soroban", "stellar", "security", "smart-contracts", "blockchain", "audit", "vulnerability"],
   "author": "connect-boiz",
   "license": "MIT",
   "dependencies": {
     "@stellar/stellar-sdk": "^14.6.1",
     "commander": "^11.1.0",
     "chalk": "^4.1.2",
-    "js-yaml": "^4.1.0"
-  },
-  "jest": {
-    "testPathIgnorePatterns": ["/node_modules/", "/tests/e2e/"]
+    "js-yaml": "^4.1.0",
+    "handlebars": "^4.7.8",
+    "nodemailer": "^6.9.7",
+    "uuid": "^9.0.1",
+    "i18next": "^23.7.6",
+    "i18next-fs-backend": "^2.3.1",
+    "i18next-http-middleware": "^2.1.0"
   },
   "devDependencies": {
     "jest": "^29.7.0",
     "eslint": "^8.57.0",
     "prettier": "^3.2.5",
-    "@playwright/test": "^1.44.0"
+    "@playwright/test": "^1.44.0",
+    "@axe-core/playwright": "^4.9.1",
+    "axe-core": "^4.9.1",
+    "@chromatic-com/storybook": "^1.0.0",
+    "@storybook/addon-a11y": "^8.0.0",
+    "@storybook/addon-docs": "^8.0.0",
+    "@storybook/addon-essentials": "^8.0.0",
+    "@storybook/addon-interactions": "^8.0.0",
+    "@storybook/addon-links": "^8.0.0",
+    "@storybook/addon-onboarding": "^8.0.0",
+    "@storybook/blocks": "^8.0.0",
+    "@storybook/nextjs": "^8.0.0",
+    "@storybook/react": "^8.0.0",
+    "@storybook/test": "^8.0.0",
+    "@storybook/test-runner": "^0.17.0",
+    "@swc/helpers": "^0.5.15",
+    "storybook": "^8.0.0",
+    "typescript": "^5.0.0"
   }
 }

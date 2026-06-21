@@ -1,10 +1,179 @@
-//! Tests for emergency stop functionality
+//! Tests for emergency stop and scan watchdog functionality
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::thread;
     use std::time::Duration;
+
+    #[test]
+    fn test_scan_watchdog_creation() {
+        let watchdog = ScanWatchdog::new();
+        assert!(!watchdog.has_timed_out(), "Watchdog should not have timed out initially");
+        assert!(!watchdog.is_stalled(), "Watchdog should not be stalled initially");
+        assert_eq!(watchdog.files_processed(), 0);
+        assert_eq!(watchdog.timeout_seconds(), 120);
+        assert!(watchdog.current_file().is_none());
+    }
+
+    #[test]
+    fn test_scan_watchdog_custom_timeout() {
+        let watchdog = ScanWatchdog::with_timeout(30);
+        assert_eq!(watchdog.timeout_seconds(), 30);
+    }
+
+    #[test]
+    fn test_scan_watchdog_heartbeat() {
+        let watchdog = ScanWatchdog::new();
+        
+        // Initial state
+        assert_eq!(watchdog.files_processed(), 0);
+        
+        // After heartbeat
+        watchdog.heartbeat();
+        assert_eq!(watchdog.files_processed(), 1);
+        
+        // Multiple heartbeats
+        watchdog.heartbeat();
+        watchdog.heartbeat();
+        assert_eq!(watchdog.files_processed(), 3);
+    }
+
+    #[test]
+    fn test_scan_watchdog_heartbeat_with_file() {
+        let watchdog = ScanWatchdog::new();
+        watchdog.heartbeat_with_file("test.rs");
+        
+        assert_eq!(watchdog.files_processed(), 1);
+        assert_eq!(watchdog.current_file(), Some("test.rs".to_string()));
+    }
+
+    #[test]
+    fn test_scan_watchdog_reset() {
+        let watchdog = ScanWatchdog::new();
+        
+        watchdog.heartbeat_with_file("test.rs");
+        watchdog.heartbeat();
+        assert_eq!(watchdog.files_processed(), 2);
+        assert!(watchdog.current_file().is_some());
+        
+        watchdog.reset();
+        assert_eq!(watchdog.files_processed(), 0);
+        assert!(!watchdog.has_timed_out());
+        assert!(watchdog.current_file().is_none());
+    }
+
+    #[test]
+    fn test_scan_watchdog_get_status() {
+        let watchdog = ScanWatchdog::new();
+        watchdog.heartbeat_with_file("main.rs");
+        
+        let status = watchdog.get_status();
+        assert!(!status.has_timed_out);
+        assert!(!status.is_monitoring); // Monitor not started yet
+        assert_eq!(status.files_processed, 1);
+        assert_eq!(status.current_file, Some("main.rs".to_string()));
+        assert_eq!(status.timeout_seconds, 120);
+        assert!(status.heartbeat_age_seconds < 1); // Just did heartbeat
+    }
+
+    #[test]
+    fn test_scan_watchdog_with_emergency_stop() {
+        let es = EmergencyStop::new().unwrap();
+        let watchdog = ScanWatchdog::with_timeout(1)
+            .with_emergency_stop(es.clone()); // 1 second timeout for quick test
+        
+        // Should not be stopped initially
+        assert!(!es.is_stopped());
+        assert!(!watchdog.has_timed_out());
+    }
+
+    #[test]
+    fn test_scan_watchdog_stall_detection() {
+        let watchdog = ScanWatchdog::with_timeout(1); // 1 second timeout
+        
+        // Immediately after creation, should not be stalled
+        assert!(!watchdog.is_stalled());
+        
+        // Wait longer than timeout
+        thread::sleep(Duration::from_millis(1100));
+        
+        // Should now be stalled
+        assert!(watchdog.is_stalled());
+    }
+
+    #[test]
+    fn test_scan_watchdog_heartbeat_prevents_stall() {
+        let watchdog = ScanWatchdog::with_timeout(2); // 2 second timeout
+        
+        // Heartbeat periodically to prevent stall
+        for _ in 0..5 {
+            thread::sleep(Duration::from_millis(200));
+            watchdog.heartbeat();
+        }
+        
+        // Should not be stalled because we kept sending heartbeats
+        assert!(!watchdog.is_stalled());
+        
+        // After stopping heartbeats, give it time to exceed timeout
+        thread::sleep(Duration::from_millis(2500));
+        assert!(watchdog.is_stalled());
+    }
+
+    #[test]
+    fn test_scan_watchdog_monitor_auto_stop() {
+        let es = EmergencyStop::new().unwrap();
+        let watchdog = ScanWatchdog::with_timeout(1) // 1 second timeout
+            .with_emergency_stop(es.clone());
+        
+        // Start monitoring
+        watchdog.start_monitoring();
+        assert!(!es.is_stopped());
+        
+        // Wait for timeout
+        thread::sleep(Duration::from_millis(1500));
+        
+        // Emergency stop should have been triggered by watchdog
+        assert!(watchdog.has_timed_out());
+        
+        watchdog.stop_monitoring();
+    }
+
+    #[test]
+    fn test_scan_watchdog_files_processed_tracking() {
+        let watchdog = ScanWatchdog::new();
+        
+        // Simulate processing 100 files
+        for i in 1..=100 {
+            watchdog.heartbeat_with_file(&format!("file_{}.rs", i));
+        }
+        
+        assert_eq!(watchdog.files_processed(), 100);
+        assert_eq!(watchdog.current_file(), Some("file_100.rs".to_string()));
+    }
+
+    #[test]
+    fn test_scan_watchdog_reset_between_scans() {
+        let watchdog = ScanWatchdog::new();
+        
+        // First scan
+        for i in 1..=5 {
+            watchdog.heartbeat_with_file(&format!("scan1_file_{}.rs", i));
+        }
+        assert_eq!(watchdog.files_processed(), 5);
+        
+        // Reset for second scan
+        watchdog.reset();
+        assert_eq!(watchdog.files_processed(), 0);
+        assert!(watchdog.current_file().is_none());
+        assert!(!watchdog.has_timed_out());
+        
+        // Second scan
+        for i in 1..=3 {
+            watchdog.heartbeat_with_file(&format!("scan2_file_{}.rs", i));
+        }
+        assert_eq!(watchdog.files_processed(), 3);
+    }
 
     #[test]
     fn test_emergency_stop_creation() {
