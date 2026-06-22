@@ -82,11 +82,12 @@ pub use wallet::{
     WalletBalance, WalletError, WalletExport, WalletService, WalletStatus, WalletStore,
     WalletSyncRecord, WalletType,
 };
+pub use crate::vulnerabilities::VulnerabilityType;
 
 #[derive(Debug, Clone)]
 pub struct ScanResult {
     pub file_path: String,
-    pub vulnerabilities: Vec<String>,
+    pub vulnerabilities: Vec<VulnerabilityType>,
     pub invariant_violations: Vec<String>,
     pub recommendations: Vec<String>,
 }
