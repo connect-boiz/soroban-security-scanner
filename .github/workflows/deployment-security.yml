@@ -1,0 +1,101 @@
+name: Deployment Security Gate
+
+on:
+  workflow_run:
+    workflows:
+      - Security Scanning Pipeline
+      - DAST - Dynamic Application Security Testing
+    types:
+      - completed
+  pull_request:
+    types: [labeled, opened, synchronize, reopened]
+    branches: [main, master, release/*]
+
+env:
+  ENVIRONMENT: ${{ github.ref_name == 'main' && 'production' || 'staging' }}
+
+jobs:
+  deployment-security-gate:
+    name: Deployment Security Approval Gate
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ env.ENVIRONMENT }}
+      url: ${{ steps.deploy-url.outputs.url }}
+    permissions:
+      actions: read
+      checks: write
+      contents: read
+      deployments: write
+      pull-requests: write
+      statuses: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download security reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '*-report*'
+          path: security/reports/downloads/
+          merge-multiple: true
+        continue-on-error: true
+
+      - name: Evaluate deployment security gate
+        id: security-gate
+        run: node security/scripts/deployment-security-gate.js
+        env:
+          NODE_ENV: ${{ env.ENVIRONMENT }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEPLOYMENT_BLOCK_CRITICAL: 'true'
+          DEPLOYMENT_BLOCK_HIGH: 'false'
+          MAX_CRITICAL_VULNERABILITIES: '0'
+          MAX_HIGH_VULNERABILITIES: '5'
+
+      - name: Require manual approval for high-risk deployments
+        if: steps.security-gate.outputs.requires_approval == 'true'
+        uses: trstringer/manual-approval@v1
+        with:
+          secret: ${{ secrets.GITHUB_TOKEN }}
+          approvers: ${{ vars.SECURITY_APPROVERS }}
+          minimum-approvals: 1
+          issue-title: "Security approval required for deployment to ${{ env.ENVIRONMENT }}"
+          issue-body: |
+            Security gate has identified risks that require manual approval:
+            - Critical vulnerabilities: ${{ steps.security-gate.outputs.critical_count }}
+            - High vulnerabilities: ${{ steps.security-gate.outputs.high_count }}
+            - Medium vulnerabilities: ${{ steps.security-gate.outputs.medium_count }}
+
+            Review the security scan results before approving.
+
+      - name: Block deployment on security failure
+        if: steps.security-gate.outputs.passed == 'false'
+        run: |
+          echo "::error::Deployment blocked: Security gate failed"
+          echo "Security gate evaluation:"
+          echo "  Passed: ${{ steps.security-gate.outputs.passed }}"
+          echo "  Critical: ${{ steps.security-gate.outputs.critical_count }}"
+          echo "  High: ${{ steps.security-gate.outputs.high_count }}"
+          echo "  Summary: ${{ steps.security-gate.outputs.summary }}"
+          exit 1
+
+      - name: Approve deployment
+        if: steps.security-gate.outputs.passed == 'true'
+        run: |
+          echo "Security gate passed. Proceeding with deployment."
+          echo "Summary: ${{ steps.security-gate.outputs.summary }}"
+
+      - name: Update deployment status
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const passed = '${{ steps.security-gate.outputs.passed }}' === 'true';
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: passed ? 'success' : 'failure',
+              context: 'Deployment Security Gate (${{ env.ENVIRONMENT }})',
+              description: passed
+                ? 'All security checks passed'
+                : '${{ steps.security-gate.outputs.summary }}'
+            });

@@ -1,0 +1,82 @@
+name: Security Metrics & Trend Analysis
+
+on:
+  schedule:
+    - cron: '0 8 * * 1'
+  workflow_dispatch:
+
+jobs:
+  security-metrics:
+    name: Security Metrics Collection
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Collect security metrics
+        run: node security/scripts/security-metrics.js
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+
+      - name: Generate trend report
+        run: node security/scripts/generate-trend-report.js
+        env:
+          METRICS_DATA_PATH: security/reports/metrics/metrics-history.json
+
+      - name: Deploy metrics dashboard
+        id: deploy-metrics
+        run: |
+          echo "Security metrics dashboard updated"
+          echo "Metrics can be viewed at: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/security-metrics"
+
+      - name: Commit security metrics
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: 'chore: update security metrics [skip ci]'
+          file_pattern: security/reports/metrics/
+          skip_dirty_check: true
+          skip_fetch: true
+
+      - name: Archive metrics artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-metrics
+          path: security/reports/metrics/
+
+  vulnerability-trend-report:
+    name: Vulnerability Trend Report
+    runs-on: ubuntu-latest
+    needs: security-metrics
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate weekly trend report
+        run: |
+          echo "# Weekly Security Trend Report" > security/reports/weekly-trend-report.md
+          echo "" >> security/reports/weekly-trend-report.md
+          echo "## Summary" >> security/reports/weekly-trend-report.md
+          echo "" >> security/reports/weekly-trend-report.md
+          echo "- **Report Period**: $(date -d 'last monday' +%Y-%m-%d) to $(date +%Y-%m-%d)" >> security/reports/weekly-trend-report.md
+          echo "- **Vulnerabilities Found**: $(find security/reports -name '*.sarif' -exec cat {} + | grep -c '"level":"error"' || echo 0)" >> security/reports/weekly-trend-report.md
+          echo "- **Security Gate Pass Rate**: analyzing..." >> security/reports/weekly-trend-report.md
+          echo "" >> security/reports/weekly-trend-report.md
+
+      - name: Upload trend report
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-trend-report
+          path: security/reports/weekly-trend-report.md

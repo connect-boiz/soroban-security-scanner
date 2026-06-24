@@ -1,0 +1,20 @@
+name: "CodeQL Security Config"
+
+queries:
+  - uses: security-extended
+  - uses: security-and-quality
+  - uses: security-experimental
+
+query-filters:
+  - exclude:
+      id: js/react-in-jsx-scope
+  - exclude:
+      id: js/xss-through-dom
+
+paths-ignore:
+  - node_modules
+  - target
+  - '**/*.test.js'
+  - '**/*.spec.js'
+  - '**/__tests__/**'
+  - '**/tests/**'

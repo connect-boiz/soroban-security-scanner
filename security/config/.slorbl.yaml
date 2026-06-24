@@ -1,0 +1,26 @@
+# Semgrep Configuration
+# See https://semgrep.dev/docs for more information
+
+rulesets:
+  - auto
+  - r2c-ci
+  - owasp-top-ten
+  - command-injection
+  - secrets
+
+exclude:
+  - node_modules
+  - target
+  - '*.test.js'
+  - '*.spec.js'
+  - __tests__
+  - tests
+  - '.git'
+
+severity:
+  - ERROR
+  - WARNING
+
+max_memory: 5000
+timeout: 60
+timeout_threshold: 3
