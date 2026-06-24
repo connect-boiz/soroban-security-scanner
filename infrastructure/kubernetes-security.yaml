@@ -1,0 +1,185 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: security-scanning
+  labels:
+    name: security-scanning
+    environment: ci
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: security-scanner
+  namespace: security-scanning
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: security-scanner-role
+  namespace: security-scanning
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: security-scanner-binding
+  namespace: security-scanning
+subjects:
+  - kind: ServiceAccount
+    name: security-scanner
+    namespace: security-scanning
+roleRef:
+  kind: Role
+  name: security-scanner-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: scanner-secrets
+  namespace: security-scanning
+  annotations:
+    kubernetes.io/enforce-mountable: "true"
+type: Opaque
+stringData:
+  # These should be set via external secrets or sealed secrets
+  SNYK_TOKEN: ""
+  GITHUB_TOKEN: ""
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: security-scanner-pdb
+  namespace: security-scanning
+spec:
+  minAvailable: 0
+  selector:
+    matchLabels:
+      app: security-scanner
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: security-scanner-network-policy
+  namespace: security-scanning
+spec:
+  podSelector:
+    matchLabels:
+      app: security-scanner
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: security-scanning
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+    - to:
+        - namespaceSelector: {}
+  podSelector:
+    matchLabels:
+      app: security-scanner
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: scan-policies
+  namespace: security-scanning
+data:
+  security-policy.json: |
+    {
+      "blockOnCritical": true,
+      "maxHighVulnerabilities": 5,
+      "requireSAST": true,
+      "requireDAST": true,
+      "requireSCA": true
+    }
+  scan-config.yaml: |
+    scanners:
+      - name: semgrep
+        enabled: true
+        rules: r2c-ci,owasp-top-ten
+      - name: trivy
+        enabled: true
+        severity: CRITICAL,HIGH
+      - name: checkov
+        enabled: true
+        framework: all
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: weekly-security-scan
+  namespace: security-scanning
+spec:
+  schedule: "0 6 * * 1"
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 3
+  successfulJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: security-scanner
+          automountServiceAccountToken: false
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: security-scan
+              image: aquasec/trivy:latest
+              args:
+                - fs
+                - --severity=CRITICAL,HIGH
+                - --format=sarif
+                - --output=/reports/trivy-scan.sarif
+                - /workspace
+              securityContext:
+                allowPrivilegeEscalation: false
+                privileged: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              resources:
+                limits:
+                  cpu: "2"
+                  memory: "4Gi"
+                requests:
+                  cpu: "500m"
+                  memory: "1Gi"
+              volumeMounts:
+                - name: workspace
+                  mountPath: /workspace
+                - name: reports
+                  mountPath: /reports
+          volumes:
+            - name: workspace
+              emptyDir: {}
+            - name: reports
+              emptyDir: {}

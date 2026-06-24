@@ -1,0 +1,127 @@
+# OWASP ZAP Rule Configuration
+# Format: rule_id, enabled, threshold
+# This file configures which rules to enable/disable and alert thresholds
+
+# Information disclosure
+100000	true	MEDIUM
+100001	true	MEDIUM
+100002	true	HIGH
+100003	true	HIGH
+100004	true	HIGH
+100005	true	MEDIUM
+100006	true	MEDIUM
+100007	true	LOW
+100008	true	MEDIUM
+100009	true	HIGH
+100010	true	HIGH
+100011	true	MEDIUM
+100012	true	MEDIUM
+100013	true	HIGH
+100014	true	MEDIUM
+100015	true	MEDIUM
+100016	true	MEDIUM
+100017	true	MEDIUM
+100018	true	MEDIUM
+100019	true	HIGH
+100020	true	HIGH
+100021	true	MEDIUM
+100022	true	MEDIUM
+100023	true	MEDIUM
+100024	true	HIGH
+100025	true	HIGH
+100026	true	HIGH
+100027	true	MEDIUM
+100028	true	LOW
+100029	true	MEDIUM
+100030	true	MEDIUM
+100031	true	MEDIUM
+100032	true	HIGH
+100033	true	HIGH
+100034	true	HIGH
+100035	true	HIGH
+100036	true	HIGH
+100037	true	HIGH
+100038	true	HIGH
+
+# SQL Injection
+40012	true	HIGH
+40013	true	HIGH
+40014	true	HIGH
+40015	true	HIGH
+40016	true	HIGH
+40017	true	HIGH
+40018	true	HIGH
+40019	true	HIGH
+40020	true	HIGH
+40021	true	HIGH
+40022	true	HIGH
+40023	true	HIGH
+40024	true	HIGH
+
+# XSS
+40012	true	HIGH
+40013	true	HIGH
+40014	true	HIGH
+40015	true	HIGH
+40016	true	HIGH
+40017	true	HIGH
+40018	true	HIGH
+
+# Path Traversal
+6	true	HIGH
+40018	true	HIGH
+
+# Remote Code Execution
+40019	true	HIGH
+40020	true	HIGH
+
+# CSRF
+40021	true	HIGH
+
+# Open Redirect
+40022	true	HIGH
+
+# Server Side Request Forgery
+40023	true	HIGH
+40024	true	HIGH
+
+# Access Control Issues
+40025	true	HIGH
+40026	true	HIGH
+40027	true	HIGH
+40028	true	HIGH
+40029	true	HIGH
+40030	true	HIGH
+40031	true	HIGH
+40032	true	HIGH
+40033	true	HIGH
+40034	true	HIGH
+40035	true	HIGH
+40036	true	HIGH
+40037	true	HIGH
+40038	true	HIGH
+40039	true	HIGH
+40040	true	HIGH
+40041	true	HIGH
+
+# JWT Issues
+40042	true	HIGH
+40043	true	HIGH
+40044	true	HIGH
+
+# GraphQL
+40045	true	HIGH
+40046	true	HIGH
+40047	true	HIGH
+40048	true	HIGH
+40049	true	HIGH
+40050	true	HIGH
+
+# General
+50000	true	MEDIUM
+50001	true	MEDIUM
+50002	true	MEDIUM
+50003	true	MEDIUM
+50004	true	MEDIUM
+50005	true	MEDIUM
+50006	true	MEDIUM

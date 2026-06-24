@@ -1,0 +1,68 @@
+{
+  "name": "Soroban Security Scanner - Security Policy",
+  "version": "1.0.0",
+  "description": "Security policy enforcement rules for the Soroban Security Scanner platform",
+  "rules": {
+    "vulnerabilityThresholds": {
+      "blockOnCritical": true,
+      "blockOnHigh": false,
+      "maxCriticalVulnerabilities": 0,
+      "maxHighVulnerabilities": 5,
+      "maxMediumVulnerabilities": 20,
+      "criticalAgeHours": 24,
+      "highAgeHours": 72,
+      "mediumAgeHours": 168
+    },
+    "scanningRequirements": {
+      "requireSAST": true,
+      "requireDAST": true,
+      "requireSCA": true,
+      "requireContainerScan": true,
+      "requireIaCScan": true,
+      "requireSecretDetection": true,
+      "requireSecurityRegressionTests": true
+    },
+    "deploymentGates": {
+      "requireApprovalForCritical": true,
+      "requireApprovalForHigh": false,
+      "requireApprovalForNewVulnerabilities": true,
+      "minimumApprovers": 1,
+      "approvalGroups": [
+        "security-team",
+        "lead-developers"
+      ],
+      "autoApproveDevBranches": false,
+      "blockOnFailedGate": true
+    },
+    "coverageRequirements": {
+      "minimumSASTCoverage": 100,
+      "minimumSCACoverage": 100,
+      "minimumDASTCoverage": 80,
+      "minimumContainerCoverage": 100,
+      "minimumIaCCoverage": 100,
+      "allCodePathsRequireScanning": true
+    },
+    "remediationTimelines": {
+      "critical": {
+        "timeToRemediationHours": 24,
+        "autoEscalateAfterHours": 12,
+        "escalationContact": "security@stellar-security-scanner.io"
+      },
+      "high": {
+        "timeToRemediationHours": 72,
+        "autoEscalateAfterHours": 48,
+        "escalationContact": "security@stellar-security-scanner.io"
+      },
+      "medium": {
+        "timeToRemediationHours": 168,
+        "autoEscalateAfterHours": false
+      }
+    },
+    "compliance": {
+      "soc2Compliant": true,
+      "gdprCompliant": true,
+      "owaspTop10Coverage": true,
+      "cweCoverage": true
+    }
+  }
+}

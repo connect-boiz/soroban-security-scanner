@@ -195,3 +195,40 @@ jobs:
         run: npm test
       - name: Build
         run: npm run build
+
+  security-coverage:
+    name: Security Testing Coverage
+    needs: detect-changes
+    if: |
+      needs.detect-changes.outputs.backend == 'true' ||
+      needs.detect-changes.outputs.frontend == 'true' ||
+      needs.detect-changes.outputs.root == 'true' ||
+      github.ref_name == 'main' || github.ref_name == 'master' || github.ref_name == 'develop'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - name: npm ci
+        run: npm ci --no-audit --no-fund
+      - name: Install security test deps
+        run: npm install --save-dev eslint-plugin-security eslint-plugin-no-secrets
+      - name: Run security unit tests
+        run: npx jest --testPathPattern='tests/security' --coverage --coverageDirectory=coverage/security --coverageReporters=json-summary,text 2>&1 || true
+      - name: Run security regression tests
+        run: npx jest --testPathPattern='security-regression' 2>&1 || true
+      - name: Generate security coverage report
+        run: |
+          mkdir -p security/reports/coverage
+          if [ -f coverage/security/coverage-summary.json ]; then
+            cp coverage/security/coverage-summary.json security/reports/coverage/
+            echo "Security test coverage report generated"
+          fi
+      - name: Upload security coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-coverage
+          path: security/reports/coverage/

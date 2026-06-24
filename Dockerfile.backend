@@ -1,0 +1,17 @@
+FROM rust:1.77-slim-bookworm AS builder
+RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY Cargo.toml Cargo.lock ./
+COPY src/ ./src/
+RUN cargo build --release --lib
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN addgroup --system app && adduser --system --ingroup app app
+WORKDIR /app
+COPY --from=builder /app/target/release/soroban-scanner ./
+COPY --from=builder /app/target/release/lib*.so /usr/lib/ 2>/dev/null || true
+USER app
+EXPOSE 8080
+ENTRYPOINT ["./soroban-scanner"]
+CMD ["scan", "--format", "json"]

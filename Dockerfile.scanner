@@ -1,0 +1,13 @@
+FROM rust:1.77-slim-bookworm AS builder
+WORKDIR /app
+COPY Cargo.toml Cargo.lock ./
+COPY src/ ./src/
+RUN cargo build --release --lib --features full
+
+FROM alpine:3.19
+RUN addgroup -S scanner && adduser -S scanner -G scanner
+RUN apk add --no-cache ca-certificates
+WORKDIR /app
+COPY --from=builder /app/target/release/soroban-scanner ./
+USER scanner
+ENTRYPOINT ["./soroban-scanner"]
