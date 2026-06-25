@@ -1,0 +1,816 @@
+openapi: 3.0.3
+info:
+  title: Soroban Security Scanner API
+  description: >
+    Comprehensive API documentation for the Soroban Security Scanner. Includes
+    endpoints for transaction management, queue monitoring, state operations,
+    and authentication.
+  version: "1.0.0"
+  contact:
+    name: Developer Support
+    email: developers@sorobanscanner.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: /api/v1
+    description: Current Stable Version (v1)
+  - url: /api
+    description: Unversioned Base URL (redirects to stable)
+
+tags:
+  - name: Transactions
+    description: Endpoints for submitting and managing transactions.
+  - name: Queue
+    description: Transaction queue statistics and operations.
+  - name: Monitoring
+    description: System monitoring, alerts, and health metrics.
+  - name: Metrics
+    description: Detailed metrics for processors and retries.
+  - name: State
+    description: System state import, export, and save operations.
+  - name: Authentication
+    description: User authentication and account management.
+
+paths:
+  /transactions:
+    post:
+      tags:
+        - Transactions
+      summary: Create a new transaction
+      description: Submit a new transaction to the processing queue.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTransactionRequest'
+            examples:
+              StandardPayment:
+                summary: Payment Transaction
+                value:
+                  transaction_type: "Payment"
+                  data: "YmFzZTY0X2VuY29kZWRfZGF0YQ=="
+                  submitter: "user_id_123"
+                  network: "testnet"
+                  priority: "Normal"
+                  description: "Standard payment transfer"
+                  tags: ["payment", "transfer"]
+      responses:
+        '200':
+          description: Transaction successfully queued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse_CreateTransactionResponse'
+        '400':
+          description: Bad request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          
+    get:
+      tags:
+        - Transactions
+      summary: List transactions
+      description: Get a list of transactions with optional filtering and pagination.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: state
+          in: query
+          schema:
+            type: string
+        - name: transaction_type
+          in: query
+          schema:
+            type: string
+        - name: priority
+          in: query
+          schema:
+            type: string
+        - name: submitter
+          in: query
+          schema:
+            type: string
+        - name: network
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: A list of transactions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse_TransactionList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /transactions/{id}:
+    get:
+      tags:
+        - Transactions
+      summary: Get transaction by ID
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Transaction details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse_Transaction'
+        '404':
+          description: Transaction not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /transactions/{id}/retry:
+    post:
+      tags:
+        - Transactions
+      summary: Retry a failed transaction
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Transaction queued for retry.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse_String'
+        '404':
+          description: Transaction not found.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /transactions/{id}/cancel:
+    post:
+      tags:
+        - Transactions
+      summary: Cancel a transaction
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Transaction cancelled.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse_String'
+        '404':
+          description: Transaction not found.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /queue/stats:
+    get:
+      tags:
+        - Queue
+      summary: Get queue statistics
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Queue statistics retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse_QueueStats'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /queue/retryable:
+    get:
+      tags:
+        - Queue
+      summary: Get retryable transactions
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of retryable transactions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse_TransactionList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /queue/cleanup:
+    post:
+      tags:
+        - Queue
+      summary: Cleanup old transactions
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: max_age_hours
+          in: query
+          schema:
+            type: integer
+            default: 24
+      responses:
+        '200':
+          description: Queue cleanup successful.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse_String'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /monitoring/snapshot:
+    get:
+      tags:
+        - Monitoring
+      summary: Get current monitoring snapshot
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Current monitoring snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse_MonitoringSnapshot'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /monitoring/history:
+    get:
+      tags:
+        - Monitoring
+      summary: Get monitoring history
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: Historical monitoring snapshots.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse_MonitoringHistory'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /monitoring/alerts:
+    get:
+      tags:
+        - Monitoring
+      summary: Get active alerts
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of active alerts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse_AlertsList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /monitoring/health:
+    get:
+      tags:
+        - Monitoring
+      summary: Get system health status
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: System health status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse_SystemHealth'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /monitoring/dashboard:
+    get:
+      tags:
+        - Monitoring
+      summary: Get dashboard data
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Aggregated dashboard data.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse_DashboardData'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /metrics/processors:
+    get:
+      tags:
+        - Metrics
+      summary: Get processor metrics
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Metrics for all active processors.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse_ProcessorMetricsList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /metrics/retries:
+    get:
+      tags:
+        - Metrics
+      summary: Get retry statistics
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Global retry statistics.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse_RetryStats'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /metrics/transactions:
+    get:
+      tags:
+        - Metrics
+      summary: Get transaction statistics
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Transaction execution statistics.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse_TransactionStats'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /state/export:
+    post:
+      tags:
+        - State
+      summary: Export state to backup
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: path
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: State exported successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse_String'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Forbidden - admin access required.
+
+  /state/import:
+    post:
+      tags:
+        - State
+      summary: Import state from backup
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: State imported successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse_String'
+        '400':
+          description: Bad request (path not provided).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Forbidden - admin access required.
+
+  /state/save:
+    post:
+      tags:
+        - State
+      summary: Save current state
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: State saved successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse_String'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Authenticate user
+      description: Obtain a JWT Bearer token via email/password.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Authentication successful.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  token:
+                    type: string
+                    example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        '401':
+          description: Invalid credentials.
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        '201':
+          description: User registered successfully.
+        '400':
+          description: Validation error or user exists.
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid authentication token.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            success: false
+            error: "Missing authentication token"
+            timestamp: "2023-01-01T00:00:00Z"
+    TooManyRequests:
+      description: Rate limit exceeded.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            success: false
+            error: "Rate limit exceeded"
+            timestamp: "2023-01-01T00:00:00Z"
+
+  schemas:
+    ApiError:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+    CreateTransactionRequest:
+      type: object
+      required:
+        - transaction_type
+        - data
+        - submitter
+        - network
+      properties:
+        transaction_type:
+          type: string
+          enum: [Payment, MultiSignature, ContractDeployment, ContractCall, BatchOperation, SecurityScan, Custom]
+        data:
+          type: string
+          description: Base64 encoded payload.
+        submitter:
+          type: string
+        network:
+          type: string
+        priority:
+          type: string
+          enum: [Low, Normal, High, Critical, Emergency]
+        description:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        custom_fields:
+          type: object
+          additionalProperties:
+            type: string
+
+    Transaction:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        transaction_type:
+          type: string
+        submitter:
+          type: string
+        network:
+          type: string
+        priority:
+          type: string
+        state:
+          type: string
+          example: "queued"
+
+    ApiResponse_CreateTransactionResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            transaction_id:
+              type: string
+              format: uuid
+            status:
+              type: string
+            message:
+              type: string
+        error:
+          type: string
+          nullable: true
+        timestamp:
+          type: string
+          format: date-time
+
+    ApiResponse_TransactionList:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Transaction'
+        error:
+          type: string
+          nullable: true
+        timestamp:
+          type: string
+          format: date-time
+
+    ApiResponse_Transaction:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/Transaction'
+        error:
+          type: string
+          nullable: true
+        timestamp:
+          type: string
+          format: date-time
+
+    ApiResponse_String:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: string
+        error:
+          type: string
+          nullable: true
+        timestamp:
+          type: string
+          format: date-time
+
+    ApiResponse_QueueStats:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            total:
+              type: integer
+            pending:
+              type: integer
+            processing:
+              type: integer
+            completed:
+              type: integer
+            failed:
+              type: integer
+
+    ApiResponse_MonitoringSnapshot:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            timestamp:
+              type: string
+              format: date-time
+            cpu_usage:
+              type: number
+            memory_usage:
+              type: number
+
+    ApiResponse_MonitoringHistory:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              timestamp:
+                type: string
+                format: date-time
+
+    ApiResponse_AlertsList:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              severity:
+                type: string
+              message:
+                type: string
+
+    ApiResponse_SystemHealth:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            status:
+              type: string
+              example: "healthy"
+
+    ApiResponse_DashboardData:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+
+    ApiResponse_ProcessorMetricsList:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            type: object
+
+    ApiResponse_RetryStats:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+
+    ApiResponse_TransactionStats:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
