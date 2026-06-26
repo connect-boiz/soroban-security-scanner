@@ -55,6 +55,15 @@ impl Severity {
 // The api_versioning module compiles cleanly without the broken-modules feature.
 pub mod api_versioning;
 
+// Comprehensive audit trail for security-critical operations (#326). Compiles
+// cleanly with no feature gate so its tests run under default `cargo test`.
+pub mod audit_trail;
+pub use audit_trail::{
+    ActorContext, AuditAction, AuditCategory, AuditConfig, AuditEvent, AuditEventBuilder,
+    AuditOutcome, AuditQuery, AuditSeverity, AuditTrail, ChainVerification, SuspiciousActivityAlert,
+    UserRole,
+};
+
 // === Broken modules gated behind feature flag ===
 // Each module has pre-existing compilation errors (borrow checker violations,
 // missing trait impls, type mismatches, unresolved imports) that are being
