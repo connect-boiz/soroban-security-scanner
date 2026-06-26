@@ -2,7 +2,7 @@
 mod security {
     use crate::{
         ContractError, Role, SecurityScannerContract, SecurityScannerContractClient, ADMIN_ROLES,
-        REENTRANCY_LOCK,
+        PAUSED, REENTRANCY_LOCK,
     };
     use soroban_sdk::testutils::Address as _;
     use soroban_sdk::{Address, BytesN, Env, String};
@@ -307,5 +307,246 @@ mod security {
         let proposal = client.get_proposal(&proposal_id);
         assert_eq!(proposal.required_approvals, 2);
         assert_eq!(proposal.execution_delay, 86400);
+    }
+
+    // ── Emergency Pause Mechanism Tests ──
+
+    #[test]
+    fn test_pause_direct_requires_multi_sig() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, SecurityScannerContract);
+        let client = SecurityScannerContractClient::new(&env, &contract_id);
+
+        let admin = test_address(&env, 1);
+        client.initialize(&admin);
+
+        // Direct pause always requires multi-sig
+        assert_eq!(
+            client.try_pause(&admin),
+            Err(Ok(ContractError::MultiSigRequired))
+        );
+    }
+
+    #[test]
+    fn test_pause_rejects_state_mutations() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, SecurityScannerContract);
+        let client = SecurityScannerContractClient::new(&env, &contract_id);
+
+        let admin = test_address(&env, 1);
+        client.initialize(&admin);
+
+        // Manually set paused flag
+        env.as_contract(&contract_id, || {
+            env.storage().instance().set(&PAUSED, &true);
+        });
+
+        // State-mutating functions should be rejected
+        let reporter = test_address(&env, 10);
+        let contract_id_bytes = BytesN::from_array(&env, &[1; 32]);
+        assert_eq!(
+            client.try_report_vulnerability(
+                &reporter,
+                &contract_id_bytes,
+                &String::from_str(&env, "reentrancy"),
+                &String::from_str(&env, "high"),
+                &String::from_str(&env, "Test vulnerability"),
+                &String::from_str(&env, "function xyz"),
+            ),
+            Err(Ok(ContractError::ContractPaused))
+        );
+
+        // Funding should also be blocked
+        assert_eq!(
+            client.try_fund_bounty_pool(&admin, &1_000_000i128),
+            Err(Ok(ContractError::ContractPaused))
+        );
+    }
+
+    #[test]
+    fn test_emergency_alert_allowed_during_pause() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, SecurityScannerContract);
+        let client = SecurityScannerContractClient::new(&env, &contract_id);
+
+        let admin = test_address(&env, 1);
+        client.initialize(&admin);
+
+        // Manually set paused flag
+        env.as_contract(&contract_id, || {
+            env.storage().instance().set(&PAUSED, &true);
+        });
+
+        // Emergency alerts should still be accepted during pause
+        let reporter = test_address(&env, 10);
+        let contract_id_bytes = BytesN::from_array(&env, &[3; 32]);
+        let alert_id = client.report_emergency_vulnerability(
+            &reporter,
+            &contract_id_bytes,
+            &String::from_str(&env, "critical_vuln"),
+            &String::from_str(&env, "emergency"),
+            &String::from_str(&env, "Critical emergency vulnerability discovered"),
+            &String::from_str(&env, "core contract"),
+        );
+
+        let alert = client.get_emergency_alert(&alert_id);
+        assert_eq!(alert.status, String::from_str(&env, "pending"));
+        assert_eq!(alert.emergency_reward, 10000000);
+    }
+
+    #[test]
+    fn test_pause_and_unpause_flow() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, SecurityScannerContract);
+        let client = SecurityScannerContractClient::new(&env, &contract_id);
+
+        let admin = test_address(&env, 1);
+        let approver1 = test_address(&env, 2);
+        let approver2 = test_address(&env, 3);
+
+        client.initialize(&admin);
+        grant_role(&env, &contract_id, &approver1, &Role::SuperAdmin);
+        grant_role(&env, &contract_id, &approver2, &Role::SuperAdmin);
+
+        // Propose pause
+        let reason = String::from_str(&env, "Critical vulnerability found - emergency pause");
+        let pause_proposal_id =
+            client.propose_pause(&approver1, &reason, &2, &0);
+
+        // Both approvers approve
+        client.approve_pause_proposal(&approver1, &pause_proposal_id);
+        client.approve_pause_proposal(&approver2, &pause_proposal_id);
+
+        // Execute pause
+        client.execute_pause(&approver1, &pause_proposal_id);
+
+        // Contract should now be paused
+        assert!(client.is_paused());
+
+        // State-mutating functions should be rejected
+        let reporter = test_address(&env, 10);
+        let contract_id_bytes = BytesN::from_array(&env, &[1; 32]);
+        assert_eq!(
+            client.try_report_vulnerability(
+                &reporter,
+                &contract_id_bytes,
+                &String::from_str(&env, "reentrancy"),
+                &String::from_str(&env, "high"),
+                &String::from_str(&env, "Test"),
+                &String::from_str(&env, "func"),
+            ),
+            Err(Ok(ContractError::ContractPaused))
+        );
+
+        // Propose unpause
+        let unpause_proposal_id =
+            client.propose_unpause(&approver1, &2, &0);
+
+        // Both approvers approve
+        client.approve_unpause_proposal(&approver1, &unpause_proposal_id);
+        client.approve_unpause_proposal(&approver2, &unpause_proposal_id);
+
+        // Execute unpause
+        client.execute_unpause(&approver1, &unpause_proposal_id);
+
+        // Contract should now be unpaused
+        assert!(!client.is_paused());
+
+        // State-mutating functions should work again
+        let report_id = client.report_vulnerability(
+            &reporter,
+            &contract_id_bytes,
+            &String::from_str(&env, "reentrancy"),
+            &String::from_str(&env, "high"),
+            &String::from_str(&env, "Test vulnerability after unpause"),
+            &String::from_str(&env, "function xyz"),
+        );
+        let report = client.get_vulnerability(&report_id);
+        assert_eq!(report.status, String::from_str(&env, "pending"));
+    }
+
+    #[test]
+    fn test_unauthorized_pause_rejection() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, SecurityScannerContract);
+        let client = SecurityScannerContractClient::new(&env, &contract_id);
+
+        let admin = test_address(&env, 1);
+        let unauthorized = test_address(&env, 2);
+
+        client.initialize(&admin);
+
+        // Unauthorized user cannot propose pause
+        assert_eq!(
+            client.try_propose_pause(
+                &unauthorized,
+                &String::from_str(&env, "reason"),
+                &1,
+                &0
+            ),
+            Err(Ok(ContractError::InsufficientPermissions))
+        );
+    }
+
+    #[test]
+    fn test_cannot_pause_when_already_paused() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, SecurityScannerContract);
+        let client = SecurityScannerContractClient::new(&env, &contract_id);
+
+        let admin = test_address(&env, 1);
+        client.initialize(&admin);
+
+        // Manually set paused flag
+        env.as_contract(&contract_id, || {
+            env.storage().instance().set(&PAUSED, &true);
+        });
+
+        // Trying to pause again should fail because when_not_paused check fails
+        assert_eq!(
+            client.try_pause(&admin),
+            Err(Ok(ContractError::ContractPaused))
+        );
+    }
+
+    #[test]
+    fn test_read_operations_work_during_pause() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, SecurityScannerContract);
+        let client = SecurityScannerContractClient::new(&env, &contract_id);
+
+        let admin = test_address(&env, 1);
+        client.initialize(&admin);
+
+        // Create some data before pause
+        let reporter = test_address(&env, 10);
+        let contract_id_bytes = BytesN::from_array(&env, &[1; 32]);
+        let report_id = client.report_vulnerability(
+            &reporter,
+            &contract_id_bytes,
+            &String::from_str(&env, "reentrancy"),
+            &String::from_str(&env, "high"),
+            &String::from_str(&env, "Test vulnerability"),
+            &String::from_str(&env, "function xyz"),
+        );
+
+        // Manually set paused flag
+        env.as_contract(&contract_id, || {
+            env.storage().instance().set(&PAUSED, &true);
+        });
+
+        // Read operations should still work
+        let report = client.get_vulnerability(&report_id);
+        assert_eq!(report.status, String::from_str(&env, "pending"));
+        assert!(client.is_paused());
+        assert_eq!(client.get_version(), String::from_str(&env, "1.0.0"));
+        assert_eq!(client.get_bounty_pool(), 0);
     }
 }
