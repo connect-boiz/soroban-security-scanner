@@ -703,10 +703,7 @@ mod dispute_tests {
         assert_eq!(client.get_version(), String::from_str(&env, "2.0.0"));
 
         // Rollback to previous version within window
-        client.rollback_upgrade(
-            &admin,
-            &String::from_str(&env, "1.0.0"),
-        );
+        client.rollback_upgrade(&admin, &String::from_str(&env, "1.0.0"));
         assert_eq!(client.get_version(), String::from_str(&env, "1.0.0"));
     }
 
@@ -737,10 +734,7 @@ mod dispute_tests {
         advance_timestamp(&env, 31 * 24 * 60 * 60);
 
         assert_eq!(
-            client.try_rollback_upgrade(
-                &admin,
-                &String::from_str(&env, "1.0.0")
-            ),
+            client.try_rollback_upgrade(&admin, &String::from_str(&env, "1.0.0")),
             Err(Ok(ContractError::InvalidInput))
         );
     }
