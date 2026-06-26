@@ -127,17 +127,56 @@ mod dispute_tests {
         let client = SecurityScannerContractClient::new(&env, &contract_id);
 
         let admin = test_address(&env, 1);
-        let new_contract = test_address(&env, 2);
+        let approver1 = test_address(&env, 2);
+        let approver2 = test_address(&env, 3);
+        let approver3 = test_address(&env, 4);
+        let new_contract = test_address(&env, 5);
+
         client.initialize(&admin);
-        client.emergency_upgrade(
-            &admin,
+
+        // Grant SuperAdmin to approvers for EmergencyActions permission
+        grant_role(&env, &contract_id, &approver1, &Role::SuperAdmin);
+        grant_role(&env, &contract_id, &approver2, &Role::SuperAdmin);
+        grant_role(&env, &contract_id, &approver3, &Role::SuperAdmin);
+
+        // Direct call now requires multi-sig
+        assert_eq!(
+            client.try_emergency_upgrade(
+                &admin,
+                &new_contract,
+                &String::from_str(&env, "1.0.1"),
+                &String::from_str(
+                    &env,
+                    "Critical security patch for a severe vulnerability that must be fixed immediately",
+                ),
+            ),
+            Err(Ok(ContractError::MultiSigRequired))
+        );
+
+        // Create multi-sig proposal
+        let proposal_id = client.propose_emergency_upgrade(
+            &approver1,
             &new_contract,
             &String::from_str(&env, "1.0.1"),
             &String::from_str(
                 &env,
                 "Critical security patch for a severe vulnerability that must be fixed immediately",
             ),
+            &3,
+            &0,
         );
+
+        // All three approve
+        client.approve_emerg_upgrade(&approver1, &proposal_id);
+        client.approve_emerg_upgrade(&approver2, &proposal_id);
+        client.approve_emerg_upgrade(&approver3, &proposal_id);
+
+        // Wait for execution delay to pass
+        advance_timestamp(&env, 3601);
+
+        // Execute
+        client.execute_emergency_upgrade(&approver1, &proposal_id);
+
         assert_eq!(client.get_upgrade_history().len(), 1);
     }
 
@@ -634,5 +673,190 @@ mod dispute_tests {
             client.try_get_dispute(&99999),
             Err(Ok(ContractError::DisputeNotFound))
         );
+    }
+
+    // ── Enhanced Upgrade Mechanism Tests ──
+
+    #[test]
+    fn test_rollback_within_window() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, SecurityScannerContract);
+        let client = SecurityScannerContractClient::new(&env, &contract_id);
+
+        let admin = test_address(&env, 1);
+        let upgrade_authority = test_address(&env, 2);
+        let new_contract = test_address(&env, 3);
+
+        client.initialize(&admin);
+        client.set_upgrade_authority(&admin, &upgrade_authority);
+
+        // Perform a standard upgrade
+        client.propose_upgrade(
+            &upgrade_authority,
+            &new_contract,
+            &String::from_str(&env, "2.0.0"),
+            &String::from_str(&env, "Upgrade to version 2.0.0 with new features"),
+        );
+        advance_timestamp(&env, 604800 + 1);
+        client.execute_upgrade(&upgrade_authority);
+        assert_eq!(client.get_version(), String::from_str(&env, "2.0.0"));
+
+        // Rollback to previous version within window
+        client.rollback_upgrade(
+            &admin,
+            &String::from_str(&env, "1.0.0"),
+        );
+        assert_eq!(client.get_version(), String::from_str(&env, "1.0.0"));
+    }
+
+    #[test]
+    fn test_rollback_after_window_rejected() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, SecurityScannerContract);
+        let client = SecurityScannerContractClient::new(&env, &contract_id);
+
+        let admin = test_address(&env, 1);
+        let upgrade_authority = test_address(&env, 2);
+        let new_contract = test_address(&env, 3);
+
+        client.initialize(&admin);
+        client.set_upgrade_authority(&admin, &upgrade_authority);
+
+        client.propose_upgrade(
+            &upgrade_authority,
+            &new_contract,
+            &String::from_str(&env, "2.0.0"),
+            &String::from_str(&env, "Upgrade to version 2.0.0"),
+        );
+        advance_timestamp(&env, 604800 + 1);
+        client.execute_upgrade(&upgrade_authority);
+
+        // Advance past 30-day rollback window
+        advance_timestamp(&env, 31 * 24 * 60 * 60);
+
+        assert_eq!(
+            client.try_rollback_upgrade(
+                &admin,
+                &String::from_str(&env, "1.0.0")
+            ),
+            Err(Ok(ContractError::InvalidInput))
+        );
+    }
+
+    #[test]
+    fn test_migration_event_emitted() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, SecurityScannerContract);
+        let client = SecurityScannerContractClient::new(&env, &contract_id);
+
+        let admin = test_address(&env, 1);
+        let upgrade_authority = test_address(&env, 2);
+        let new_contract = test_address(&env, 3);
+
+        client.initialize(&admin);
+        client.set_upgrade_authority(&admin, &upgrade_authority);
+
+        client.propose_upgrade(
+            &upgrade_authority,
+            &new_contract,
+            &String::from_str(&env, "2.0.0"),
+            &String::from_str(&env, "Upgrade with migration events"),
+        );
+        advance_timestamp(&env, 604800 + 1);
+        client.execute_upgrade(&upgrade_authority);
+
+        // Verify migration status is set
+        let (migrated_addr, _ts) = client.get_migration_status().unwrap();
+        assert_eq!(migrated_addr, new_contract);
+
+        // Verify version was updated
+        assert_eq!(client.get_version(), String::from_str(&env, "2.0.0"));
+
+        // Upgrade history should have the entry
+        assert_eq!(client.get_upgrade_history().len(), 1);
+    }
+
+    #[test]
+    fn test_emergency_upgrade_multi_sig_quorum() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, SecurityScannerContract);
+        let client = SecurityScannerContractClient::new(&env, &contract_id);
+
+        let admin = test_address(&env, 1);
+        let approver1 = test_address(&env, 2);
+        let approver2 = test_address(&env, 3);
+        let approver3 = test_address(&env, 4);
+        let new_contract = test_address(&env, 5);
+
+        client.initialize(&admin);
+        grant_role(&env, &contract_id, &approver1, &Role::SuperAdmin);
+        grant_role(&env, &contract_id, &approver2, &Role::SuperAdmin);
+        grant_role(&env, &contract_id, &approver3, &Role::SuperAdmin);
+
+        // 2/3 of 5 = 3 (integer math), so 2 approvals is insufficient
+        let proposal_id = client.propose_emergency_upgrade(
+            &approver1,
+            &new_contract,
+            &String::from_str(&env, "1.0.1"),
+            &String::from_str(
+                &env,
+                "Critical security patch for a severe vulnerability that must be fixed immediately",
+            ),
+            &5,
+            &0,
+        );
+
+        // Only 2 approvals — not enough for 2/3 of 5 (need 3)
+        client.approve_emerg_upgrade(&approver1, &proposal_id);
+        client.approve_emerg_upgrade(&approver2, &proposal_id);
+
+        // Wait for execution delay to pass
+        advance_timestamp(&env, 3601);
+
+        assert_eq!(
+            client.try_execute_emergency_upgrade(&approver1, &proposal_id),
+            Err(Ok(ContractError::InsufficientPermissions))
+        );
+
+        // Third approval reaches 2/3 quorum
+        client.approve_emerg_upgrade(&approver3, &proposal_id);
+        client.execute_emergency_upgrade(&approver1, &proposal_id);
+
+        assert_eq!(client.get_upgrade_history().len(), 1);
+    }
+
+    #[test]
+    fn test_cancel_upgrade_by_emergency_actions_holder() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, SecurityScannerContract);
+        let client = SecurityScannerContractClient::new(&env, &contract_id);
+
+        let admin = test_address(&env, 1);
+        let upgrade_authority = test_address(&env, 2);
+        let emergency_holder = test_address(&env, 3);
+        let new_contract = test_address(&env, 4);
+
+        client.initialize(&admin);
+        client.set_upgrade_authority(&admin, &upgrade_authority);
+        grant_role(&env, &contract_id, &emergency_holder, &Role::SuperAdmin);
+
+        // Propose upgrade
+        client.propose_upgrade(
+            &upgrade_authority,
+            &new_contract,
+            &String::from_str(&env, "2.0.0"),
+            &String::from_str(&env, "Standard upgrade"),
+        );
+
+        // EmergencyActions holder can cancel
+        client.cancel_upgrade(&emergency_holder);
+
+        // Pending upgrade should be cleared
+        assert!(client.try_get_pending_upgrade().is_err());
     }
 }
