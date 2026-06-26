@@ -414,8 +414,7 @@ mod security {
 
         // Propose pause
         let reason = String::from_str(&env, "Critical vulnerability found - emergency pause");
-        let pause_proposal_id =
-            client.propose_pause(&approver1, &reason, &2, &0);
+        let pause_proposal_id = client.propose_pause(&approver1, &reason, &2, &0);
 
         // Both approvers approve
         client.approve_pause_proposal(&approver1, &pause_proposal_id);
@@ -443,8 +442,7 @@ mod security {
         );
 
         // Propose unpause
-        let unpause_proposal_id =
-            client.propose_unpause(&approver1, &2, &0);
+        let unpause_proposal_id = client.propose_unpause(&approver1, &2, &0);
 
         // Both approvers approve
         client.approve_unpause_proposal(&approver1, &unpause_proposal_id);
@@ -483,12 +481,7 @@ mod security {
 
         // Unauthorized user cannot propose pause
         assert_eq!(
-            client.try_propose_pause(
-                &unauthorized,
-                &String::from_str(&env, "reason"),
-                &1,
-                &0
-            ),
+            client.try_propose_pause(&unauthorized, &String::from_str(&env, "reason"), &1, &0),
             Err(Ok(ContractError::InsufficientPermissions))
         );
     }
