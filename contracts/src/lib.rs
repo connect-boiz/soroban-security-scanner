@@ -2170,7 +2170,7 @@ impl SecurityScannerContract {
             .storage()
             .instance()
             .get(&CHALLENGED_UPGRADES)
-            .unwrap_or(Map::new(&env));
+            .unwrap_or(Map::new(env));
 
         for (challenge_ts, challenge) in challenged_upgrades.iter() {
             if !challenge.resolved && now < challenge_ts + CHALLENGE_PERIOD_SECONDS {
