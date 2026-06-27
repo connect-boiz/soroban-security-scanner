@@ -70,8 +70,14 @@ fn test_state_change_tracking() {
         .new_state("{\"status\":\"verified\"}")
         .build();
     let recorded = trail.record(event).unwrap();
-    assert_eq!(recorded.previous_state.as_deref(), Some("{\"status\":\"open\"}"));
-    assert_eq!(recorded.new_state.as_deref(), Some("{\"status\":\"verified\"}"));
+    assert_eq!(
+        recorded.previous_state.as_deref(),
+        Some("{\"status\":\"open\"}")
+    );
+    assert_eq!(
+        recorded.new_state.as_deref(),
+        Some("{\"status\":\"verified\"}")
+    );
 }
 
 #[test]
@@ -81,7 +87,11 @@ fn test_hash_chain_links_entries() {
         .record_action(AuditAction::AuthLogin, admin_ctx("alice"), "login")
         .unwrap();
     let second = trail
-        .record_action(AuditAction::BountyPayment, admin_ctx("alice"), "paid bounty")
+        .record_action(
+            AuditAction::BountyPayment,
+            admin_ctx("alice"),
+            "paid bounty",
+        )
         .unwrap();
 
     // The second entry must point back to the first.
@@ -137,7 +147,9 @@ fn test_query_requires_admin_role() {
 
     // Non-admin roles are rejected.
     assert!(trail.query(UserRole::User, &AuditQuery::new()).is_err());
-    assert!(trail.query(UserRole::Researcher, &AuditQuery::new()).is_err());
+    assert!(trail
+        .query(UserRole::Researcher, &AuditQuery::new())
+        .is_err());
 
     // Admin-class roles succeed.
     assert!(trail.query(UserRole::Admin, &AuditQuery::new()).is_ok());

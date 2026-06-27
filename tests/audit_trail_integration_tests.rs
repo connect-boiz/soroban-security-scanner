@@ -46,7 +46,10 @@ fn structured_event_captures_all_required_fields() {
     assert_eq!(recorded.resource_type.as_deref(), Some("vulnerability"));
     assert_eq!(recorded.resource_id.as_deref(), Some("vuln-7"));
     assert_eq!(recorded.ip_address.as_deref(), Some("10.0.0.5"));
-    assert_eq!(recorded.user_agent.as_deref(), Some("integration-suite/1.0"));
+    assert_eq!(
+        recorded.user_agent.as_deref(),
+        Some("integration-suite/1.0")
+    );
     assert_eq!(recorded.request_id.as_deref(), Some("req-alice"));
     assert!(recorded.previous_state.is_some());
     assert!(recorded.new_state.is_some());
@@ -65,7 +68,9 @@ fn covers_all_security_critical_operation_classes() {
         AuditAction::AdminRoleChange,
     ];
     for a in actions {
-        trail.record_action(a, ctx("alice", "10.0.0.1"), "op").unwrap();
+        trail
+            .record_action(a, ctx("alice", "10.0.0.1"), "op")
+            .unwrap();
     }
 
     let all = trail.query(UserRole::Admin, &AuditQuery::new()).unwrap();
@@ -105,11 +110,17 @@ fn tamper_evident_chain_survives_full_run_and_detects_edits() {
 fn rbac_blocks_non_admin_reads() {
     let trail = AuditTrail::with_defaults();
     trail
-        .record_action(AuditAction::AdminConfigChange, ctx("alice", "10.0.0.1"), "x")
+        .record_action(
+            AuditAction::AdminConfigChange,
+            ctx("alice", "10.0.0.1"),
+            "x",
+        )
         .unwrap();
 
     assert!(trail.query(UserRole::User, &AuditQuery::new()).is_err());
-    assert!(trail.query(UserRole::Researcher, &AuditQuery::new()).is_err());
+    assert!(trail
+        .query(UserRole::Researcher, &AuditQuery::new())
+        .is_err());
     assert!(trail.query(UserRole::Admin, &AuditQuery::new()).is_ok());
 }
 
@@ -120,7 +131,11 @@ fn suspicious_pattern_alerting_flags_multi_ip_admin() {
         .record_action(AuditAction::AdminRoleChange, ctx("mallory", "1.1.1.1"), "a")
         .unwrap();
     trail
-        .record_action(AuditAction::AdminAccessGrant, ctx("mallory", "9.9.9.9"), "b")
+        .record_action(
+            AuditAction::AdminAccessGrant,
+            ctx("mallory", "9.9.9.9"),
+            "b",
+        )
         .unwrap();
 
     let alerts = trail.detect_suspicious_patterns().unwrap();

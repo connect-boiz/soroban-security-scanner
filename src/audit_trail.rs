@@ -377,7 +377,11 @@ impl AuditEventBuilder {
     }
 
     /// Identify the affected resource by type and id.
-    pub fn resource(mut self, resource_type: impl Into<String>, resource_id: impl Into<String>) -> Self {
+    pub fn resource(
+        mut self,
+        resource_type: impl Into<String>,
+        resource_id: impl Into<String>,
+    ) -> Self {
         self.event.resource_type = Some(resource_type.into());
         self.event.resource_id = Some(resource_id.into());
         self
@@ -538,11 +542,7 @@ impl AuditTrail {
     /// Query entries with a filter. Requires an admin-class `requester_role`;
     /// otherwise returns an authorization error so non-admins cannot read the
     /// audit trail.
-    pub fn query(
-        &self,
-        requester_role: UserRole,
-        filter: &AuditQuery,
-    ) -> Result<Vec<AuditEvent>> {
+    pub fn query(&self, requester_role: UserRole, filter: &AuditQuery) -> Result<Vec<AuditEvent>> {
         if !requester_role.can_read_audit() {
             return Err(anyhow!(
                 "access denied: role '{}' is not permitted to read the audit trail",
@@ -642,12 +642,14 @@ impl AuditTrail {
                 Some(ip) => ip.clone(),
                 None => continue,
             };
-            let activity = by_user.entry(entry.user_id.clone()).or_insert(UserActivity {
-                ips: Vec::new(),
-                action_count: 0,
-                first_seen: entry.event_timestamp,
-                last_seen: entry.event_timestamp,
-            });
+            let activity = by_user
+                .entry(entry.user_id.clone())
+                .or_insert(UserActivity {
+                    ips: Vec::new(),
+                    action_count: 0,
+                    first_seen: entry.event_timestamp,
+                    last_seen: entry.event_timestamp,
+                });
             if !activity.ips.contains(&ip) {
                 activity.ips.push(ip);
             }
@@ -832,7 +834,11 @@ impl AuditQuery {
         self
     }
 
-    pub fn resource(mut self, resource_type: impl Into<String>, resource_id: impl Into<String>) -> Self {
+    pub fn resource(
+        mut self,
+        resource_type: impl Into<String>,
+        resource_id: impl Into<String>,
+    ) -> Self {
         self.resource_type = Some(resource_type.into());
         self.resource_id = Some(resource_id.into());
         self

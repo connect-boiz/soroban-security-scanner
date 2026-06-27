@@ -60,9 +60,13 @@ pub mod api_versioning;
 pub mod audit_trail;
 pub use audit_trail::{
     ActorContext, AuditAction, AuditCategory, AuditConfig, AuditEvent, AuditEventBuilder,
-    AuditOutcome, AuditQuery, AuditSeverity, AuditTrail, ChainVerification, SuspiciousActivityAlert,
-    UserRole,
+    AuditOutcome, AuditQuery, AuditSeverity, AuditTrail, ChainVerification,
+    SuspiciousActivityAlert, UserRole,
 };
+
+// Input sanitization & validation for contract-code uploads (issue #330).
+// Self-contained and compiles cleanly under default features.
+pub mod upload_sanitization;
 
 // === Broken modules gated behind feature flag ===
 // Each module has pre-existing compilation errors (borrow checker violations,
