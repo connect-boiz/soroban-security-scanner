@@ -513,10 +513,8 @@ impl SecurityScannerContract {
     fn execute_unpause_internal(env: &Env, admin: &Address) {
         env.storage().instance().remove(&PAUSED);
         env.storage().instance().remove(&PAUSE_REASON);
-        env.events().publish(
-            (Symbol::new(env, "ContractUnpaused"),),
-            (admin.clone(),),
-        );
+        env.events()
+            .publish((Symbol::new(env, "ContractUnpaused"),), (admin.clone(),));
     }
 
     fn initialize_role_permissions(env: &Env) {
@@ -2008,8 +2006,16 @@ impl SecurityScannerContract {
         Self::require_valid_text(&new_version)?;
 
         // Emergency upgrades require 2/3 quorum
-        let quorum = if required_approvals < 3 { 3 } else { required_approvals };
-        let min_delay = if execution_delay < 3600 { 3600 } else { execution_delay };
+        let quorum = if required_approvals < 3 {
+            3
+        } else {
+            required_approvals
+        };
+        let min_delay = if execution_delay < 3600 {
+            3600
+        } else {
+            execution_delay
+        };
 
         let parameters = soroban_sdk::vec![
             &env,
@@ -2164,7 +2170,7 @@ impl SecurityScannerContract {
             .storage()
             .instance()
             .get(&CHALLENGED_UPGRADES)
-            .unwrap_or(Map::new(&env));
+            .unwrap_or(Map::new(env));
 
         for (challenge_ts, challenge) in challenged_upgrades.iter() {
             if !challenge.resolved && now < challenge_ts + CHALLENGE_PERIOD_SECONDS {
@@ -2190,9 +2196,7 @@ impl SecurityScannerContract {
         });
 
         env.storage().instance().set(&UPGRADE_HISTORY, &history);
-        env.storage()
-            .instance()
-            .set(&CONTRACT_VERSION, new_version);
+        env.storage().instance().set(&CONTRACT_VERSION, new_version);
         let migration_pair: (Address, u64) = (new_contract_address.clone(), now);
         env.storage()
             .instance()
@@ -2204,9 +2208,7 @@ impl SecurityScannerContract {
         env.storage()
             .instance()
             .set(&EMERGENCY_UPGRADE_COUNT, &(emergency_count + 1));
-        env.storage()
-            .instance()
-            .set(&LAST_EMERGENCY_UPGRADE, &now);
+        env.storage().instance().set(&LAST_EMERGENCY_UPGRADE, &now);
 
         env.events().publish(
             (Symbol::new(env, "emergency_upgrade"),),
