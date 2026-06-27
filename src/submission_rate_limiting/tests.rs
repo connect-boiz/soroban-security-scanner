@@ -50,22 +50,31 @@ fn window_slides_and_frees_capacity() {
 
     // Exhaust the per-user limit at t0.
     for _ in 0..10 {
-        let req = SubmissionRequest::submission(Tier::User, Some(uid), ip, "/api/v1/vulnerabilities");
-        assert!(limiter.check_at(&req, t0, SystemHealth::healthy()).is_allowed());
+        let req =
+            SubmissionRequest::submission(Tier::User, Some(uid), ip, "/api/v1/vulnerabilities");
+        assert!(limiter
+            .check_at(&req, t0, SystemHealth::healthy())
+            .is_allowed());
     }
     let req = SubmissionRequest::submission(Tier::User, Some(uid), ip, "/api/v1/vulnerabilities");
-    assert!(!limiter.check_at(&req, t0, SystemHealth::healthy()).is_allowed());
+    assert!(!limiter
+        .check_at(&req, t0, SystemHealth::healthy())
+        .is_allowed());
 
     // One hour and a second later, the original events have aged out.
     let later = t0 + Duration::seconds(3601);
-    assert!(limiter.check_at(&req, later, SystemHealth::healthy()).is_allowed());
+    assert!(limiter
+        .check_at(&req, later, SystemHealth::healthy())
+        .is_allowed());
 }
 
 #[test]
 fn concurrent_submissions_never_exceed_limit() {
     // Hammer a single user/IP from many threads and assert the limiter never
     // admits more than the configured ceiling (thread-safety / accuracy).
-    let limiter = Arc::new(SubmissionRateLimiter::new(SubmissionRateLimitConfig::default()));
+    let limiter = Arc::new(SubmissionRateLimiter::new(
+        SubmissionRateLimitConfig::default(),
+    ));
     let uid = Uuid::new_v4();
     let now = base_time();
 
@@ -81,7 +90,10 @@ fn concurrent_submissions_never_exceed_limit() {
                         "203.0.113.99".parse().unwrap(),
                         "/api/v1/vulnerabilities",
                     );
-                    if limiter.check_at(&req, now, SystemHealth::healthy()).is_allowed() {
+                    if limiter
+                        .check_at(&req, now, SystemHealth::healthy())
+                        .is_allowed()
+                    {
                         local_allowed += 1;
                     }
                 }
@@ -157,15 +169,23 @@ fn distributed_store_shares_state_across_limiters() {
 
     // 5 on node A + 5 on node B exhaust the shared per-user limit of 10.
     for _ in 0..5 {
-        let req = SubmissionRequest::submission(Tier::User, Some(uid), ip, "/api/v1/vulnerabilities");
-        assert!(node_a.check_at(&req, now, SystemHealth::healthy()).is_allowed());
+        let req =
+            SubmissionRequest::submission(Tier::User, Some(uid), ip, "/api/v1/vulnerabilities");
+        assert!(node_a
+            .check_at(&req, now, SystemHealth::healthy())
+            .is_allowed());
     }
     for _ in 0..5 {
-        let req = SubmissionRequest::submission(Tier::User, Some(uid), ip, "/api/v1/vulnerabilities");
-        assert!(node_b.check_at(&req, now, SystemHealth::healthy()).is_allowed());
+        let req =
+            SubmissionRequest::submission(Tier::User, Some(uid), ip, "/api/v1/vulnerabilities");
+        assert!(node_b
+            .check_at(&req, now, SystemHealth::healthy())
+            .is_allowed());
     }
     let req = SubmissionRequest::submission(Tier::User, Some(uid), ip, "/api/v1/vulnerabilities");
-    assert!(!node_b.check_at(&req, now, SystemHealth::healthy()).is_allowed());
+    assert!(!node_b
+        .check_at(&req, now, SystemHealth::healthy())
+        .is_allowed());
 }
 
 #[test]
@@ -178,7 +198,8 @@ fn monitoring_raises_alert_under_attack() {
     let now = base_time();
 
     for _ in 0..200 {
-        let req = SubmissionRequest::submission(Tier::User, Some(uid), ip, "/api/v1/vulnerabilities");
+        let req =
+            SubmissionRequest::submission(Tier::User, Some(uid), ip, "/api/v1/vulnerabilities");
         limiter.check_at(&req, now, SystemHealth::healthy());
     }
 
@@ -186,7 +207,10 @@ fn monitoring_raises_alert_under_attack() {
     assert_eq!(stats.total_requests, 200);
     assert!(stats.blocked > stats.allowed, "mostly blocked under attack");
     assert!(stats.block_ratio() > 0.5);
-    assert!(!limiter.monitor().alerts().is_empty(), "an alert should fire");
+    assert!(
+        !limiter.monitor().alerts().is_empty(),
+        "an alert should fire"
+    );
 }
 
 #[test]
@@ -198,7 +222,9 @@ fn headers_round_trip_to_http_pairs() {
         "203.0.113.4".parse().unwrap(),
         "/api/v1/vulnerabilities",
     );
-    if let Decision::Allowed { headers, .. } = limiter.check_at(&req, base_time(), SystemHealth::healthy()) {
+    if let Decision::Allowed { headers, .. } =
+        limiter.check_at(&req, base_time(), SystemHealth::healthy())
+    {
         let pairs = headers.to_pairs();
         let names: Vec<_> = pairs.iter().map(|(k, _)| *k).collect();
         assert!(names.contains(&"X-RateLimit-Limit"));

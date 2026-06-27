@@ -71,7 +71,9 @@ mod tests {
         assert_eq!(h.remaining, 7);
         assert!(h.retry_after.is_none());
         let pairs = h.to_pairs();
-        assert!(pairs.iter().any(|(k, v)| *k == "X-RateLimit-Limit" && v == "10"));
+        assert!(pairs
+            .iter()
+            .any(|(k, v)| *k == "X-RateLimit-Limit" && v == "10"));
         assert!(!pairs.iter().any(|(k, _)| *k == "Retry-After"));
     }
 

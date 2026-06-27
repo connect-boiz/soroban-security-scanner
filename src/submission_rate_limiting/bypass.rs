@@ -130,22 +130,37 @@ mod tests {
     #[test]
     fn cidr_ipv4_matching() {
         assert!(cidr_contains("10.0.0.0/8", "10.255.1.1".parse().unwrap()));
-        assert!(cidr_contains("192.168.1.0/24", "192.168.1.42".parse().unwrap()));
-        assert!(!cidr_contains("192.168.1.0/24", "192.168.2.42".parse().unwrap()));
+        assert!(cidr_contains(
+            "192.168.1.0/24",
+            "192.168.1.42".parse().unwrap()
+        ));
+        assert!(!cidr_contains(
+            "192.168.1.0/24",
+            "192.168.2.42".parse().unwrap()
+        ));
     }
 
     #[test]
     fn cidr_exact_and_zero_prefix() {
         assert!(cidr_contains("203.0.113.5", "203.0.113.5".parse().unwrap()));
-        assert!(!cidr_contains("203.0.113.5", "203.0.113.6".parse().unwrap()));
+        assert!(!cidr_contains(
+            "203.0.113.5",
+            "203.0.113.6".parse().unwrap()
+        ));
         // /0 matches everything.
         assert!(cidr_contains("0.0.0.0/0", "8.8.8.8".parse().unwrap()));
     }
 
     #[test]
     fn cidr_ipv6_matching() {
-        assert!(cidr_contains("2001:db8::/32", "2001:db8:1234::1".parse().unwrap()));
-        assert!(!cidr_contains("2001:db8::/32", "2001:dba::1".parse().unwrap()));
+        assert!(cidr_contains(
+            "2001:db8::/32",
+            "2001:db8:1234::1".parse().unwrap()
+        ));
+        assert!(!cidr_contains(
+            "2001:db8::/32",
+            "2001:dba::1".parse().unwrap()
+        ));
     }
 
     #[test]

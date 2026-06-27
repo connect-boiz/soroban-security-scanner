@@ -59,7 +59,8 @@ pub use adaptive::{AdaptiveController, SystemHealth};
 pub use bypass::{cidr_contains, ResearcherRegistry};
 pub use challenge::{Challenge, ChallengeKind, ChallengePolicy};
 pub use config::{
-    AdaptiveConfig, SubmissionLimits, SubmissionRateLimitConfig, Tier, TierMultipliers, UploadLimits,
+    AdaptiveConfig, SubmissionLimits, SubmissionRateLimitConfig, Tier, TierMultipliers,
+    UploadLimits,
 };
 pub use headers::RateLimitHeaders;
 pub use limiter::{Decision, SubmissionRateLimiter, SubmissionRequest};

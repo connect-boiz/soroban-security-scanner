@@ -42,7 +42,12 @@ pub struct SubmissionRequest {
 
 impl SubmissionRequest {
     /// Builds a plain submission request (no upload) with a fresh id.
-    pub fn submission(tier: Tier, user_id: Option<Uuid>, ip: IpAddr, endpoint: impl Into<String>) -> Self {
+    pub fn submission(
+        tier: Tier,
+        user_id: Option<Uuid>,
+        ip: IpAddr,
+        endpoint: impl Into<String>,
+    ) -> Self {
         Self {
             id: Uuid::new_v4(),
             tier,
@@ -193,7 +198,12 @@ impl SubmissionRateLimiter {
     /// Exposing `now` and `health` keeps the limiter fully deterministic and
     /// testable, and lets callers feed real load metrics into the adaptive
     /// controller.
-    pub fn check_at(&self, req: &SubmissionRequest, now: DateTime<Utc>, health: SystemHealth) -> Decision {
+    pub fn check_at(
+        &self,
+        req: &SubmissionRequest,
+        now: DateTime<Utc>,
+        health: SystemHealth,
+    ) -> Decision {
         // 1. Full bypass for verified researchers holding a bypass token.
         if let Some(token) = &req.researcher_token {
             if self.researchers.grants_full_bypass(token) {
@@ -226,7 +236,12 @@ impl SubmissionRateLimiter {
                     "upload of {} bytes exceeds maximum of {} bytes",
                     bytes, self.config.uploads.max_bytes
                 );
-                let headers = RateLimitHeaders::blocked(self.config.uploads.max_bytes, now.timestamp(), 0, "upload_size");
+                let headers = RateLimitHeaders::blocked(
+                    self.config.uploads.max_bytes,
+                    now.timestamp(),
+                    0,
+                    "upload_size",
+                );
                 self.record_violation(req, "upload_size", &reason, now);
                 return Decision::Blocked {
                     scope: "upload_size".to_string(),
@@ -290,30 +305,50 @@ impl SubmissionRateLimiter {
 
         if req.upload_bytes.is_some() {
             // Upload-specific per-user (or per-IP when anonymous) limit.
-            let limit = self.effective_limit(self.config.uploads.per_user_hourly, tier_mult, health);
+            let limit =
+                self.effective_limit(self.config.uploads.per_user_hourly, tier_mult, health);
             let key = match req.user_id {
                 Some(uid) => format!("up:user:{uid}"),
                 None => format!("up:ip:{}", req.ip),
             };
             let count = self.store.count(&key, now, window());
-            scopes.push(ScopeState { name: "upload", key, limit, count });
+            scopes.push(ScopeState {
+                name: "upload",
+                key,
+                limit,
+                count,
+            });
         } else if let Some(uid) = req.user_id {
             // Per-user submission limit.
-            let limit = self.effective_limit(self.config.submissions.per_user_hourly, tier_mult, health);
+            let limit =
+                self.effective_limit(self.config.submissions.per_user_hourly, tier_mult, health);
             let key = format!("sub:user:{uid}");
             let count = self.store.count(&key, now, window());
-            scopes.push(ScopeState { name: "user", key, limit, count });
+            scopes.push(ScopeState {
+                name: "user",
+                key,
+                limit,
+                count,
+            });
         }
 
         // Per-IP limit (applies to everyone).
-        let ip_limit = self.effective_limit(self.config.submissions.per_ip_hourly, tier_mult, health);
+        let ip_limit =
+            self.effective_limit(self.config.submissions.per_ip_hourly, tier_mult, health);
         let ip_key = format!("sub:ip:{}", req.ip);
         let ip_count = self.store.count(&ip_key, now, window());
-        scopes.push(ScopeState { name: "ip", key: ip_key, limit: ip_limit, count: ip_count });
+        scopes.push(ScopeState {
+            name: "ip",
+            key: ip_key,
+            limit: ip_limit,
+            count: ip_count,
+        });
 
         // Global limit (adaptive only — tier multiplier does not relax the
         // platform-wide ceiling).
-        let global_limit = self.adaptive.apply(self.config.submissions.global_hourly, health);
+        let global_limit = self
+            .adaptive
+            .apply(self.config.submissions.global_hourly, health);
         let global_key = "sub:global".to_string();
         let global_count = self.store.count(&global_key, now, window());
         scopes.push(ScopeState {
@@ -370,7 +405,13 @@ impl SubmissionRateLimiter {
     }
 
     /// Records a violation in the monitor.
-    fn record_violation(&self, req: &SubmissionRequest, scope: &str, reason: &str, now: DateTime<Utc>) {
+    fn record_violation(
+        &self,
+        req: &SubmissionRequest,
+        scope: &str,
+        reason: &str,
+        now: DateTime<Utc>,
+    ) {
         self.monitor.record_blocked(Violation {
             at: now,
             ip: req.ip,
@@ -402,7 +443,8 @@ mod tests {
     fn allows_up_to_user_limit_then_blocks() {
         let l = limiter();
         let uid = Uuid::new_v4();
-        let req = SubmissionRequest::submission(Tier::User, Some(uid), ip(), "/api/v1/vulnerabilities");
+        let req =
+            SubmissionRequest::submission(Tier::User, Some(uid), ip(), "/api/v1/vulnerabilities");
 
         for i in 0..10 {
             let d = l.check_at(&req, now(), SystemHealth::healthy());
@@ -420,10 +462,22 @@ mod tests {
         let l = limiter();
         // 100/hour per IP; exhaust via distinct users from the same IP.
         for _ in 0..100 {
-            let req = SubmissionRequest::submission(Tier::User, Some(Uuid::new_v4()), ip(), "/api/v1/vulnerabilities");
-            assert!(l.check_at(&req, now(), SystemHealth::healthy()).is_allowed());
+            let req = SubmissionRequest::submission(
+                Tier::User,
+                Some(Uuid::new_v4()),
+                ip(),
+                "/api/v1/vulnerabilities",
+            );
+            assert!(l
+                .check_at(&req, now(), SystemHealth::healthy())
+                .is_allowed());
         }
-        let req = SubmissionRequest::submission(Tier::User, Some(Uuid::new_v4()), ip(), "/api/v1/vulnerabilities");
+        let req = SubmissionRequest::submission(
+            Tier::User,
+            Some(Uuid::new_v4()),
+            ip(),
+            "/api/v1/vulnerabilities",
+        );
         match l.check_at(&req, now(), SystemHealth::healthy()) {
             Decision::Blocked { scope, .. } => assert_eq!(scope, "ip"),
             other => panic!("expected ip block, got {other:?}"),
@@ -435,8 +489,13 @@ mod tests {
         let mut l = limiter();
         l.researchers_mut().authorize_full_bypass("vip-token");
         let uid = Uuid::new_v4();
-        let req = SubmissionRequest::submission(Tier::Researcher, Some(uid), ip(), "/api/v1/vulnerabilities")
-            .with_researcher_token("vip-token");
+        let req = SubmissionRequest::submission(
+            Tier::Researcher,
+            Some(uid),
+            ip(),
+            "/api/v1/vulnerabilities",
+        )
+        .with_researcher_token("vip-token");
         // Far beyond any limit.
         for _ in 0..50 {
             assert!(matches!(
@@ -451,11 +510,16 @@ mod tests {
         let mut l = limiter();
         l.researchers_mut().authorize("res-token"); // elevated, not full bypass
         let uid = Uuid::new_v4();
-        let req = SubmissionRequest::submission(Tier::User, Some(uid), ip(), "/api/v1/vulnerabilities")
-            .with_researcher_token("res-token");
+        let req =
+            SubmissionRequest::submission(Tier::User, Some(uid), ip(), "/api/v1/vulnerabilities")
+                .with_researcher_token("res-token");
         // 10 base * 10x researcher multiplier = 100 allowed before user scope.
         for i in 0..100 {
-            assert!(l.check_at(&req, now(), SystemHealth::healthy()).is_allowed(), "req {i}");
+            assert!(
+                l.check_at(&req, now(), SystemHealth::healthy())
+                    .is_allowed(),
+                "req {i}"
+            );
         }
     }
 
@@ -464,7 +528,12 @@ mod tests {
         let mut cfg = SubmissionRateLimitConfig::default();
         cfg.trusted_admin_ranges.push("10.0.0.0/8".to_string());
         let l = SubmissionRateLimiter::with_store(cfg, Box::new(InMemoryStore::new()));
-        let req = SubmissionRequest::submission(Tier::Admin, Some(Uuid::new_v4()), "10.1.2.3".parse().unwrap(), "/api/v1/vulnerabilities");
+        let req = SubmissionRequest::submission(
+            Tier::Admin,
+            Some(Uuid::new_v4()),
+            "10.1.2.3".parse().unwrap(),
+            "/api/v1/vulnerabilities",
+        );
         match l.check_at(&req, now(), SystemHealth::healthy()) {
             Decision::Bypassed { .. } => {}
             other => panic!("expected bypass, got {other:?}"),
@@ -475,7 +544,13 @@ mod tests {
     fn upload_size_cap_is_enforced() {
         let l = limiter();
         let uid = Uuid::new_v4();
-        let too_big = SubmissionRequest::upload(Tier::User, Some(uid), ip(), "/api/v1/upload", 60 * 1024 * 1024);
+        let too_big = SubmissionRequest::upload(
+            Tier::User,
+            Some(uid),
+            ip(),
+            "/api/v1/upload",
+            60 * 1024 * 1024,
+        );
         match l.check_at(&too_big, now(), SystemHealth::healthy()) {
             Decision::Blocked { scope, .. } => assert_eq!(scope, "upload_size"),
             other => panic!("expected size block, got {other:?}"),
@@ -497,16 +572,21 @@ mod tests {
             other => panic!("expected upload block, got {other:?}"),
         }
         // A normal submission by the same user is still allowed.
-        let sub = SubmissionRequest::submission(Tier::User, Some(uid), ip(), "/api/v1/vulnerabilities");
-        assert!(l.check_at(&sub, now(), SystemHealth::healthy()).is_allowed());
+        let sub =
+            SubmissionRequest::submission(Tier::User, Some(uid), ip(), "/api/v1/vulnerabilities");
+        assert!(l
+            .check_at(&sub, now(), SystemHealth::healthy())
+            .is_allowed());
     }
 
     #[test]
     fn headers_report_remaining() {
         let l = limiter();
         let uid = Uuid::new_v4();
-        let req = SubmissionRequest::submission(Tier::User, Some(uid), ip(), "/api/v1/vulnerabilities");
-        if let Decision::Allowed { headers, .. } = l.check_at(&req, now(), SystemHealth::healthy()) {
+        let req =
+            SubmissionRequest::submission(Tier::User, Some(uid), ip(), "/api/v1/vulnerabilities");
+        if let Decision::Allowed { headers, .. } = l.check_at(&req, now(), SystemHealth::healthy())
+        {
             assert_eq!(headers.scope, "user");
             assert_eq!(headers.limit, 10);
             assert_eq!(headers.remaining, 9);
@@ -519,11 +599,13 @@ mod tests {
     fn blocked_response_has_retry_after() {
         let l = limiter();
         let uid = Uuid::new_v4();
-        let req = SubmissionRequest::submission(Tier::User, Some(uid), ip(), "/api/v1/vulnerabilities");
+        let req =
+            SubmissionRequest::submission(Tier::User, Some(uid), ip(), "/api/v1/vulnerabilities");
         for _ in 0..10 {
             l.check_at(&req, now(), SystemHealth::healthy());
         }
-        if let Decision::Blocked { headers, .. } = l.check_at(&req, now(), SystemHealth::healthy()) {
+        if let Decision::Blocked { headers, .. } = l.check_at(&req, now(), SystemHealth::healthy())
+        {
             // First event was at `now`, so the window frees in ~3600s.
             assert_eq!(headers.retry_after, Some(3600));
         } else {
@@ -535,7 +617,8 @@ mod tests {
     fn adaptive_load_tightens_limits() {
         let l = limiter();
         let uid = Uuid::new_v4();
-        let req = SubmissionRequest::submission(Tier::User, Some(uid), ip(), "/api/v1/vulnerabilities");
+        let req =
+            SubmissionRequest::submission(Tier::User, Some(uid), ip(), "/api/v1/vulnerabilities");
         // Under full load the per-user limit (10) is scaled to the min (25% => 2).
         let stressed = SystemHealth::new(1.0, 0.0);
         assert!(l.check_at(&req, now(), stressed).is_allowed());
@@ -550,11 +633,14 @@ mod tests {
     fn challenge_issued_when_suspicious() {
         let l = limiter();
         let uid = Uuid::new_v4();
-        let req = SubmissionRequest::submission(Tier::User, Some(uid), ip(), "/api/v1/vulnerabilities");
+        let req =
+            SubmissionRequest::submission(Tier::User, Some(uid), ip(), "/api/v1/vulnerabilities");
         // Threshold 0.8 of 10 => challenge from the 8th request onward.
         let mut challenged = false;
         for _ in 0..9 {
-            if let Decision::Allowed { challenge, .. } = l.check_at(&req, now(), SystemHealth::healthy()) {
+            if let Decision::Allowed { challenge, .. } =
+                l.check_at(&req, now(), SystemHealth::healthy())
+            {
                 if challenge.is_some() {
                     challenged = true;
                 }
@@ -567,7 +653,8 @@ mod tests {
     fn monitor_tracks_decisions() {
         let l = limiter();
         let uid = Uuid::new_v4();
-        let req = SubmissionRequest::submission(Tier::User, Some(uid), ip(), "/api/v1/vulnerabilities");
+        let req =
+            SubmissionRequest::submission(Tier::User, Some(uid), ip(), "/api/v1/vulnerabilities");
         for _ in 0..12 {
             l.check_at(&req, now(), SystemHealth::healthy());
         }
