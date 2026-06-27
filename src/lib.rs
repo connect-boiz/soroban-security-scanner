@@ -54,6 +54,7 @@ impl Severity {
 // === Clean modules (no feature gate needed) ===
 // The api_versioning module compiles cleanly without the broken-modules feature.
 pub mod api_versioning;
+pub mod error_handler;
 
 // Comprehensive audit trail for security-critical operations (#326). Compiles
 // cleanly with no feature gate so its tests run under default `cargo test`.
