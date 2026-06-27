@@ -126,7 +126,12 @@ fn trend_tracking_over_time() {
     for (tier, env, ts) in stages {
         let score = engine.score(
             &cvss,
-            &RiskContext::new(tier, AssetType::Stablecoin, env, PermissionExposure::PublicPermissionless),
+            &RiskContext::new(
+                tier,
+                AssetType::Stablecoin,
+                env,
+                PermissionExposure::PublicPermissionless,
+            ),
         );
         history.record("VULN-INT-1", &score, ts);
     }
@@ -180,8 +185,12 @@ fn ml_predictor_achieves_high_correlation() {
     for cvss in &cvss_set {
         for t in &tiers {
             for e in &envs {
-                let ctx =
-                    RiskContext::new(*t, AssetType::Utility, *e, PermissionExposure::PublicAuthenticated);
+                let ctx = RiskContext::new(
+                    *t,
+                    AssetType::Utility,
+                    *e,
+                    PermissionExposure::PublicAuthenticated,
+                );
                 let target = engine.score(cvss, &ctx).contextual_score;
                 samples.push((features_from(cvss, &ctx), target));
             }
