@@ -32,7 +32,7 @@ impl ScanResult {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Severity {
     Critical,
     High,
@@ -54,6 +54,10 @@ impl Severity {
 // === Clean modules (no feature gate needed) ===
 // The api_versioning module compiles cleanly without the broken-modules feature.
 pub mod api_versioning;
+
+// Dynamic, context-aware severity scoring with CVSS v3.1 (issue #332).
+// Self-contained and compiles cleanly under default features.
+pub mod severity_scoring;
 
 // === Broken modules gated behind feature flag ===
 // Each module has pre-existing compilation errors (borrow checker violations,
