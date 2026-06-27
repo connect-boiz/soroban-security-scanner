@@ -55,10 +55,14 @@ impl Severity {
 // The api_versioning module compiles cleanly without the broken-modules feature.
 pub mod api_versioning;
 
-// Tiered, adaptive rate limiting for vulnerability-submission and file-upload
-// endpoints (issue #327). Self-contained and compiles cleanly under default
-// features.
-pub mod submission_rate_limiting;
+// Comprehensive audit trail for security-critical operations (#326). Compiles
+// cleanly with no feature gate so its tests run under default `cargo test`.
+pub mod audit_trail;
+pub use audit_trail::{
+    ActorContext, AuditAction, AuditCategory, AuditConfig, AuditEvent, AuditEventBuilder,
+    AuditOutcome, AuditQuery, AuditSeverity, AuditTrail, ChainVerification,
+    SuspiciousActivityAlert, UserRole,
+};
 
 // Input sanitization & validation for contract-code uploads (issue #330).
 // Self-contained and compiles cleanly under default features.
