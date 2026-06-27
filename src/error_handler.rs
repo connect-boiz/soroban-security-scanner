@@ -74,10 +74,12 @@ impl AppError {
         match self {
             AppError::NotFound => "The requested resource was not found.".to_string(),
             AppError::ValidationError(ref msg) => msg.clone(),
-            AppError::Unauthorized => "Authentication is required to access this resource."
-                .to_string(),
-            AppError::Forbidden => "You do not have permission to access this resource."
-                .to_string(),
+            AppError::Unauthorized => {
+                "Authentication is required to access this resource.".to_string()
+            }
+            AppError::Forbidden => {
+                "You do not have permission to access this resource.".to_string()
+            }
             AppError::InternalError(_) => "An internal server error occurred.".to_string(),
             AppError::RateLimited => {
                 "Too many requests. Please slow down and try again later.".to_string()
@@ -107,11 +109,14 @@ impl Serialize for AppError {
         use serde::ser::SerializeStruct;
         // Matches the IntoResponse JSON envelope: { "error": { "code": ..., "message": ..., "details": ... } }
         let mut state = serializer.serialize_struct("AppError", 1)?;
-        state.serialize_field("error", &ErrorDetail {
-            code: self.error_code().to_string(),
-            message: self.message(),
-            details: serde_json::Value::Object(Default::default()),
-        })?;
+        state.serialize_field(
+            "error",
+            &ErrorDetail {
+                code: self.error_code().to_string(),
+                message: self.message(),
+                details: serde_json::Value::Object(Default::default()),
+            },
+        )?;
         state.end()
     }
 }
@@ -208,8 +213,6 @@ pub fn request_tracing_layer() -> impl tower::Layer<axum::Router> + Clone {
         )
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -224,7 +227,10 @@ mod tests {
             AppError::ValidationError("bad".into()).status_code(),
             StatusCode::BAD_REQUEST
         );
-        assert_eq!(AppError::Unauthorized.status_code(), StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            AppError::Unauthorized.status_code(),
+            StatusCode::UNAUTHORIZED
+        );
         assert_eq!(AppError::Forbidden.status_code(), StatusCode::FORBIDDEN);
         assert_eq!(
             AppError::InternalError("boom".into()).status_code(),
@@ -245,7 +251,10 @@ mod tests {
         );
         assert_eq!(AppError::Unauthorized.error_code(), "unauthorized");
         assert_eq!(AppError::Forbidden.error_code(), "forbidden");
-        assert_eq!(AppError::InternalError("x".into()).error_code(), "internal_error");
+        assert_eq!(
+            AppError::InternalError("x".into()).error_code(),
+            "internal_error"
+        );
         assert_eq!(AppError::RateLimited.error_code(), "rate_limited");
     }
 
@@ -298,12 +307,7 @@ mod tests {
         let app = Router::new().route("/test", get(handler));
 
         let response = app
-            .oneshot(
-                Request::builder()
-                    .uri("/test")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+            .oneshot(Request::builder().uri("/test").body(Body::empty()).unwrap())
             .await
             .unwrap();
 
