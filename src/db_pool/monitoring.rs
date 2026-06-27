@@ -94,7 +94,9 @@ impl DbMonitor {
         if max > 0 && (checked_out as f64 / max as f64) >= self.exhaustion_ratio {
             self.raise(Alert {
                 code: "pool-near-exhaustion".to_string(),
-                message: format!("pool utilization {checked_out}/{max} at or above alert threshold"),
+                message: format!(
+                    "pool utilization {checked_out}/{max} at or above alert threshold"
+                ),
             });
         }
     }
