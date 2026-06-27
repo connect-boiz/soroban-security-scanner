@@ -25,6 +25,8 @@ const REPORT_NONCES: Symbol = symbol_short!("RPTNONC");
 const ESCROW_NONCES: Symbol = symbol_short!("ESCNONC");
 const ALERT_NONCES: Symbol = symbol_short!("ALRNONC");
 const REENTRANCY_LOCK: Symbol = symbol_short!("REENTR");
+const PAUSED: Symbol = symbol_short!("PAUSED");
+const PAUSE_REASON: Symbol = symbol_short!("P_RSN");
 const MAX_TEXT_LEN: u32 = 280;
 const DISPUTE_DEADLINE: u64 = 7 * 24 * 60 * 60; // 7 days in seconds
 const MIN_DISPUTE_QUORUM: u64 = 3; // Minimum 3 votes required for quorum
@@ -55,6 +57,8 @@ const EMERGENCY_UPGRADE_COUNT: Symbol = symbol_short!("EMERG_CT");
 const EMERGENCY_UPGRADE_MONTH: Symbol = symbol_short!("EMERG_MTH");
 const LAST_EMERGENCY_UPGRADE: Symbol = symbol_short!("EMRG_LAST");
 const CHALLENGED_UPGRADES: Symbol = symbol_short!("CHAL_UPGR"); // Set of challenged upgrade timestamps
+const ROLLBACK_WINDOW_SECONDS: u64 = 30 * 24 * 60 * 60; // 30 days
+const ROLLBACK_HISTORY: Symbol = symbol_short!("ROL_HIST");
 
 // Role-based access control keys
 const ADMIN_ROLES: Symbol = symbol_short!("ADM_ROLES");
@@ -180,6 +184,7 @@ pub enum ContractError {
     DisputeAlreadyResolved = 28,
     DisputeNotFound = 29,
     ReentrantCall = 30,
+    ContractPaused = 31,
 }
 
 // Vulnerability structure
@@ -476,6 +481,42 @@ impl SecurityScannerContract {
         }
     }
 
+    /// Reject state-mutating operations while the contract is paused.
+    fn when_not_paused(env: &Env) -> Result<(), ContractError> {
+        let paused: bool = env.storage().instance().get(&PAUSED).unwrap_or(false);
+        if paused {
+            return Err(ContractError::ContractPaused);
+        }
+        Ok(())
+    }
+
+    /// Only allow pause-management operations while the contract is paused.
+    fn when_paused(env: &Env) -> Result<(), ContractError> {
+        let paused: bool = env.storage().instance().get(&PAUSED).unwrap_or(false);
+        if !paused {
+            return Err(ContractError::InvalidInput);
+        }
+        Ok(())
+    }
+
+    /// Execute the pause: set storage flag, store reason, emit event.
+    fn execute_pause_internal(env: &Env, reason: &String, admin: &Address) {
+        env.storage().instance().set(&PAUSED, &true);
+        env.storage().instance().set(&PAUSE_REASON, reason);
+        env.events().publish(
+            (Symbol::new(env, "ContractPaused"),),
+            (reason.clone(), admin.clone()),
+        );
+    }
+
+    /// Execute the unpause: clear storage flag, emit event.
+    fn execute_unpause_internal(env: &Env, admin: &Address) {
+        env.storage().instance().remove(&PAUSED);
+        env.storage().instance().remove(&PAUSE_REASON);
+        env.events()
+            .publish((Symbol::new(env, "ContractUnpaused"),), (admin.clone(),));
+    }
+
     fn initialize_role_permissions(env: &Env) {
         let mut role_permissions: Map<Role, Vec<Permission>> = Map::new(env);
 
@@ -698,6 +739,7 @@ impl SecurityScannerContract {
         location: String,
     ) -> Result<u64, ContractError> {
         let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        Self::when_not_paused(&env)?;
         // Verify reporter is authorized
         reporter.require_auth();
         Self::require_non_default_address(&reporter)?;
@@ -772,6 +814,7 @@ impl SecurityScannerContract {
         report_id: u64,
         bounty_amount: i128,
     ) -> Result<(), ContractError> {
+        Self::when_not_paused(&env)?;
         Self::require_non_default_address(&admin)?;
         Self::require_positive_amount(bounty_amount)?;
 
@@ -811,6 +854,7 @@ impl SecurityScannerContract {
         execution_delay: u64,
     ) -> Result<u64, ContractError> {
         let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        Self::when_not_paused(&env)?;
         proposer.require_auth();
         Self::require_permission(&env, &proposer, Permission::VerifyVulnerability)?;
 
@@ -837,6 +881,7 @@ impl SecurityScannerContract {
         proposal_id: u64,
     ) -> Result<(), ContractError> {
         let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        Self::when_not_paused(&env)?;
         approver.require_auth();
         Self::require_permission(&env, &approver, Permission::VerifyVulnerability)?;
 
@@ -850,6 +895,7 @@ impl SecurityScannerContract {
         proposal_id: u64,
     ) -> Result<(), ContractError> {
         let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        Self::when_not_paused(&env)?;
         executor.require_auth();
         Self::require_permission(&env, &executor, Permission::VerifyVulnerability)?;
 
@@ -922,6 +968,7 @@ impl SecurityScannerContract {
     /// Add funds to bounty pool
     pub fn fund_bounty_pool(env: Env, funder: Address, amount: i128) -> Result<(), ContractError> {
         let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        Self::when_not_paused(&env)?;
         funder.require_auth();
         Self::require_non_default_address(&funder)?;
         Self::require_positive_amount(amount)?;
@@ -995,6 +1042,7 @@ impl SecurityScannerContract {
         purpose: String,
         lock_duration: u64,
     ) -> Result<u64, ContractError> {
+        Self::when_not_paused(&env)?;
         depositor.require_auth();
         Self::require_non_default_address(&depositor)?;
         Self::require_non_default_address(&beneficiary)?;
@@ -1059,6 +1107,7 @@ impl SecurityScannerContract {
         depositor: Address,
         signature: Option<Bytes>,
     ) -> Result<(), ContractError> {
+        Self::when_not_paused(&env)?;
         depositor.require_auth();
 
         let mut escrows: Map<u64, EscrowEntry> = env
@@ -1111,6 +1160,7 @@ impl SecurityScannerContract {
         depositor: Address,
     ) -> Result<(), ContractError> {
         let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        Self::when_not_paused(&env)?;
         depositor.require_auth();
 
         let mut escrows: Map<u64, EscrowEntry> = env
@@ -1170,6 +1220,7 @@ impl SecurityScannerContract {
         escrow_id: u64,
         admin: Address,
     ) -> Result<(), ContractError> {
+        Self::when_not_paused(&env)?;
         admin.require_auth();
         Self::require_non_default_address(&admin)?;
 
@@ -1283,6 +1334,7 @@ impl SecurityScannerContract {
         execution_delay: u64,
     ) -> Result<u64, ContractError> {
         let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        Self::when_not_paused(&env)?;
         proposer.require_auth();
         Self::require_permission(&env, &proposer, Permission::VerifyEmergency)?;
 
@@ -1321,6 +1373,7 @@ impl SecurityScannerContract {
         proposal_id: u64,
     ) -> Result<(), ContractError> {
         let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        Self::when_not_paused(&env)?;
         approver.require_auth();
         Self::require_permission(&env, &approver, Permission::VerifyEmergency)?;
 
@@ -1334,6 +1387,7 @@ impl SecurityScannerContract {
         proposal_id: u64,
     ) -> Result<(), ContractError> {
         let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        Self::when_not_paused(&env)?;
         executor.require_auth();
         Self::require_permission(&env, &executor, Permission::VerifyEmergency)?;
 
@@ -1470,6 +1524,7 @@ impl SecurityScannerContract {
         amount: i128,
     ) -> Result<(), ContractError> {
         let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        Self::when_not_paused(&env)?;
         funder.require_auth();
         Self::require_non_default_address(&funder)?;
         Self::require_positive_amount(amount)?;
@@ -1516,6 +1571,7 @@ impl SecurityScannerContract {
         execution_delay: u64,
     ) -> Result<u64, ContractError> {
         let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        Self::when_not_paused(&env)?;
         proposer.require_auth();
         Self::require_permission(&env, &proposer, Permission::ManageRoles)?;
 
@@ -1558,6 +1614,7 @@ impl SecurityScannerContract {
         proposal_id: u64,
     ) -> Result<(), ContractError> {
         let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        Self::when_not_paused(&env)?;
         approver.require_auth();
         Self::require_permission(&env, &approver, Permission::ManageRoles)?;
 
@@ -1571,6 +1628,7 @@ impl SecurityScannerContract {
         proposal_id: u64,
     ) -> Result<(), ContractError> {
         let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        Self::when_not_paused(&env)?;
         executor.require_auth();
         Self::require_permission(&env, &executor, Permission::ManageRoles)?;
 
@@ -1657,6 +1715,7 @@ impl SecurityScannerContract {
         _role: Role,
     ) -> Result<(), ContractError> {
         let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        Self::when_not_paused(&env)?;
         super_admin.require_auth();
         Self::require_non_default_address(&super_admin)?;
         Self::require_non_default_address(&user)?;
@@ -1719,6 +1778,7 @@ impl SecurityScannerContract {
         new_authority: Address,
     ) -> Result<(), ContractError> {
         let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        Self::when_not_paused(&env)?;
         admin.require_auth();
         Self::require_non_default_address(&new_authority)?;
 
@@ -1735,6 +1795,7 @@ impl SecurityScannerContract {
         delay_seconds: u64,
     ) -> Result<(), ContractError> {
         let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        Self::when_not_paused(&env)?;
         admin.require_auth();
 
         if delay_seconds < 86400 {
@@ -1758,6 +1819,7 @@ impl SecurityScannerContract {
         reason: String,
     ) -> Result<(), ContractError> {
         let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        Self::when_not_paused(&env)?;
         proposer.require_auth();
         Self::require_non_default_address(&new_contract_address)?;
         Self::require_valid_text(&new_version)?;
@@ -1819,6 +1881,7 @@ impl SecurityScannerContract {
     /// Only the upgrade authority can execute.
     pub fn execute_upgrade(env: Env, executor: Address) -> Result<(), ContractError> {
         let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        Self::when_not_paused(&env)?;
         executor.require_auth();
 
         // Check caller is upgrade authority
@@ -1877,6 +1940,29 @@ impl SecurityScannerContract {
         // Clear pending upgrade
         env.storage().instance().remove(&PENDING_UPGRADE);
 
+        // Emit MigrationRequired event listing affected storage keys
+        let affected_keys = soroban_sdk::vec![
+            &env,
+            String::from_str(&env, "VERSION"),
+            String::from_str(&env, "UPGRADE_HISTORY"),
+            String::from_str(&env, "MIGRATION_STATUS"),
+            String::from_str(&env, "PENDING_UPGRADE"),
+            String::from_str(&env, "ADMIN"),
+            String::from_str(&env, "ADMIN_ROLES"),
+            String::from_str(&env, "ROLE_PERMISSIONS"),
+            String::from_str(&env, "REPORTS"),
+            String::from_str(&env, "ESCROWS"),
+            String::from_str(&env, "EMERGENCY_ALERTS"),
+            String::from_str(&env, "REPUTATION_MAP"),
+            String::from_str(&env, "BOUNTY_POOL"),
+            String::from_str(&env, "EMERGENCY_POOL"),
+        ];
+
+        env.events().publish(
+            (Symbol::new(&env, "MigrationRequired"),),
+            (request.version.clone(), affected_keys),
+        );
+
         env.events().publish(
             (Symbol::new(&env, "upgrade_executed"),),
             (current_version, request.version, now),
@@ -1886,24 +1972,160 @@ impl SecurityScannerContract {
     }
 
     /// Perform an emergency upgrade that bypasses the timelock.
-    /// Only the admin can trigger emergency upgrades.
-    /// Includes Issue #26 safeguards: frequency cap, reason requirement,
-    /// cooling-off period, forced event, and challenge period.
+    /// Now requires multi-signature with 2/3 quorum.
+    /// Direct call returns MultiSigRequired — use propose/approve/execute flow.
     pub fn emergency_upgrade(
         env: Env,
         admin: Address,
-        new_contract_address: Address,
-        new_version: String,
-        reason: String,
+        _new_contract_address: Address,
+        _new_version: String,
+        _reason: String,
     ) -> Result<(), ContractError> {
         let _reentrancy_guard = ReentrancyGuard::acquire(&env);
         admin.require_auth();
+        Self::when_not_paused(&env)?;
+        Self::require_permission(&env, &admin, Permission::EmergencyActions)?;
+        Err(ContractError::MultiSigRequired)
+    }
+
+    /// Create multi-signature proposal for an emergency upgrade with 2/3 quorum.
+    pub fn propose_emergency_upgrade(
+        env: Env,
+        proposer: Address,
+        new_contract_address: Address,
+        new_version: String,
+        reason: String,
+        required_approvals: u64,
+        execution_delay: u64,
+    ) -> Result<u64, ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        Self::when_not_paused(&env)?;
+        proposer.require_auth();
+        Self::require_permission(&env, &proposer, Permission::EmergencyActions)?;
         Self::require_non_default_address(&new_contract_address)?;
         Self::require_valid_text(&new_version)?;
 
-        // ---- Issue #26 Safeguards ----
+        // Emergency upgrades require 2/3 quorum
+        let quorum = if required_approvals < 3 {
+            3
+        } else {
+            required_approvals
+        };
+        let min_delay = if execution_delay < 3600 {
+            3600
+        } else {
+            execution_delay
+        };
 
-        // 1. Minimum reason length (50 characters)
+        let parameters = soroban_sdk::vec![
+            &env,
+            new_contract_address.to_string(),
+            new_version.clone(),
+            reason.clone(),
+        ];
+
+        Self::create_multi_sig_proposal(
+            &env,
+            &proposer,
+            String::from_str(&env, "emergency_upgrade"),
+            parameters,
+            quorum,
+            min_delay,
+        )
+    }
+
+    /// Approve an emergency upgrade proposal.
+    pub fn approve_emerg_upgrade(
+        env: Env,
+        approver: Address,
+        proposal_id: u64,
+    ) -> Result<(), ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        Self::when_not_paused(&env)?;
+        approver.require_auth();
+        Self::require_permission(&env, &approver, Permission::EmergencyActions)?;
+        Self::approve_proposal(&env, proposal_id, &approver)
+    }
+
+    /// Execute emergency upgrade after multi-sig approval with 2/3 quorum.
+    /// Includes all Issue #26 safeguards.
+    pub fn execute_emergency_upgrade(
+        env: Env,
+        executor: Address,
+        proposal_id: u64,
+    ) -> Result<(), ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        Self::when_not_paused(&env)?;
+        executor.require_auth();
+        Self::require_permission(&env, &executor, Permission::EmergencyActions)?;
+
+        // Load proposal first
+        let proposals: Map<u64, MultiSigProposal> = env
+            .storage()
+            .instance()
+            .get(&MULTI_SIG_PROPOSALS)
+            .unwrap_or(Map::new(&env));
+        let proposal: MultiSigProposal = proposals
+            .get(proposal_id)
+            .ok_or(ContractError::ProposalNotFound)?;
+
+        // Verify 2/3 quorum: at least 2/3 of required_approvals have approved
+        let approval_count = proposal.approvals.len() as u64;
+        let required_two_thirds = (proposal.required_approvals * 2) / 3;
+        if approval_count < required_two_thirds {
+            return Err(ContractError::InsufficientPermissions);
+        }
+
+        // Check execution delay separately (quorum already verified above)
+        let current_time = env.ledger().timestamp();
+        if current_time < proposal.created_at + proposal.execution_delay {
+            return Err(ContractError::ProposalNotFound);
+        }
+        if proposal.executed {
+            return Err(ContractError::ProposalAlreadyExecuted);
+        }
+
+        let addr_str: String = proposal.parameters.get(0).unwrap();
+        let new_version: String = proposal.parameters.get(1).unwrap();
+        let reason: String = proposal.parameters.get(2).unwrap();
+        let new_contract_address = Address::from_string(&addr_str);
+
+        // Execute the emergency upgrade with all safeguards
+        Self::execute_emergency_upgrade_internal(
+            &env,
+            &executor,
+            &new_contract_address,
+            &new_version,
+            &reason,
+        )?;
+
+        // Mark proposal as executed
+        let mut proposals: Map<u64, MultiSigProposal> = env
+            .storage()
+            .instance()
+            .get(&MULTI_SIG_PROPOSALS)
+            .unwrap_or(Map::new(&env));
+        let mut proposal: MultiSigProposal = proposals
+            .get(proposal_id)
+            .ok_or(ContractError::ProposalNotFound)?;
+        proposal.executed = true;
+        proposals.set(proposal_id, proposal);
+        env.storage()
+            .instance()
+            .set(&MULTI_SIG_PROPOSALS, &proposals);
+
+        Ok(())
+    }
+
+    /// Execute the actual emergency upgrade logic with all safeguards.
+    fn execute_emergency_upgrade_internal(
+        env: &Env,
+        admin: &Address,
+        new_contract_address: &Address,
+        new_version: &String,
+        reason: &String,
+    ) -> Result<(), ContractError> {
+        // Minimum reason length (50 characters)
         if reason.len() < MIN_EMERGENCY_REASON_LENGTH {
             return Err(ContractError::InsufficientUpgradeReason);
         }
@@ -1912,7 +2134,7 @@ impl SecurityScannerContract {
         let one_month_seconds: u64 = 30 * 24 * 60 * 60;
         let current_month = now / one_month_seconds;
 
-        // 2. Frequency cap: MAX_EMERGENCY_UPGRADES_PER_MONTH
+        // Frequency cap
         let last_month: u64 = env
             .storage()
             .instance()
@@ -1925,7 +2147,6 @@ impl SecurityScannerContract {
                 .get(&EMERGENCY_UPGRADE_COUNT)
                 .unwrap_or(0u64)
         } else {
-            // Reset counter for new month
             0u64
         };
 
@@ -1933,7 +2154,7 @@ impl SecurityScannerContract {
             return Err(ContractError::EmergencyUpgradeLimitReached);
         }
 
-        // 3. Cooling-off period (24 hours between emergency upgrades)
+        // Cooling-off period
         let last_emergency: u64 = env
             .storage()
             .instance()
@@ -1944,51 +2165,43 @@ impl SecurityScannerContract {
             return Err(ContractError::EmergencyCoolingPeriodActive);
         }
 
-        // 4. Check if this upgrade has been challenged during the challenge period
-        // (Challenge can only be initiated BEFORE execution, not after)
-        // Check that no active challenge exists
+        // Challenge check
         let challenged_upgrades: Map<u64, UpgradeChallenge> = env
             .storage()
             .instance()
             .get(&CHALLENGED_UPGRADES)
-            .unwrap_or(Map::new(&env));
+            .unwrap_or(Map::new(env));
 
         for (challenge_ts, challenge) in challenged_upgrades.iter() {
             if !challenge.resolved && now < challenge_ts + CHALLENGE_PERIOD_SECONDS {
-                // An active unresolved challenge exists for this upgrade window
                 return Err(ContractError::UpgradeChallengeActive);
             }
         }
 
-        // ---- Execute emergency upgrade ----
-
-        let current_version = Self::get_version_internal(&env);
+        // Execute the upgrade
+        let current_version = Self::get_version_internal(env);
         let mut history: Vec<UpgradeHistory> = env
             .storage()
             .instance()
             .get(&UPGRADE_HISTORY)
-            .unwrap_or(Vec::new(&env));
+            .unwrap_or(Vec::new(env));
 
         history.push_back(UpgradeHistory {
             from_version: current_version.clone(),
             to_version: new_version.clone(),
             timestamp: now,
             upgraded_by: admin.clone(),
-            // In a production environment, this would be the current contract's address
             old_contract: admin.clone(),
             new_contract: new_contract_address.clone(),
         });
 
         env.storage().instance().set(&UPGRADE_HISTORY, &history);
-        env.storage()
-            .instance()
-            .set(&CONTRACT_VERSION, &new_version);
+        env.storage().instance().set(&CONTRACT_VERSION, new_version);
         let migration_pair: (Address, u64) = (new_contract_address.clone(), now);
         env.storage()
             .instance()
             .set(&MIGRATION_STATUS, &migration_pair);
 
-        // Update emergency upgrade tracking
         env.storage()
             .instance()
             .set(&EMERGENCY_UPGRADE_MONTH, &current_month);
@@ -1997,15 +2210,14 @@ impl SecurityScannerContract {
             .set(&EMERGENCY_UPGRADE_COUNT, &(emergency_count + 1));
         env.storage().instance().set(&LAST_EMERGENCY_UPGRADE, &now);
 
-        // 5. Forced EMERGENCY_UPGRADE_NOTIFICATION event (cannot be suppressed)
         env.events().publish(
-            (Symbol::new(&env, "emergency_upgrade"),),
+            (Symbol::new(env, "emergency_upgrade"),),
             (
                 current_version,
-                new_version,
+                new_version.clone(),
                 now,
                 admin.clone(),
-                reason,
+                reason.clone(),
                 emergency_count + 1,
                 MAX_EMERGENCY_UPGRADES_PER_MONTH,
             ),
@@ -2014,9 +2226,10 @@ impl SecurityScannerContract {
         Ok(())
     }
 
-    /// Cancel a pending upgrade (proposer or admin only)
+    /// Cancel a pending upgrade (proposer, upgrade authority, admin, or any EmergencyActions holder)
     pub fn cancel_upgrade(env: Env, canceler: Address) -> Result<(), ContractError> {
         let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        Self::when_not_paused(&env)?;
         canceler.require_auth();
 
         let request: UpgradeRequest = env
@@ -2031,13 +2244,18 @@ impl SecurityScannerContract {
             .get(&UPGRADE_AUTHORITY)
             .ok_or(ContractError::Unauthorized)?;
 
-        // Only the proposer, upgrade authority, or admin can cancel
+        // Allow: proposer, upgrade authority, admin, or any EmergencyActions holder
         let admin: Address = env
             .storage()
             .instance()
             .get(&ADMIN)
             .ok_or(ContractError::Unauthorized)?;
-        if canceler != request.proposed_by && canceler != upgrade_authority && canceler != admin {
+        let has_emergency = Self::has_permission(&env, &canceler, Permission::EmergencyActions);
+        if canceler != request.proposed_by
+            && canceler != upgrade_authority
+            && canceler != admin
+            && !has_emergency
+        {
             return Err(ContractError::Unauthorized);
         }
 
@@ -2049,6 +2267,89 @@ impl SecurityScannerContract {
         );
 
         Ok(())
+    }
+
+    /// Rollback to a previous upgrade version.
+    /// The target version must exist in upgrade history and the upgrade must have
+    /// occurred within the 30-day rollback window.
+    pub fn rollback_upgrade(
+        env: Env,
+        admin: Address,
+        target_version: String,
+    ) -> Result<(), ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        Self::when_not_paused(&env)?;
+        admin.require_auth();
+
+        // Check caller has EmergencyActions permission
+        Self::require_permission(&env, &admin, Permission::EmergencyActions)?;
+        Self::require_valid_text(&target_version)?;
+
+        let current_version = Self::get_version_internal(&env);
+
+        // Find the target version in upgrade history
+        let history: Vec<UpgradeHistory> = env
+            .storage()
+            .instance()
+            .get(&UPGRADE_HISTORY)
+            .unwrap_or(Vec::new(&env));
+
+        let mut target_upgrade: Option<UpgradeHistory> = None;
+        for entry in history.iter() {
+            let entry_from = entry.from_version.clone();
+            let entry_to = entry.to_version.clone();
+            if entry_to == target_version || entry_from == target_version {
+                target_upgrade = Some(entry);
+                break;
+            }
+        }
+
+        let upgrade_entry = target_upgrade.ok_or(ContractError::NotFound)?;
+
+        // Check 30-day rollback window
+        let now = env.ledger().timestamp();
+        if now > upgrade_entry.timestamp + ROLLBACK_WINDOW_SECONDS {
+            return Err(ContractError::InvalidInput);
+        }
+
+        // Restore version and migration status
+        env.storage()
+            .instance()
+            .set(&CONTRACT_VERSION, &target_version);
+
+        let migration_pair: (Address, u64) =
+            (upgrade_entry.old_contract.clone(), env.ledger().timestamp());
+        env.storage()
+            .instance()
+            .set(&MIGRATION_STATUS, &migration_pair);
+
+        // Record in rollback history (no_std compatible)
+        let mut rollback_history: Vec<String> = env
+            .storage()
+            .instance()
+            .get(&ROLLBACK_HISTORY)
+            .unwrap_or(Vec::new(&env));
+        rollback_history.push_back(target_version.clone());
+        env.storage()
+            .instance()
+            .set(&ROLLBACK_HISTORY, &rollback_history);
+
+        // Emit rollback event
+        env.events().publish(
+            (Symbol::new(&env, "upgrade_rolled_back"),),
+            (current_version, target_version, now, admin),
+        );
+
+        Ok(())
+    }
+
+    /// Get rollback history.
+    pub fn get_rollback_history(env: Env) -> Vec<String> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        env.storage()
+            .instance()
+            .get(&ROLLBACK_HISTORY)
+            .unwrap_or(Vec::new(&env))
     }
 
     /// Get upgrade history
@@ -2075,6 +2376,7 @@ impl SecurityScannerContract {
         required_votes: u64,
     ) -> Result<u64, ContractError> {
         let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        Self::when_not_paused(&env)?;
         challenger.require_auth();
         Self::require_valid_text(&challenge_reason)?;
 
@@ -2117,6 +2419,7 @@ impl SecurityScannerContract {
         vote_to_halt: bool,
     ) -> Result<(), ContractError> {
         let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        Self::when_not_paused(&env)?;
         voter.require_auth();
 
         let now = env.ledger().timestamp();
@@ -2167,6 +2470,199 @@ impl SecurityScannerContract {
     }
 
     // =========================================================================
+    // Emergency Pause Mechanism (Circuit Breaker)
+    // =========================================================================
+
+    /// Pause the contract — always requires multi-signature and EmergencyActions permission.
+    pub fn pause(env: Env, admin: Address) -> Result<(), ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        admin.require_auth();
+        Self::require_permission(&env, &admin, Permission::EmergencyActions)?;
+        Self::when_not_paused(&env)?;
+        Err(ContractError::MultiSigRequired)
+    }
+
+    /// Unpause the contract — always requires multi-signature and EmergencyActions permission.
+    pub fn unpause(env: Env, admin: Address) -> Result<(), ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        admin.require_auth();
+        Self::require_permission(&env, &admin, Permission::EmergencyActions)?;
+        Self::when_paused(&env)?;
+        Err(ContractError::MultiSigRequired)
+    }
+
+    /// Create multi-signature proposal for pausing the contract.
+    pub fn propose_pause(
+        env: Env,
+        proposer: Address,
+        reason: String,
+        required_approvals: u64,
+        execution_delay: u64,
+    ) -> Result<u64, ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        proposer.require_auth();
+        Self::require_permission(&env, &proposer, Permission::EmergencyActions)?;
+        Self::when_not_paused(&env)?;
+
+        let parameters = soroban_sdk::vec![&env, reason.clone()];
+
+        Self::create_multi_sig_proposal(
+            &env,
+            &proposer,
+            String::from_str(&env, "pause"),
+            parameters,
+            required_approvals,
+            execution_delay,
+        )
+    }
+
+    /// Approve a pause proposal.
+    pub fn approve_pause_proposal(
+        env: Env,
+        approver: Address,
+        proposal_id: u64,
+    ) -> Result<(), ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        approver.require_auth();
+        Self::require_permission(&env, &approver, Permission::EmergencyActions)?;
+        Self::when_not_paused(&env)?;
+        Self::approve_proposal(&env, proposal_id, &approver)
+    }
+
+    /// Execute pause after multi-sig approval.
+    pub fn execute_pause(
+        env: Env,
+        executor: Address,
+        proposal_id: u64,
+    ) -> Result<(), ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        executor.require_auth();
+        Self::require_permission(&env, &executor, Permission::EmergencyActions)?;
+        Self::when_not_paused(&env)?;
+
+        if !Self::can_execute_proposal(&env, proposal_id)? {
+            return Err(ContractError::ProposalNotFound);
+        }
+
+        let proposals: Map<u64, MultiSigProposal> = env
+            .storage()
+            .instance()
+            .get(&MULTI_SIG_PROPOSALS)
+            .unwrap_or(Map::new(&env));
+        let proposal: MultiSigProposal = proposals
+            .get(proposal_id)
+            .ok_or(ContractError::ProposalNotFound)?;
+
+        let reason: String = proposal.parameters.get(0).unwrap();
+
+        Self::execute_pause_internal(&env, &reason, &executor);
+
+        // Mark proposal as executed
+        let mut proposals: Map<u64, MultiSigProposal> = env
+            .storage()
+            .instance()
+            .get(&MULTI_SIG_PROPOSALS)
+            .unwrap_or(Map::new(&env));
+        let mut proposal: MultiSigProposal = proposals
+            .get(proposal_id)
+            .ok_or(ContractError::ProposalNotFound)?;
+        proposal.executed = true;
+        proposals.set(proposal_id, proposal);
+        env.storage()
+            .instance()
+            .set(&MULTI_SIG_PROPOSALS, &proposals);
+
+        Ok(())
+    }
+
+    /// Create multi-signature proposal for un-pausing the contract.
+    pub fn propose_unpause(
+        env: Env,
+        proposer: Address,
+        required_approvals: u64,
+        execution_delay: u64,
+    ) -> Result<u64, ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        proposer.require_auth();
+        Self::require_permission(&env, &proposer, Permission::EmergencyActions)?;
+        Self::when_paused(&env)?;
+
+        let parameters = soroban_sdk::vec![&env];
+
+        Self::create_multi_sig_proposal(
+            &env,
+            &proposer,
+            String::from_str(&env, "unpause"),
+            parameters,
+            required_approvals,
+            execution_delay,
+        )
+    }
+
+    /// Approve an unpause proposal.
+    pub fn approve_unpause_proposal(
+        env: Env,
+        approver: Address,
+        proposal_id: u64,
+    ) -> Result<(), ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        approver.require_auth();
+        Self::require_permission(&env, &approver, Permission::EmergencyActions)?;
+        Self::when_paused(&env)?;
+        Self::approve_proposal(&env, proposal_id, &approver)
+    }
+
+    /// Execute unpause after multi-sig approval.
+    pub fn execute_unpause(
+        env: Env,
+        executor: Address,
+        proposal_id: u64,
+    ) -> Result<(), ContractError> {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        executor.require_auth();
+        Self::require_permission(&env, &executor, Permission::EmergencyActions)?;
+        Self::when_paused(&env)?;
+
+        if !Self::can_execute_proposal(&env, proposal_id)? {
+            return Err(ContractError::ProposalNotFound);
+        }
+
+        let proposals: Map<u64, MultiSigProposal> = env
+            .storage()
+            .instance()
+            .get(&MULTI_SIG_PROPOSALS)
+            .unwrap_or(Map::new(&env));
+        let _proposal: MultiSigProposal = proposals
+            .get(proposal_id)
+            .ok_or(ContractError::ProposalNotFound)?;
+
+        Self::execute_unpause_internal(&env, &executor);
+
+        // Mark proposal as executed
+        let mut proposals: Map<u64, MultiSigProposal> = env
+            .storage()
+            .instance()
+            .get(&MULTI_SIG_PROPOSALS)
+            .unwrap_or(Map::new(&env));
+        let mut proposal: MultiSigProposal = proposals
+            .get(proposal_id)
+            .ok_or(ContractError::ProposalNotFound)?;
+        proposal.executed = true;
+        proposals.set(proposal_id, proposal);
+        env.storage()
+            .instance()
+            .set(&MULTI_SIG_PROPOSALS, &proposals);
+
+        Ok(())
+    }
+
+    /// Check if the contract is currently paused.
+    pub fn is_paused(env: Env) -> bool {
+        let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        env.storage().instance().get(&PAUSED).unwrap_or(false)
+    }
+
+    // =========================================================================
     // Dispute Resolution System
     // =========================================================================
 
@@ -2181,6 +2677,7 @@ impl SecurityScannerContract {
         evidence_hashes: Vec<BytesN<32>>,
     ) -> Result<u64, ContractError> {
         let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        Self::when_not_paused(&env)?;
         disputant.require_auth();
         Self::require_non_default_address(&disputant)?;
         Self::require_valid_text(&reason)?;
@@ -2273,6 +2770,7 @@ impl SecurityScannerContract {
         vote: Vote,
     ) -> Result<(), ContractError> {
         let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        Self::when_not_paused(&env)?;
         voter.require_auth();
         Self::require_non_default_address(&voter)?;
 
@@ -2331,6 +2829,7 @@ impl SecurityScannerContract {
     /// - If dispute is dismissed (majority Reject or no quorum): stake forfeited to bounty pool.
     pub fn resolve_dispute(env: Env, dispute_id: u64) -> Result<DisputeStatus, ContractError> {
         let _reentrancy_guard = ReentrancyGuard::acquire(&env);
+        Self::when_not_paused(&env)?;
         // Get dispute
         let mut disputes: Map<u64, Dispute> = env
             .storage()
