@@ -127,9 +127,27 @@ mod dispute_tests {
         let client = SecurityScannerContractClient::new(&env, &contract_id);
 
         let admin = test_address(&env, 1);
+        let approver2 = test_address(&env, 5);
         let new_contract = test_address(&env, 2);
         client.initialize(&admin);
-        client.emergency_upgrade(
+        grant_role(&env, &contract_id, &approver2, &Role::SuperAdmin);
+
+        // Direct emergency upgrade now requires multi-sig
+        assert_eq!(
+            client.try_emergency_upgrade(
+                &admin,
+                &new_contract,
+                &String::from_str(&env, "1.0.1"),
+                &String::from_str(
+                    &env,
+                    "Critical security patch for a severe vulnerability that must be fixed immediately",
+                ),
+            ),
+            Err(Ok(ContractError::MultiSigRequired))
+        );
+
+        // Use multi-sig emergency upgrade flow with 2/3 quorum
+        let proposal_id = client.propose_emergency_upgrade(
             &admin,
             &new_contract,
             &String::from_str(&env, "1.0.1"),
@@ -137,7 +155,13 @@ mod dispute_tests {
                 &env,
                 "Critical security patch for a severe vulnerability that must be fixed immediately",
             ),
+            &3,
+            &0,
         );
+        client.approve_emerg_upgrade(&approver2, &proposal_id);
+        client.approve_emerg_upgrade(&admin, &proposal_id);
+        advance_timestamp(&env, 3601);
+        client.execute_emergency_upgrade(&admin, &proposal_id);
         assert_eq!(client.get_upgrade_history().len(), 1);
     }
 
