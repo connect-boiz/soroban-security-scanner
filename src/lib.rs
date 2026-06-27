@@ -55,6 +55,10 @@ impl Severity {
 // The api_versioning module compiles cleanly without the broken-modules feature.
 pub mod api_versioning;
 
+// Multi-factor authentication for administrative access (issue #328).
+// Self-contained and compiles cleanly under default features.
+pub mod admin_mfa;
+
 // === Broken modules gated behind feature flag ===
 // Each module has pre-existing compilation errors (borrow checker violations,
 // missing trait impls, type mismatches, unresolved imports) that are being
