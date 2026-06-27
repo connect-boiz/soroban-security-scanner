@@ -78,7 +78,10 @@ pub fn validate(bytes: &[u8]) -> Result<WasmInfo, WasmError> {
         offset = end;
     }
 
-    Ok(WasmInfo { version, section_ids })
+    Ok(WasmInfo {
+        version,
+        section_ids,
+    })
 }
 
 /// Reads an unsigned LEB128 u32, returning `(value, bytes_consumed)`.

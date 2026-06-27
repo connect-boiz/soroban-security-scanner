@@ -44,7 +44,9 @@ impl InspectionReport {
 
     /// Whether any finding is `Malicious`.
     pub fn has_malicious(&self) -> bool {
-        self.findings.iter().any(|f| f.severity == Severity::Malicious)
+        self.findings
+            .iter()
+            .any(|f| f.severity == Severity::Malicious)
     }
 
     /// The highest severity observed, if any.
@@ -155,9 +157,7 @@ fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     if needle.is_empty() || haystack.len() < needle.len() {
         return None;
     }
-    haystack
-        .windows(needle.len())
-        .position(|w| w == needle)
+    haystack.windows(needle.len()).position(|w| w == needle)
 }
 
 /// Returns the start offset of the first line longer than `max`, if any.
@@ -224,7 +224,11 @@ mod tests {
     #[test]
     fn offset_points_to_match() {
         let report = inspect(b"abc/dev/tcp/10.0.0.1/4444");
-        let f = report.findings.iter().find(|f| f.rule == "reverse-shell").unwrap();
+        let f = report
+            .findings
+            .iter()
+            .find(|f| f.rule == "reverse-shell")
+            .unwrap();
         assert_eq!(f.offset, 3);
     }
 }

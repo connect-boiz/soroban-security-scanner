@@ -98,7 +98,10 @@ pub fn validate_upload(req: &UploadRequest, scanner: &dyn MalwareScanner) -> Upl
         ContentTypeCheck::NotAllowed => {
             return UploadVerdict::reject(
                 "content-type",
-                format!("content type '{}' is not allowed", req.declared_content_type),
+                format!(
+                    "content type '{}' is not allowed",
+                    req.declared_content_type
+                ),
             )
         }
         ContentTypeCheck::Mismatch { detected, expected } => {

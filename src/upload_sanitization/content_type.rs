@@ -24,7 +24,12 @@ pub enum AllowedContentType {
 impl AllowedContentType {
     /// Parses a declared MIME type (case-insensitive, parameters ignored).
     pub fn parse(mime: &str) -> Option<Self> {
-        let base = mime.split(';').next().unwrap_or("").trim().to_ascii_lowercase();
+        let base = mime
+            .split(';')
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_ascii_lowercase();
         match base.as_str() {
             "application/wasm" => Some(Self::Wasm),
             "text/rust" | "text/x-rust" | "application/rust" => Some(Self::RustSource),
@@ -80,7 +85,10 @@ mod tests {
 
     #[test]
     fn allowlist_parsing() {
-        assert_eq!(AllowedContentType::parse("application/wasm"), Some(AllowedContentType::Wasm));
+        assert_eq!(
+            AllowedContentType::parse("application/wasm"),
+            Some(AllowedContentType::Wasm)
+        );
         assert_eq!(
             AllowedContentType::parse("text/x-rust; charset=utf-8"),
             Some(AllowedContentType::RustSource)
@@ -103,7 +111,10 @@ mod tests {
 
     #[test]
     fn disallowed_type_is_rejected() {
-        assert_eq!(check("application/x-msdownload", FileKind::Wasm), ContentTypeCheck::NotAllowed);
+        assert_eq!(
+            check("application/x-msdownload", FileKind::Wasm),
+            ContentTypeCheck::NotAllowed
+        );
     }
 
     #[test]

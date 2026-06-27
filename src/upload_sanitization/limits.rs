@@ -99,7 +99,12 @@ impl UploadRateLimiter {
     /// Checks (and on success records) an upload from `user`/`ip` at `now`.
     ///
     /// Returns `Err(scope)` for the first exceeded scope without recording.
-    pub fn check_and_record(&self, user: &str, ip: &str, now: DateTime<Utc>) -> Result<(), RateScope> {
+    pub fn check_and_record(
+        &self,
+        user: &str,
+        ip: &str,
+        now: DateTime<Utc>,
+    ) -> Result<(), RateScope> {
         let window = Duration::hours(1);
         let cutoff = now - window;
         let user_key = format!("u:{user}");
@@ -160,26 +165,50 @@ mod tests {
 
     #[test]
     fn per_user_limit_blocks() {
-        let limiter = UploadRateLimiter::new(UploadRateConfig { per_user_hourly: 3, per_ip_hourly: 100 });
+        let limiter = UploadRateLimiter::new(UploadRateConfig {
+            per_user_hourly: 3,
+            per_ip_hourly: 100,
+        });
         for _ in 0..3 {
-            assert!(limiter.check_and_record("user-1", "10.0.0.1", now()).is_ok());
+            assert!(limiter
+                .check_and_record("user-1", "10.0.0.1", now())
+                .is_ok());
         }
-        assert_eq!(limiter.check_and_record("user-1", "10.0.0.1", now()), Err(RateScope::User));
+        assert_eq!(
+            limiter.check_and_record("user-1", "10.0.0.1", now()),
+            Err(RateScope::User)
+        );
     }
 
     #[test]
     fn per_ip_limit_blocks_across_users() {
-        let limiter = UploadRateLimiter::new(UploadRateConfig { per_user_hourly: 100, per_ip_hourly: 2 });
-        assert!(limiter.check_and_record("user-a", "10.0.0.9", now()).is_ok());
-        assert!(limiter.check_and_record("user-b", "10.0.0.9", now()).is_ok());
-        assert_eq!(limiter.check_and_record("user-c", "10.0.0.9", now()), Err(RateScope::Ip));
+        let limiter = UploadRateLimiter::new(UploadRateConfig {
+            per_user_hourly: 100,
+            per_ip_hourly: 2,
+        });
+        assert!(limiter
+            .check_and_record("user-a", "10.0.0.9", now())
+            .is_ok());
+        assert!(limiter
+            .check_and_record("user-b", "10.0.0.9", now())
+            .is_ok());
+        assert_eq!(
+            limiter.check_and_record("user-c", "10.0.0.9", now()),
+            Err(RateScope::Ip)
+        );
     }
 
     #[test]
     fn window_slides() {
-        let limiter = UploadRateLimiter::new(UploadRateConfig { per_user_hourly: 1, per_ip_hourly: 100 });
+        let limiter = UploadRateLimiter::new(UploadRateConfig {
+            per_user_hourly: 1,
+            per_ip_hourly: 100,
+        });
         assert!(limiter.check_and_record("u", "1.1.1.1", now()).is_ok());
-        assert_eq!(limiter.check_and_record("u", "1.1.1.1", now()), Err(RateScope::User));
+        assert_eq!(
+            limiter.check_and_record("u", "1.1.1.1", now()),
+            Err(RateScope::User)
+        );
         let later = now() + Duration::seconds(3601);
         assert!(limiter.check_and_record("u", "1.1.1.1", later).is_ok());
     }

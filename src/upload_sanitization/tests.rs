@@ -22,7 +22,9 @@ fn full_accept_flow_with_rate_limit() {
     let now = DateTime::from_timestamp(1_700_000_000, 0).unwrap();
 
     // Rate gate passes, then the pipeline accepts the WASM.
-    assert!(limiter.check_and_record("user-1", "203.0.113.1", now).is_ok());
+    assert!(limiter
+        .check_and_record("user-1", "203.0.113.1", now)
+        .is_ok());
     let wasm = valid_wasm();
     let req = UploadRequest {
         bytes: &wasm,

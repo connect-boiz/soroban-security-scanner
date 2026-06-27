@@ -57,7 +57,11 @@ fn sanitize_text(bytes: &[u8]) -> Sanitized {
     }
 
     let modified = !notes.is_empty();
-    Sanitized { bytes: out, modified, notes }
+    Sanitized {
+        bytes: out,
+        modified,
+        notes,
+    }
 }
 
 fn normalize_newlines(bytes: &[u8]) -> Vec<u8> {
@@ -139,7 +143,10 @@ mod tests {
     #[test]
     fn filename_strips_paths_and_traversal() {
         assert_eq!(sanitize_filename("../../etc/passwd"), "passwd");
-        assert_eq!(sanitize_filename("..\\..\\windows\\system32\\cmd.exe"), "cmd.exe");
+        assert_eq!(
+            sanitize_filename("..\\..\\windows\\system32\\cmd.exe"),
+            "cmd.exe"
+        );
         assert_eq!(sanitize_filename("contract.wasm"), "contract.wasm");
         assert_eq!(sanitize_filename("..."), "upload.bin");
     }
