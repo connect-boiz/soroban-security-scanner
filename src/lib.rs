@@ -55,6 +55,11 @@ impl Severity {
 // The api_versioning module compiles cleanly without the broken-modules feature.
 pub mod api_versioning;
 
+// Tiered, adaptive rate limiting for vulnerability-submission and file-upload
+// endpoints (issue #327). Self-contained and compiles cleanly under default
+// features.
+pub mod submission_rate_limiting;
+
 // Input sanitization & validation for contract-code uploads (issue #330).
 // Self-contained and compiles cleanly under default features.
 pub mod upload_sanitization;
