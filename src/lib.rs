@@ -69,6 +69,10 @@ pub use audit_trail::{
 // Self-contained and compiles cleanly under default features.
 pub mod upload_sanitization;
 
+// Comprehensive web security headers and CSP (issue #341). Self-contained and
+// compiles cleanly under default features.
+pub mod security_headers;
+
 // === Broken modules gated behind feature flag ===
 // Each module has pre-existing compilation errors (borrow checker violations,
 // missing trait impls, type mismatches, unresolved imports) that are being
