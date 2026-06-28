@@ -69,9 +69,9 @@ pub use audit_trail::{
 // Self-contained and compiles cleanly under default features.
 pub mod upload_sanitization;
 
-// Database query optimization and performance management (issue #344).
+// Dependency vulnerability management and supply-chain security (issue #342).
 // Self-contained and compiles cleanly under default features.
-pub mod query_optimization;
+pub mod supply_chain;
 
 // === Broken modules gated behind feature flag ===
 // Each module has pre-existing compilation errors (borrow checker violations,
