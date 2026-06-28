@@ -46,6 +46,8 @@ impl Default for EventLoggingConfig {
                 CriticalOperation::RewardDistribution,
                 CriticalOperation::AdminApproval,
                 CriticalOperation::OwnershipChange,
+                CriticalOperation::ScanResultAccess,
+                CriticalOperation::ScanResultShare,
             ],
         }
     }
@@ -76,6 +78,10 @@ pub enum CriticalOperation {
     ContractUpgrade,
     EmergencyStop,
     ConfigurationChange,
+    /// Scan result access attempt (for IDOR detection and audit trail - issue #329)
+    ScanResultAccess,
+    /// Scan result sharing operation
+    ScanResultShare,
 }
 
 /// Event severity levels
