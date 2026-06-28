@@ -69,9 +69,9 @@ pub use audit_trail::{
 // Self-contained and compiles cleanly under default features.
 pub mod upload_sanitization;
 
-// Dynamic, context-aware severity scoring with CVSS v3.1 (issue #332).
+// Multi-factor authentication for administrative access (issue #328).
 // Self-contained and compiles cleanly under default features.
-pub mod severity_scoring;
+pub mod admin_mfa;
 
 // === Broken modules gated behind feature flag ===
 // Each module has pre-existing compilation errors (borrow checker violations,
