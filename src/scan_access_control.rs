@@ -47,7 +47,10 @@ impl ScanAccessRole {
 
     /// Check if this role can share scan results
     pub fn can_share(&self) -> bool {
-        matches!(self, ScanAccessRole::Admin | ScanAccessRole::SecurityResearcher)
+        matches!(
+            self,
+            ScanAccessRole::Admin | ScanAccessRole::SecurityResearcher
+        )
     }
 
     /// Check if this role can delete scan results
@@ -304,8 +307,7 @@ impl ScanAccessControl {
         Err(ScanAccessError::AccessDenied {
             scan_id: *scan_id,
             user_id: user_id.to_string(),
-            reason: "User does not own this scan, does not have a privileged role, "
-                .to_string()
+            reason: "User does not own this scan, does not have a privileged role, ".to_string()
                 + "and the scan has not been shared with them",
         })
     }
@@ -343,11 +345,7 @@ impl ScanAccessControl {
 
     /// Register a new scan record with the given owner.
     /// Generates a cryptographically random UUID to prevent enumeration.
-    pub fn register_scan(
-        &self,
-        owner_id: &str,
-        target: &str,
-    ) -> Result<Uuid, ScanAccessError> {
+    pub fn register_scan(&self, owner_id: &str, target: &str) -> Result<Uuid, ScanAccessError> {
         let scan_id = Uuid::new_v4(); // Cryptographically random — not enumerable
         let now = Utc::now();
 
@@ -487,8 +485,14 @@ impl ScanAccessControl {
         let expires_at = Utc::now() + Duration::hours(hours as i64);
 
         // Add user to shared list if not already present
-        if !scan.access_metadata.shared_with.contains(&share_with_user_id.to_string()) {
-            scan.access_metadata.shared_with.push(share_with_user_id.to_string());
+        if !scan
+            .access_metadata
+            .shared_with
+            .contains(&share_with_user_id.to_string())
+        {
+            scan.access_metadata
+                .shared_with
+                .push(share_with_user_id.to_string());
         }
 
         scan.access_metadata.sharing_expires_at = Some(expires_at);
@@ -627,7 +631,9 @@ impl ScanAccessControl {
             }
         }
 
-        scan.access_metadata.shared_with.contains(&user_id.to_string())
+        scan.access_metadata
+            .shared_with
+            .contains(&user_id.to_string())
     }
 }
 
@@ -682,10 +688,7 @@ impl ScanOwnershipGuard {
 
     /// Verify ownership or authorized access. Call this at the start of
     /// every scan result endpoint handler.
-    pub fn verify(
-        &self,
-        access_control: &ScanAccessControl,
-    ) -> Result<(), ScanAccessError> {
+    pub fn verify(&self, access_control: &ScanAccessControl) -> Result<(), ScanAccessError> {
         access_control.verify_scan_access(&self.scan_id, &self.user_id, &self.role)
     }
 
@@ -718,7 +721,10 @@ mod tests {
         let scan_id = register_test_scan(&ac, "user123");
 
         let result = ac.verify_scan_access(&scan_id, "user123", &ScanAccessRole::Developer);
-        assert!(result.is_ok(), "Owner should be able to access their own scan");
+        assert!(
+            result.is_ok(),
+            "Owner should be able to access their own scan"
+        );
     }
 
     #[test]
@@ -727,7 +733,10 @@ mod tests {
         let scan_id = register_test_scan(&ac, "user123");
 
         let result = ac.verify_scan_access(&scan_id, "attacker", &ScanAccessRole::Developer);
-        assert!(result.is_err(), "Non-owner should not be able to access scan");
+        assert!(
+            result.is_err(),
+            "Non-owner should not be able to access scan"
+        );
     }
 
     #[test]
@@ -768,14 +777,10 @@ mod tests {
 
         ac.share_scan(&scan_id, "owner", "shared_user", None)
             .unwrap();
-        ac.revoke_share(&scan_id, "owner", "shared_user")
-            .unwrap();
+        ac.revoke_share(&scan_id, "owner", "shared_user").unwrap();
 
         let result = ac.verify_scan_access(&scan_id, "shared_user", &ScanAccessRole::Developer);
-        assert!(
-            result.is_err(),
-            "Revoked share should prevent access"
-        );
+        assert!(result.is_err(), "Revoked share should prevent access");
     }
 
     #[test]
@@ -798,8 +803,7 @@ mod tests {
         let ac = create_access_control();
         let scan_id = register_test_scan(&ac, "owner");
 
-        let result =
-            ac.verify_scan_modification(&scan_id, "non_owner", &ScanAccessRole::Developer);
+        let result = ac.verify_scan_modification(&scan_id, "non_owner", &ScanAccessRole::Developer);
         assert!(
             result.is_err(),
             "Non-owner should not be able to modify scan"

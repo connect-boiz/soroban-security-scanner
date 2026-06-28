@@ -63,7 +63,10 @@ mod idor_tests {
 
         // Attacker tries to enumerate by guessing UUIDs
         let random_id = Uuid::new_v4();
-        assert_ne!(random_id, scan_id, "Random UUID should differ from real scan");
+        assert_ne!(
+            random_id, scan_id,
+            "Random UUID should differ from real scan"
+        );
 
         let result = ac.verify_scan_access(&random_id, "attacker", &ScanAccessRole::Developer);
         assert!(matches!(result, Err(ScanAccessError::ScanNotFound(_))));
@@ -120,8 +123,7 @@ mod idor_tests {
             .is_ok());
 
         // Different researcher
-        let result =
-            ac.verify_scan_access(&scan_id, "bob", &ScanAccessRole::SecurityResearcher);
+        let result = ac.verify_scan_access(&scan_id, "bob", &ScanAccessRole::SecurityResearcher);
         assert!(result.is_err());
     }
 
@@ -169,10 +171,7 @@ mod idor_tests {
         ac.revoke_share(&scan_id, "alice", "bob").unwrap();
 
         let result = ac.verify_scan_access(&scan_id, "bob", &ScanAccessRole::Developer);
-        assert!(
-            result.is_err(),
-            "Revoked share must prevent access"
-        );
+        assert!(result.is_err(), "Revoked share must prevent access");
     }
 
     #[test]
@@ -223,8 +222,7 @@ mod idor_tests {
         let ac = setup();
         let scan_id = create_scan(&ac, "alice");
 
-        let result =
-            ac.verify_scan_modification(&scan_id, "bob", &ScanAccessRole::Developer);
+        let result = ac.verify_scan_modification(&scan_id, "bob", &ScanAccessRole::Developer);
         assert!(result.is_err());
     }
 
