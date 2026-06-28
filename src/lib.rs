@@ -69,9 +69,9 @@ pub use audit_trail::{
 // Self-contained and compiles cleanly under default features.
 pub mod upload_sanitization;
 
-// Comprehensive API rate limiting and throttling (issue #345). Self-contained
-// and compiles cleanly under default features.
-pub mod api_rate_limiting;
+// Database query optimization and performance management (issue #344).
+// Self-contained and compiles cleanly under default features.
+pub mod query_optimization;
 
 // === Broken modules gated behind feature flag ===
 // Each module has pre-existing compilation errors (borrow checker violations,
