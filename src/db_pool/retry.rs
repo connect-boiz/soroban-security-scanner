@@ -102,7 +102,13 @@ mod tests {
         let delays = RefCell::new(Vec::new());
         let result: Result<&str, &str> = retry_with(
             &p,
-            |attempt| if attempt < 2 { Err("conn refused") } else { Ok("connected") },
+            |attempt| {
+                if attempt < 2 {
+                    Err("conn refused")
+                } else {
+                    Ok("connected")
+                }
+            },
             |d| delays.borrow_mut().push(d),
         );
         assert_eq!(result, Ok("connected"));

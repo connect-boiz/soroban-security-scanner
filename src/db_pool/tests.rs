@@ -98,7 +98,9 @@ fn leak_recovery_keeps_pool_available_under_peak() {
     let clock = Clock::fixed(1000);
     let pool = ConnectionPool::with_clock(
         cfg,
-        Box::new(FlakyFactory { fail_first: AtomicUsize::new(0) }),
+        Box::new(FlakyFactory {
+            fail_first: AtomicUsize::new(0),
+        }),
         clock.clone(),
         Arc::new(DbMonitor::default()),
     );
@@ -125,7 +127,10 @@ fn monitoring_records_slow_queries_and_pool_pressure() {
     let stats = monitor.stats();
     assert_eq!(stats.slow_queries, 1);
     assert_eq!(stats.queries, 2);
-    assert!(monitor.alerts().iter().any(|a| a.code == "pool-near-exhaustion"));
+    assert!(monitor
+        .alerts()
+        .iter()
+        .any(|a| a.code == "pool-near-exhaustion"));
 }
 
 #[test]

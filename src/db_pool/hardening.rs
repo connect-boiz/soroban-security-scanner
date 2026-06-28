@@ -187,6 +187,8 @@ mod tests {
     fn session_statements_include_timeouts() {
         let cfg = HardeningConfig::default();
         let stmts = cfg.session_statements();
-        assert!(stmts.iter().any(|s| s.contains("statement_timeout = 30000")));
+        assert!(stmts
+            .iter()
+            .any(|s| s.contains("statement_timeout = 30000")));
     }
 }

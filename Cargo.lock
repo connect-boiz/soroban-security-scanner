@@ -2943,6 +2943,7 @@ dependencies = [
  "futures",
  "handlebars",
  "hex",
+ "http-body-util",
  "hyper 1.10.1",
  "ipnetwork",
  "jsonwebtoken",

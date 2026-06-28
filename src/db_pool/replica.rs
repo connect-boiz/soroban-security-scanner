@@ -86,7 +86,12 @@ impl ReplicaRouter {
 
     /// Count of currently-healthy replicas.
     pub fn healthy_replica_count(&self) -> usize {
-        self.healthy.lock().expect("healthy poisoned").iter().filter(|h| **h).count()
+        self.healthy
+            .lock()
+            .expect("healthy poisoned")
+            .iter()
+            .filter(|h| **h)
+            .count()
     }
 }
 

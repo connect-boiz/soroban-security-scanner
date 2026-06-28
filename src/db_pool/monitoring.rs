@@ -158,7 +158,10 @@ impl DbMonitor {
 
     /// Recent slow queries (most recent last).
     pub fn recent_slow_queries(&self) -> Vec<SlowQuery> {
-        self.recent_slow.lock().expect("recent_slow poisoned").clone()
+        self.recent_slow
+            .lock()
+            .expect("recent_slow poisoned")
+            .clone()
     }
 
     /// All raised alerts.

@@ -142,7 +142,10 @@ impl<C: Send + 'static> ConnectionPool<C> {
         let mut state = self.shared.state.lock().expect("pool poisoned");
         while state.total < self.shared.cfg.min_connections {
             let conn = self.shared.factory.create()?;
-            state.idle.push(IdleConn { conn, last_used: now });
+            state.idle.push(IdleConn {
+                conn,
+                last_used: now,
+            });
             state.total += 1;
         }
         Ok(())
@@ -274,7 +277,10 @@ impl<C: Send + 'static> Drop for PooledConnection<C> {
         // was reclaimed as a leak, the slot is already freed — discard it.
         if state.checked_out.remove(&self.id).is_some() {
             if let Some(conn) = self.conn.take() {
-                state.idle.push(IdleConn { conn, last_used: now });
+                state.idle.push(IdleConn {
+                    conn,
+                    last_used: now,
+                });
             }
             drop(state);
             self.shared.monitor.record_release();
@@ -340,7 +346,12 @@ mod tests {
     }
 
     fn pool(factory: FakeFactory, clock: Clock) -> ConnectionPool<FakeConn> {
-        ConnectionPool::with_clock(cfg(), Box::new(factory), clock, Arc::new(DbMonitor::default()))
+        ConnectionPool::with_clock(
+            cfg(),
+            Box::new(factory),
+            clock,
+            Arc::new(DbMonitor::default()),
+        )
     }
 
     #[test]
@@ -418,7 +429,10 @@ mod tests {
             fail: true,
         };
         let p = pool(factory, Clock::fixed(1000));
-        assert_eq!(p.acquire().unwrap_err(), DbError::CreateFailed("refused".to_string()));
+        assert_eq!(
+            p.acquire().unwrap_err(),
+            DbError::CreateFailed("refused".to_string())
+        );
     }
 
     #[test]
