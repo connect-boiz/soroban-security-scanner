@@ -54,6 +54,20 @@ impl Severity {
 // === Clean modules (no feature gate needed) ===
 // The api_versioning module compiles cleanly without the broken-modules feature.
 pub mod api_versioning;
+pub mod error_handler;
+
+// Comprehensive audit trail for security-critical operations (#326). Compiles
+// cleanly with no feature gate so its tests run under default `cargo test`.
+pub mod audit_trail;
+pub use audit_trail::{
+    ActorContext, AuditAction, AuditCategory, AuditConfig, AuditEvent, AuditEventBuilder,
+    AuditOutcome, AuditQuery, AuditSeverity, AuditTrail, ChainVerification,
+    SuspiciousActivityAlert, UserRole,
+};
+
+// Input sanitization & validation for contract-code uploads (issue #330).
+// Self-contained and compiles cleanly under default features.
+pub mod upload_sanitization;
 
 // Dynamic, context-aware severity scoring with CVSS v3.1 (issue #332).
 // Self-contained and compiles cleanly under default features.

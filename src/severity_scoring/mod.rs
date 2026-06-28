@@ -65,11 +65,9 @@ pub use context::{
     MIN_CONTEXT_MULTIPLIER,
 };
 pub use cvss::{
-    roundup, AttackComplexity, AttackVector, CvssRating, CvssV31, Impact, PrivilegesRequired, Scope,
-    UserInteraction,
+    roundup, AttackComplexity, AttackVector, CvssRating, CvssV31, Impact, PrivilegesRequired,
+    Scope, UserInteraction,
 };
-pub use engine::{
-    rating_to_severity, RecalcOutcome, ScoredFinding, SeverityEngine, SeverityScore,
-};
+pub use engine::{rating_to_severity, RecalcOutcome, ScoredFinding, SeverityEngine, SeverityScore};
 pub use history::{ScoreSample, SeverityHistory, TrendAnalysis, TrendDirection};
 pub use ml::{features_from, pearson_correlation, SeverityPredictor, TrainConfig, FEATURE_COUNT};

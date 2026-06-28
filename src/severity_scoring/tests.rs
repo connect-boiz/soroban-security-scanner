@@ -105,8 +105,14 @@ fn rating_boundaries() {
 
 #[test]
 fn context_value_tier_from_tvl() {
-    assert_eq!(ContractValueTier::from_tvl_usd(0), ContractValueTier::Negligible);
-    assert_eq!(ContractValueTier::from_tvl_usd(50_000), ContractValueTier::Low);
+    assert_eq!(
+        ContractValueTier::from_tvl_usd(0),
+        ContractValueTier::Negligible
+    );
+    assert_eq!(
+        ContractValueTier::from_tvl_usd(50_000),
+        ContractValueTier::Low
+    );
     assert_eq!(
         ContractValueTier::from_tvl_usd(500_000),
         ContractValueTier::Medium

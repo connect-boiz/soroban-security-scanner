@@ -264,12 +264,9 @@ impl CvssV31 {
 
     /// Exploitability term.
     fn exploitability(&self) -> f64 {
-        8.22
-            * self.attack_vector.weight()
+        8.22 * self.attack_vector.weight()
             * self.attack_complexity.weight()
-            * self
-                .privileges_required
-                .weight(self.scope.changed())
+            * self.privileges_required.weight(self.scope.changed())
             * self.user_interaction.weight()
     }
 

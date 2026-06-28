@@ -88,7 +88,10 @@ impl SeverityHistory {
 
         let first = ordered.first().unwrap().score;
         let latest = ordered.last().unwrap().score;
-        let min = ordered.iter().map(|s| s.score).fold(f64::INFINITY, f64::min);
+        let min = ordered
+            .iter()
+            .map(|s| s.score)
+            .fold(f64::INFINITY, f64::min);
         let max = ordered
             .iter()
             .map(|s| s.score)

@@ -45,7 +45,7 @@ pub struct AlertThresholds {
 impl Default for AlertThresholds {
     fn default() -> Self {
         Self {
-            notify_at_or_above: 4.0,  // Medium and above
+            notify_at_or_above: 4.0,   // Medium and above
             critical_at_or_above: 9.0, // Critical
             alert_on_escalation: true,
         }
@@ -109,7 +109,11 @@ impl AlertThresholds {
                 outcome.id,
                 outcome.new_score,
                 outcome.new_severity.as_str(),
-                if outcome.escalated { " [escalated]" } else { "" }
+                if outcome.escalated {
+                    " [escalated]"
+                } else {
+                    ""
+                }
             ),
         })
     }
