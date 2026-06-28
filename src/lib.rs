@@ -69,9 +69,9 @@ pub use audit_trail::{
 // Self-contained and compiles cleanly under default features.
 pub mod upload_sanitization;
 
-// Input validation and sandboxing for the contract-analysis engine
-// (issue #340). Self-contained and compiles cleanly under default features.
-pub mod analysis_guard;
+// Structured logging and distributed tracing (issue #337). Self-contained and
+// compiles cleanly under default features.
+pub mod observability;
 
 // === Broken modules gated behind feature flag ===
 // Each module has pre-existing compilation errors (borrow checker violations,
