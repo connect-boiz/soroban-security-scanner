@@ -69,6 +69,19 @@ pub use audit_trail::{
 // Self-contained and compiles cleanly under default features.
 pub mod upload_sanitization;
 
+// Scan access control & ownership verification (issue #329).
+// Self-contained RBAC, ownership checks, scan sharing, and audit logging
+// to prevent Insecure Direct Object Reference (IDOR) vulnerabilities.
+pub mod scan_access_control;
+pub use scan_access_control::{
+    ScanAccessAction, ScanAccessControl, ScanAccessControlConfig, ScanAccessError,
+    ScanAccessLogEntry, ScanAccessMetadata, ScanAccessRole, ScanOwnershipGuard, ScanRecord,
+    ScanSeveritySummary, ScanStatus, ShareScanRequest, ShareScanResponse,
+};
+
+#[cfg(test)]
+mod scan_access_control_tests;
+
 // Secure database connection pooling, TLS, monitoring and replica routing
 // (issue #331). Self-contained and compiles cleanly under default features.
 pub mod db_pool;
