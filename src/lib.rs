@@ -69,9 +69,9 @@ pub use audit_trail::{
 // Self-contained and compiles cleanly under default features.
 pub mod upload_sanitization;
 
-// Real-time security monitoring, alerting, SIEM and incident response
-// (issue #333). Self-contained and compiles cleanly under default features.
-pub mod security_monitoring;
+// Secure database connection pooling, TLS, monitoring and replica routing
+// (issue #331). Self-contained and compiles cleanly under default features.
+pub mod db_pool;
 
 // === Broken modules gated behind feature flag ===
 // Each module has pre-existing compilation errors (borrow checker violations,
