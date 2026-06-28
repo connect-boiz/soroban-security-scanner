@@ -69,9 +69,10 @@ pub use audit_trail::{
 // Self-contained and compiles cleanly under default features.
 pub mod upload_sanitization;
 
-// AES-256-GCM data encryption at rest for sensitive fields and backups
-// (issue #334). Self-contained and compiles cleanly under default features.
-pub mod encryption_at_rest;
+// Multi-level caching strategy (partitioning, TTLs, stampede protection,
+// warming, monitoring) for issue #336. Self-contained and compiles cleanly
+// under default features.
+pub mod caching;
 
 // === Broken modules gated behind feature flag ===
 // Each module has pre-existing compilation errors (borrow checker violations,
