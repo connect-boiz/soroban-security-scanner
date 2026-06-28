@@ -298,8 +298,11 @@ mod tests {
         for h in handles {
             assert_eq!(h.join().unwrap(), "value");
         }
-        // The expensive loader ran exactly once despite 16 concurrent misses.
+        // The expensive loader ran exactly once despite 16 concurrent misses —
+        // this is the single-flight guarantee. (How many waiters were absorbed
+        // by the double-check vs. the fast path after the load completes is
+        // timing-dependent, so it is not asserted here.)
         assert_eq!(calls.load(Ordering::Relaxed), 1);
-        assert!(cache.stats().stampede_avoided >= 1);
+        assert_eq!(cache.stats().loads, 1);
     }
 }
