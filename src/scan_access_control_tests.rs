@@ -12,10 +12,10 @@
 
 #[cfg(test)]
 mod idor_tests {
-use crate::scan_access_control::{
-    ScanAccessAction, ScanAccessControl, ScanAccessControlConfig, ScanAccessError,
-    ScanAccessRole, ScanStatus,
-};
+    use crate::scan_access_control::{
+        ScanAccessAction, ScanAccessControl, ScanAccessControlConfig, ScanAccessError,
+        ScanAccessRole, ScanStatus,
+    };
     use uuid::Uuid;
 
     fn setup() -> ScanAccessControl {
