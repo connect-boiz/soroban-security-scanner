@@ -90,7 +90,11 @@ fn format_code(bytes: &[u8]) -> String {
 
 fn hash(code: &str) -> String {
     // Normalise away the readability dashes/case before hashing.
-    let normalized: String = code.chars().filter(|c| *c != '-').collect::<String>().to_lowercase();
+    let normalized: String = code
+        .chars()
+        .filter(|c| *c != '-')
+        .collect::<String>()
+        .to_lowercase();
     let mut hasher = Sha256::new();
     hasher.update(normalized.as_bytes());
     hex::encode(hasher.finalize())

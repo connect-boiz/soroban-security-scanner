@@ -61,10 +61,10 @@ pub use backup_codes::{BackupCodeSet, GeneratedBackupCodes};
 pub use emergency::{BypassRequest, BypassStatus, EmergencyConfig, EmergencyError};
 pub use manager::{LoginDecision, MfaManager, TotpSetup};
 pub use policy::{MfaEnrollment, MfaMethod, MfaPolicy, PolicyDecision, Role};
-pub use session::{AccessDenied, AdminSession, SessionConfig, Sensitivity};
+pub use session::{AccessDenied, AdminSession, Sensitivity, SessionConfig};
 pub use sms::{SmsChallenge, SmsSender, SmsVerifyResult};
 pub use totp::TotpConfig;
 pub use webauthn::{
-    AcceptingVerifier, AssertionResponse, AssertionVerifier, RegisteredCredential, WebAuthnChallenge,
-    WebAuthnError, WebAuthnRegistry,
+    AcceptingVerifier, AssertionResponse, AssertionVerifier, RegisteredCredential,
+    WebAuthnChallenge, WebAuthnError, WebAuthnRegistry,
 };

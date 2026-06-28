@@ -114,7 +114,11 @@ impl AnomalyDetector {
             score += 0.30;
             reasons.push("new IP address".to_string());
         }
-        if !self.history.iter().any(|h| h.device_fingerprint == ctx.device_fingerprint) {
+        if !self
+            .history
+            .iter()
+            .any(|h| h.device_fingerprint == ctx.device_fingerprint)
+        {
             score += 0.30;
             reasons.push("unrecognized device".to_string());
         }
@@ -136,7 +140,11 @@ impl AnomalyDetector {
             RiskLevel::Low
         };
 
-        AnomalyAssessment { score, level, reasons }
+        AnomalyAssessment {
+            score,
+            level,
+            reasons,
+        }
     }
 
     /// Records a (presumably accepted) login into the rolling history.
@@ -158,7 +166,9 @@ impl AnomalyDetector {
         // Compare against the circular-mean-ish set of known hours: unusual if
         // it is more than `unusual_hour_delta` from every historical hour.
         let delta = self.config.unusual_hour_delta;
-        self.history.iter().all(|h| circular_hour_distance(h.hour_utc, hour) > delta)
+        self.history
+            .iter()
+            .all(|h| circular_hour_distance(h.hour_utc, hour) > delta)
     }
 }
 

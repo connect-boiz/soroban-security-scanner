@@ -182,7 +182,10 @@ mod tests {
             EmergencyError::SelfApproval
         );
         let mut req = BypassRequest::open(target, Uuid::new_v4(), 1000, cfg()).unwrap();
-        assert_eq!(req.approve(target, 1000).unwrap_err(), EmergencyError::SelfApproval);
+        assert_eq!(
+            req.approve(target, 1000).unwrap_err(),
+            EmergencyError::SelfApproval
+        );
     }
 
     #[test]
@@ -197,8 +200,11 @@ mod tests {
         let admin2 = Uuid::new_v4();
         req.approve(admin2, 1000).unwrap();
         assert_eq!(req.status, BypassStatus::Pending); // 2 of 3
-        // admin2 again
-        assert_eq!(req.approve(admin2, 1000).unwrap_err(), EmergencyError::DuplicateApproval);
+                                                       // admin2 again
+        assert_eq!(
+            req.approve(admin2, 1000).unwrap_err(),
+            EmergencyError::DuplicateApproval
+        );
     }
 
     #[test]
@@ -223,7 +229,10 @@ mod tests {
     fn request_ttl_expires_pending() {
         let mut req = BypassRequest::open(Uuid::new_v4(), Uuid::new_v4(), 1000, cfg()).unwrap();
         let late = 1000 + cfg().request_ttl_secs + 1;
-        assert_eq!(req.approve(Uuid::new_v4(), late).unwrap_err(), EmergencyError::RequestExpired);
+        assert_eq!(
+            req.approve(Uuid::new_v4(), late).unwrap_err(),
+            EmergencyError::RequestExpired
+        );
         assert_eq!(req.status, BypassStatus::Closed);
     }
 

@@ -67,7 +67,8 @@ pub enum WebAuthnError {
 /// production; the default test double accepts any non-empty signature.
 pub trait AssertionVerifier: Send + Sync {
     /// Verifies `signature` for `credential` over `challenge`.
-    fn verify(&self, credential: &RegisteredCredential, challenge: &[u8], signature: &[u8]) -> bool;
+    fn verify(&self, credential: &RegisteredCredential, challenge: &[u8], signature: &[u8])
+        -> bool;
 }
 
 /// A permissive verifier used in tests and as a wiring placeholder. It checks
@@ -76,7 +77,12 @@ pub trait AssertionVerifier: Send + Sync {
 pub struct AcceptingVerifier;
 
 impl AssertionVerifier for AcceptingVerifier {
-    fn verify(&self, _credential: &RegisteredCredential, _challenge: &[u8], signature: &[u8]) -> bool {
+    fn verify(
+        &self,
+        _credential: &RegisteredCredential,
+        _challenge: &[u8],
+        signature: &[u8],
+    ) -> bool {
         !signature.is_empty()
     }
 }
@@ -123,7 +129,10 @@ impl WebAuthnRegistry {
 
     /// Lists a user's registered credentials.
     pub fn credentials(&self, user: Uuid) -> &[RegisteredCredential] {
-        self.credentials.get(&user).map(|v| v.as_slice()).unwrap_or(&[])
+        self.credentials
+            .get(&user)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[])
     }
 
     /// Verifies an authentication assertion, consuming the matching challenge,
@@ -264,7 +273,9 @@ mod tests {
             signature: vec![0xaa],
             challenge: vec![7; 32],
         };
-        assert!(reg.verify_assertion(user, ch.id, &resp, &AcceptingVerifier, 1100).is_ok());
+        assert!(reg
+            .verify_assertion(user, ch.id, &resp, &AcceptingVerifier, 1100)
+            .is_ok());
         // Re-use of the same challenge id now fails.
         assert_eq!(
             reg.verify_assertion(user, ch.id, &resp, &AcceptingVerifier, 1100),

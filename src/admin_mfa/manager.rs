@@ -86,7 +86,10 @@ impl MfaManager {
 
     /// Registers an account with a role (idempotent: re-registering resets role).
     pub fn add_account(&mut self, user: Uuid, role: Role) {
-        self.accounts.entry(user).or_insert_with(|| AccountMfa::new(role)).role = role;
+        self.accounts
+            .entry(user)
+            .or_insert_with(|| AccountMfa::new(role))
+            .role = role;
     }
 
     /// Returns the account's enrollment snapshot, if registered.
@@ -153,7 +156,9 @@ impl MfaManager {
 
     /// The enrolled SMS phone, if any.
     pub fn sms_phone(&self, user: Uuid) -> Option<&str> {
-        self.accounts.get(&user).and_then(|a| a.sms_phone.as_deref())
+        self.accounts
+            .get(&user)
+            .and_then(|a| a.sms_phone.as_deref())
     }
 
     /// Registers a WebAuthn credential and marks the factor enrolled.
@@ -184,7 +189,12 @@ impl MfaManager {
 
     /// Scores a login attempt and decides what is required, recording the
     /// context into the anomaly baseline.
-    pub fn begin_login(&mut self, user: Uuid, ctx: LoginContext, now_secs: i64) -> Option<LoginDecision> {
+    pub fn begin_login(
+        &mut self,
+        user: Uuid,
+        ctx: LoginContext,
+        now_secs: i64,
+    ) -> Option<LoginDecision> {
         let acct = self.accounts.get_mut(&user)?;
         let policy = self.policy.evaluate(acct.role, &acct.enrollment);
         let anomaly = acct.anomaly.assess_and_record(ctx);
@@ -234,7 +244,10 @@ impl MfaManager {
 
     /// Remaining unused backup codes.
     pub fn backup_codes_remaining(&self, user: Uuid) -> usize {
-        self.accounts.get(&user).map(|a| a.backup.remaining()).unwrap_or(0)
+        self.accounts
+            .get(&user)
+            .map(|a| a.backup.remaining())
+            .unwrap_or(0)
     }
 
     /// Verifies a WebAuthn assertion for a user.
@@ -281,7 +294,9 @@ mod tests {
         mgr.add_account(admin, Role::Admin);
 
         let mut rng = rand::rngs::OsRng;
-        let setup = mgr.setup_totp(admin, "Soroban", "admin@example.com", &mut rng).unwrap();
+        let setup = mgr
+            .setup_totp(admin, "Soroban", "admin@example.com", &mut rng)
+            .unwrap();
         assert!(setup.uri.starts_with("otpauth://"));
 
         // Confirm with a current code derived from the stored secret.

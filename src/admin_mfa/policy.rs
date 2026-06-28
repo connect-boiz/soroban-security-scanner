@@ -152,10 +152,16 @@ mod tests {
     fn admin_without_strong_factor_is_blocked() {
         let policy = MfaPolicy::default();
         let mut e = MfaEnrollment::none();
-        assert_eq!(policy.evaluate(Role::Admin, &e), PolicyDecision::AdminMfaRequired);
+        assert_eq!(
+            policy.evaluate(Role::Admin, &e),
+            PolicyDecision::AdminMfaRequired
+        );
         // SMS alone is not strong enough for admins.
         e.enroll(MfaMethod::Sms);
-        assert_eq!(policy.evaluate(Role::Admin, &e), PolicyDecision::AdminMfaRequired);
+        assert_eq!(
+            policy.evaluate(Role::Admin, &e),
+            PolicyDecision::AdminMfaRequired
+        );
         // TOTP satisfies the policy.
         e.enroll(MfaMethod::Totp);
         assert_eq!(policy.evaluate(Role::Admin, &e), PolicyDecision::Allow);
@@ -190,7 +196,10 @@ mod tests {
             require_user_mfa: true,
         };
         let mut e = MfaEnrollment::none();
-        assert_eq!(policy.evaluate(Role::User, &e), PolicyDecision::UserMfaRequired);
+        assert_eq!(
+            policy.evaluate(Role::User, &e),
+            PolicyDecision::UserMfaRequired
+        );
         e.enroll(MfaMethod::Sms);
         assert_eq!(policy.evaluate(Role::User, &e), PolicyDecision::Allow);
     }

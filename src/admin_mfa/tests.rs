@@ -21,11 +21,15 @@ fn full_admin_mfa_lifecycle() {
     let mut rng = rand::rngs::OsRng;
 
     // 1. Before enrollment, policy blocks the admin.
-    let pre = mgr.begin_login(admin, ctx("203.0.113.1", "dev-A", "US-CA", 9), 1000).unwrap();
+    let pre = mgr
+        .begin_login(admin, ctx("203.0.113.1", "dev-A", "US-CA", 9), 1000)
+        .unwrap();
     assert_eq!(pre.policy, PolicyDecision::AdminMfaRequired);
 
     // 2. Enroll TOTP and confirm.
-    let setup = mgr.setup_totp(admin, "Soroban", "admin@example.com", &mut rng).unwrap();
+    let setup = mgr
+        .setup_totp(admin, "Soroban", "admin@example.com", &mut rng)
+        .unwrap();
     let totp = TotpConfig::from_secret(base32::decode(&setup.secret_base32).unwrap());
     let t = 1_700_000_000u64;
     assert!(mgr.confirm_totp(admin, &totp.code_at(t), t));
@@ -35,7 +39,9 @@ fn full_admin_mfa_lifecycle() {
     assert_eq!(codes.len(), 10);
 
     // 4. Policy now clears; MFA is still required (admins always step up).
-    let post = mgr.begin_login(admin, ctx("203.0.113.1", "dev-A", "US-CA", 9), t as i64).unwrap();
+    let post = mgr
+        .begin_login(admin, ctx("203.0.113.1", "dev-A", "US-CA", 9), t as i64)
+        .unwrap();
     assert_eq!(post.policy, PolicyDecision::Allow);
     assert!(post.mfa_required);
 
@@ -55,7 +61,9 @@ fn step_up_required_for_sensitive_admin_operation() {
     let mut session = AdminSession::start(user, 1000);
 
     // Routine work is fine.
-    assert!(session.authorize(Sensitivity::Normal, &cfg, 1000 + 60).is_ok());
+    assert!(session
+        .authorize(Sensitivity::Normal, &cfg, 1000 + 60)
+        .is_ok());
 
     // A sensitive action after the freshness window demands re-auth.
     let stale = 1000 + cfg.step_up_freshness_secs + 10;
@@ -67,7 +75,9 @@ fn step_up_required_for_sensitive_admin_operation() {
 
     // Re-authenticate (MFA), then the action proceeds.
     session.mark_mfa(stale);
-    assert!(session.authorize(Sensitivity::Sensitive, &cfg, stale).is_ok());
+    assert!(session
+        .authorize(Sensitivity::Sensitive, &cfg, stale)
+        .is_ok());
 }
 
 #[test]

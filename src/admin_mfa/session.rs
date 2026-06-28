@@ -132,7 +132,9 @@ mod tests {
     fn sensitive_op_requires_fresh_mfa() {
         let mut s = AdminSession::start(Uuid::new_v4(), 1000);
         // Within freshness window: allowed.
-        assert!(s.authorize(Sensitivity::Sensitive, &cfg(), 1000 + 60).is_ok());
+        assert!(s
+            .authorize(Sensitivity::Sensitive, &cfg(), 1000 + 60)
+            .is_ok());
         // Past freshness window (but still active): step-up required.
         let later = 1000 + cfg().step_up_freshness_secs + 1;
         // Keep the session active so it's not idle-timed-out.

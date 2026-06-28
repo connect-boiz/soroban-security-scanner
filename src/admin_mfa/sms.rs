@@ -165,7 +165,10 @@ mod tests {
         let sender = CapturingSender::default();
         let mut ch = SmsChallenge::issue("+15551234567", 1000, &mut rng, &sender).unwrap();
         let otp = extract_otp(&sender);
-        assert_eq!(ch.verify(&otp, 1000 + DEFAULT_TTL_SECS + 1), SmsVerifyResult::Expired);
+        assert_eq!(
+            ch.verify(&otp, 1000 + DEFAULT_TTL_SECS + 1),
+            SmsVerifyResult::Expired
+        );
     }
 
     #[test]
