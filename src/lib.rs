@@ -69,6 +69,11 @@ pub use audit_trail::{
 // Self-contained and compiles cleanly under default features.
 pub mod upload_sanitization;
 
+// Multi-level caching strategy (partitioning, TTLs, stampede protection,
+// warming, monitoring) for issue #336. Self-contained and compiles cleanly
+// under default features.
+pub mod caching;
+
 // === Broken modules gated behind feature flag ===
 // Each module has pre-existing compilation errors (borrow checker violations,
 // missing trait impls, type mismatches, unresolved imports) that are being
