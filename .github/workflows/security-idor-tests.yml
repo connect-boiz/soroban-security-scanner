@@ -46,7 +46,7 @@ jobs:
       - name: Run IDOR security tests
         run: |
           echo "🔒 Running IDOR prevention tests..."
-          cargo test scan_access_control -- --nocapture
+          cargo test scan_access_control --lib -- --nocapture
           echo "✅ IDOR prevention tests passed"
 
       - name: Verify scan access control compiles cleanly
