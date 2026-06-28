@@ -1,0 +1,99 @@
+name: IDOR Security Tests
+
+on:
+  push:
+    branches: [main, master, develop]
+    paths:
+      - 'src/scan_access_control.rs'
+      - 'src/scan_access_control_tests.rs'
+      - 'src/lib.rs'
+      - 'src/event_logging.rs'
+  pull_request:
+    branches: [main, master, develop]
+    paths:
+      - 'src/scan_access_control.rs'
+      - 'src/scan_access_control_tests.rs'
+      - 'src/lib.rs'
+      - 'src/event_logging.rs'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_VERSION: 'stable'
+
+jobs:
+  idor-tests:
+    name: IDOR Prevention Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          components: rustfmt
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: idor-tests-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}
+          shared-key: backend-cache
+
+      - name: Run IDOR security tests
+        run: |
+          echo "🔒 Running IDOR prevention tests..."
+          cargo test scan_access_control -- --nocapture
+          echo "✅ IDOR prevention tests passed"
+
+      - name: Verify scan access control compiles cleanly
+        run: |
+          echo "📋 Verifying scan_access_control module compiles..."
+          cargo check --lib
+          echo "✅ Module compiles cleanly"
+
+      - name: Run full test suite
+        if: github.ref_name == 'main' || github.ref_name == 'master' || github.ref_name == 'develop'
+        run: |
+          echo "🧪 Running full test suite..."
+          cargo test --lib
+          echo "✅ Full test suite passed"
+
+  security-analysis:
+    name: Static Security Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          components: clippy
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: security-analysis-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}
+          shared-key: backend-cache
+
+      - name: Run Clippy (security lints)
+        run: |
+          echo "🔍 Running Clippy with security-focused lints..."
+          cargo clippy --lib -- -W clippy::all -W clippy::pedantic \
+            -W clippy::cargo -A clippy::module_name_repetitions \
+            -A clippy::missing_errors_doc -A clippy::missing_panics_doc
+          echo "✅ Clippy security analysis passed"
+
+      - name: Check for unsafe code
+        run: |
+          echo "🔒 Checking for unsafe code blocks..."
+          unsafe_count=$(grep -r "unsafe" src/scan_access_control.rs | wc -l || true)
+          if [ "$unsafe_count" -gt 0 ]; then
+            echo "⚠️  WARNING: Found $unsafe_count unsafe block(s) in scan_access_control.rs"
+          else
+            echo "✅ No unsafe code found in access control module"
+          fi
