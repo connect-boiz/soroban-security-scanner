@@ -14,9 +14,8 @@
 //! - Scan result sharing with explicit authorization and expiration
 //! - Access audit logging for compliance and forensic analysis
 
-use anyhow::Result;
 use chrono::{DateTime, Duration, Utc};
-use log::{error, info, warn};
+use log::{info, warn};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;

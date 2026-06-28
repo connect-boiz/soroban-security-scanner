@@ -12,7 +12,7 @@
 
 #[cfg(test)]
 mod idor_tests {
-use stellar_security_scanner::scan_access_control::{
+use crate::scan_access_control::{
     ScanAccessAction, ScanAccessControl, ScanAccessControlConfig, ScanAccessError,
     ScanAccessRole, ScanStatus,
 };
@@ -406,7 +406,7 @@ use stellar_security_scanner::scan_access_control::{
         let ac = setup();
         let scan_id = create_scan(&ac, "alice");
 
-        let guard = stellar_security_scanner::scan_access_control::ScanOwnershipGuard::new(
+        let guard = crate::scan_access_control::ScanOwnershipGuard::new(
             scan_id,
             "alice".to_string(),
             ScanAccessRole::Developer,
@@ -420,7 +420,7 @@ use stellar_security_scanner::scan_access_control::{
         let ac = setup();
         let scan_id = create_scan(&ac, "alice");
 
-        let guard = stellar_security_scanner::scan_access_control::ScanOwnershipGuard::new(
+        let guard = crate::scan_access_control::ScanOwnershipGuard::new(
             scan_id,
             "attacker".to_string(),
             ScanAccessRole::Developer,
