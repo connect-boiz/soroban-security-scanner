@@ -27,6 +27,7 @@ pub mod security_analyzer;
 pub mod session;
 pub mod time_travel_debugger;
 pub mod validation;
+pub mod vulnerabilities;
 pub mod wallet;
 
 #[cfg(test)]
