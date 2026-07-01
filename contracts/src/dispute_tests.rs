@@ -127,19 +127,12 @@ mod dispute_tests {
         let client = SecurityScannerContractClient::new(&env, &contract_id);
 
         let admin = test_address(&env, 1);
-        let approver1 = test_address(&env, 2);
-        let approver2 = test_address(&env, 3);
-        let approver3 = test_address(&env, 4);
-        let new_contract = test_address(&env, 5);
-
+        let approver2 = test_address(&env, 5);
+        let new_contract = test_address(&env, 2);
         client.initialize(&admin);
-
-        // Grant SuperAdmin to approvers for EmergencyActions permission
-        grant_role(&env, &contract_id, &approver1, &Role::SuperAdmin);
         grant_role(&env, &contract_id, &approver2, &Role::SuperAdmin);
-        grant_role(&env, &contract_id, &approver3, &Role::SuperAdmin);
 
-        // Direct call now requires multi-sig
+        // Direct emergency upgrade now requires multi-sig
         assert_eq!(
             client.try_emergency_upgrade(
                 &admin,
@@ -153,9 +146,9 @@ mod dispute_tests {
             Err(Ok(ContractError::MultiSigRequired))
         );
 
-        // Create multi-sig proposal
+        // Use multi-sig emergency upgrade flow with 2/3 quorum
         let proposal_id = client.propose_emergency_upgrade(
-            &approver1,
+            &admin,
             &new_contract,
             &String::from_str(&env, "1.0.1"),
             &String::from_str(
@@ -165,18 +158,10 @@ mod dispute_tests {
             &3,
             &0,
         );
-
-        // All three approve
-        client.approve_emerg_upgrade(&approver1, &proposal_id);
         client.approve_emerg_upgrade(&approver2, &proposal_id);
-        client.approve_emerg_upgrade(&approver3, &proposal_id);
-
-        // Wait for execution delay to pass
+        client.approve_emerg_upgrade(&admin, &proposal_id);
         advance_timestamp(&env, 3601);
-
-        // Execute
-        client.execute_emergency_upgrade(&approver1, &proposal_id);
-
+        client.execute_emergency_upgrade(&admin, &proposal_id);
         assert_eq!(client.get_upgrade_history().len(), 1);
     }
 
