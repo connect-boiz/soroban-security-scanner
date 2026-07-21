@@ -141,6 +141,7 @@ pub mod security_analyzer;
 pub mod session;
 #[cfg(feature = "broken-modules")]
 pub mod storage_safety;
+pub mod symbolic;
 #[cfg(feature = "broken-modules")]
 pub mod time_travel_debugger;
 #[cfg(feature = "broken-modules")]
