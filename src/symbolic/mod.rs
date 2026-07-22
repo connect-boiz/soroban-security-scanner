@@ -18,12 +18,12 @@
 //! 8. Benchmark Suite — known vulnerabilities for validation
 //! 9. CLI Integration — `stellar-scanner scan --symbolic`
 
-pub mod ir;
-pub mod state;
 pub mod checkers;
 pub mod explorer;
+pub mod ir;
+pub mod state;
 
-pub use ir::{IrInstruction, ControlFlowGraph, BasicBlock};
-pub use state::{SymbolicState, PathConstraint, SymbolicValue};
 pub use checkers::{VulnerabilityChecker, VulnerabilityReport, VulnerabilityType};
-pub use explorer::{PathExplorer, SearchStrategy, ExplorationConfig};
+pub use explorer::{ExplorationConfig, PathExplorer, SearchStrategy};
+pub use ir::{BasicBlock, ControlFlowGraph, IrInstruction};
+pub use state::{PathConstraint, SymbolicState, SymbolicValue};
