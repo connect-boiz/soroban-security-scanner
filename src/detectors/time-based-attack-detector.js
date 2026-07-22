@@ -100,6 +100,7 @@ class TimeBasedAttackDetector {
         }
       }
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error(`Error scanning file ${filePath}: ${error.message}`);
     }
   }
