@@ -146,6 +146,7 @@ pub mod wallet;
 // flash loans, oracle manipulation, and MEV detection.
 #[cfg(feature = "broken-modules")]
 pub mod economic_security;
+pub mod symbolic_execution;
 
 #[cfg(feature = "broken-modules")]
 #[cfg(test)]
