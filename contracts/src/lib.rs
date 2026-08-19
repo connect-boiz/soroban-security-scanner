@@ -572,8 +572,8 @@ impl SecurityScannerContract {
         let proposals: Map<u64, MultiSigProposal> = env.storage().instance().get(&MULTI_SIG_PROPOSALS).unwrap_or(Map::new(&env));
         let proposal: MultiSigProposal = proposals.get(proposal_id).ok_or(ContractError::ProposalNotFound)?;
         
-        let report_id: u64 = proposal.parameters.get(0).unwrap().parse().unwrap();
-        let bounty_amount: i128 = proposal.parameters.get(1).unwrap().parse().unwrap();
+        let report_id: u64 = proposal.parameters.get(0).ok_or(ContractError::InvalidInput)?.parse().map_err(|_| ContractError::InvalidInput)?;
+        let bounty_amount: i128 = proposal.parameters.get(1).ok_or(ContractError::InvalidInput)?.parse().map_err(|_| ContractError::InvalidInput)?;
         
         // Execute the verification
         Self::verify_vulnerability(env, executor, report_id, bounty_amount)?;
@@ -951,8 +951,8 @@ impl SecurityScannerContract {
         let proposals: Map<u64, MultiSigProposal> = env.storage().instance().get(&MULTI_SIG_PROPOSALS).unwrap_or(Map::new(&env));
         let proposal: MultiSigProposal = proposals.get(proposal_id).ok_or(ContractError::ProposalNotFound)?;
         
-        let alert_id: u64 = proposal.parameters.get(0).unwrap().parse().unwrap();
-        let verified: bool = proposal.parameters.get(1).unwrap().parse().unwrap();
+        let alert_id: u64 = proposal.parameters.get(0).ok_or(ContractError::InvalidInput)?.parse().map_err(|_| ContractError::InvalidInput)?;
+        let verified: bool = proposal.parameters.get(1).ok_or(ContractError::InvalidInput)?.parse().map_err(|_| ContractError::InvalidInput)?;
         
         // Execute the emergency verification
         Self::execute_emergency_verification_internal(env, executor, alert_id, verified)?;
@@ -1134,10 +1134,10 @@ impl SecurityScannerContract {
         let proposals: Map<u64, MultiSigProposal> = env.storage().instance().get(&MULTI_SIG_PROPOSALS).unwrap_or(Map::new(&env));
         let proposal: MultiSigProposal = proposals.get(proposal_id).ok_or(ContractError::ProposalNotFound)?;
         
-        let user_address_str = proposal.parameters.get(0).unwrap();
-        let role_str = proposal.parameters.get(1).unwrap();
+        let user_address_str = proposal.parameters.get(0).ok_or(ContractError::InvalidInput)?;
+        let role_str = proposal.parameters.get(1).ok_or(ContractError::InvalidInput)?;
         
-        // Parse address and role (simplified for this example)
+        // Parse address using canonical strkey form to avoid lossy Debug round-trip
         let user_address = Address::from_string(&String::from_slice(&env, user_address_str));
         let role = match role_str.as_str() {
             "SuperAdmin" => Role::SuperAdmin,
