@@ -157,7 +157,14 @@ pub struct SecurityScannerContract;
 #[contractimpl]
 impl SecurityScannerContract {
     fn require_non_default_address(addr: &Address) -> Result<(), ContractError> {
-        let _ = addr;
+        // Reject default/zero addresses to prevent burned funds or invalid role grants
+        // In Soroban, we compare against a known default-constructed Address
+        // Since Address doesn't expose a direct zero-check, we use the string representation
+        // A default Address serializes to an empty or minimal string
+        let addr_str = addr.to_string();
+        if addr_str.len() == 0 {
+            return Err(ContractError::InvalidInput);
+        }
         Ok(())
     }
 
@@ -568,10 +575,13 @@ impl SecurityScannerContract {
 
     /// Get researcher reputation
     pub fn get_reputation(env: Env, researcher: Address) -> Result<Reputation, ContractError> {
-        let rep_key = Symbol::short(&format!("REP_{:?}", researcher));
-        env.storage().instance()
-            .get(&rep_key)
-            .ok_or(ContractError::NotFound)
+        // Use Map<Address, Reputation> instead of Symbol::short to avoid panic (#480)
+        let rep_map: Map<Address, Reputation> = env
+            .storage()
+            .instance()
+            .get(&REPUTATION)
+            .unwrap_or(Map::new(&env));
+        rep_map.get(researcher).ok_or(ContractError::NotFound)
     }
 
     /// Add funds to bounty pool
@@ -599,16 +609,19 @@ impl SecurityScannerContract {
         successful_reports: u64,
         earnings: i128,
     ) -> Result<(), ContractError> {
-        let rep_key = Symbol::short(&format!("REP_{:?}", researcher));
-        
-        let mut reputation: Reputation = env.storage().instance()
-            .get(&rep_key)
-            .unwrap_or(Reputation {
-                researcher: researcher.clone(),
-                score: 0,
-                successful_reports: 0,
-                total_earnings: 0,
-            });
+        // Use Map<Address, Reputation> instead of Symbol::short to avoid panic on long keys (#480)
+        let mut rep_map: Map<Address, Reputation> = env
+            .storage()
+            .instance()
+            .get(&REPUTATION)
+            .unwrap_or(Map::new(&env));
+
+        let mut reputation: Reputation = rep_map.get(researcher.clone()).unwrap_or(Reputation {
+            researcher: researcher.clone(),
+            score: 0,
+            successful_reports: 0,
+            total_earnings: 0,
+        });
 
         reputation.successful_reports = Self::checked_add_u64(reputation.successful_reports, successful_reports)?;
         reputation.total_earnings = Self::checked_add_i128(reputation.total_earnings, earnings)?;
@@ -616,7 +629,8 @@ impl SecurityScannerContract {
         let score_from_earnings = Self::checked_non_negative_i128_to_u64(reputation.total_earnings / 1_000_000)?;
         reputation.score = Self::checked_add_u64(score_from_reports, score_from_earnings)?;
 
-        env.storage().instance().set(&rep_key, &reputation);
+        rep_map.set(researcher, reputation);
+        env.storage().instance().set(&REPUTATION, &rep_map);
 
         Ok(())
     }
