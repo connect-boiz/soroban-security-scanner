@@ -373,6 +373,9 @@ impl SecurityScannerContract {
     
     /// Initialize the contract with admin address
     pub fn initialize(env: Env, admin: Address) -> Result<(), ContractError> {
+        // Require the admin address to authenticate itself to prevent front-running (#474)
+        admin.require_auth();
+        
         if env.storage().instance().has(&ADMIN) {
             return Err(ContractError::Unauthorized);
         }
