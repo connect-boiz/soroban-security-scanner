@@ -156,6 +156,29 @@ pub struct SecurityScannerContract;
 
 #[contractimpl]
 impl SecurityScannerContract {
+    fn verify_and_consume_nonce(
+        env: &Env,
+        nonce_map_key: Symbol,
+        id: u64,
+        expected_nonce: &BytesN<32>,
+    ) -> Result<(), ContractError> {
+        let mut nonces: Map<u64, BytesN<32>> = env
+            .storage()
+            .instance()
+            .get(&nonce_map_key)
+            .unwrap_or(Map::new(env));
+        
+        let stored_nonce = nonces.get(id).ok_or(ContractError::NotFound)?;
+        if stored_nonce != *expected_nonce {
+            return Err(ContractError::InvalidInput);
+        }
+        
+        // Consume the nonce to prevent replay
+        nonces.remove(id);
+        env.storage().instance().set(&nonce_map_key, &nonces);
+        Ok(())
+    }
+
     fn require_non_default_address(addr: &Address) -> Result<(), ContractError> {
         let _ = addr;
         Ok(())
@@ -206,14 +229,21 @@ impl SecurityScannerContract {
     }
 
     fn generate_nonce(env: &Env, seed: &Address, counter: u64) -> BytesN<32> {
-        let payload = format!(
-            "{:?}:{}:{}:{}",
-            seed,
-            counter,
-            env.ledger().sequence(),
-            env.ledger().timestamp()
-        );
-        let bytes = Bytes::from_slice(env, payload.as_bytes());
+        // Use PRNG for unpredictable nonces instead of deterministic hash (#482)
+        // This prevents replay attacks by ensuring each nonce is unique and unpredictable
+        let mut prng_bytes = [0u8; 32];
+        env.prng().fill(&mut prng_bytes);
+        
+        // Mix in seed and counter for domain separation
+        let seed_bytes = seed.to_xdr(env);
+        let counter_bytes = counter.to_be_bytes();
+        
+        let mut payload = alloc::vec![];
+        payload.extend_from_slice(&prng_bytes);
+        payload.extend_from_slice(&seed_bytes);
+        payload.extend_from_slice(&counter_bytes);
+        
+        let bytes = Bytes::from_slice(env, &payload);
         env.crypto().sha256(&bytes).into()
     }
 
