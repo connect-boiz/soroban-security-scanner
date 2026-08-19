@@ -499,6 +499,14 @@ impl SecurityScannerContract {
         proposer.require_auth();
         Self::require_permission(&env, &proposer, Permission::VerifyVulnerability)?;
         
+        // Enforce minimum multi-sig requirements to prevent bypass
+        if required_approvals < 2 {
+            return Err(ContractError::InvalidInput);
+        }
+        if execution_delay < 3600 {
+            return Err(ContractError::InvalidInput);
+        }
+
         let parameters = vec![
             report_id.to_string(),
             bounty_amount.to_string(),
