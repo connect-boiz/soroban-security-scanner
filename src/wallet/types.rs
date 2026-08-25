@@ -1,190 +1,167 @@
-//! Wallet Management Types
-//!
-//! Core data structures for wallet creation, import/export, backup/restore,
-//! and cross-device synchronization.
-
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use uuid::Uuid;
+use std::fmt;
 
-/// Wallet type classification
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum WalletType {
-    Standard,
-    Hardware,
-    MultiSig,
-    WatchOnly,
-    Imported,
+/// Number of stroops in 1 XLM (10^7)
+pub const STROOPS_PER_XLM: i64 = 10_000_000;
+
+/// Represents a wallet with its balances stored as integer stroops
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Wallet {
+    pub id: uuid::Uuid,
+    pub user_id: uuid::Uuid,
+    pub public_key: String,
+    /// Balance in stroops (1 XLM = 10,000,000 stroops)
+    pub balance_stroops: i64,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
-impl std::fmt::Display for WalletType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            WalletType::Standard => write!(f, "standard"),
-            WalletType::Hardware => write!(f, "hardware"),
-            WalletType::MultiSig => write!(f, "multisig"),
-            WalletType::WatchOnly => write!(f, "watch_only"),
-            WalletType::Imported => write!(f, "imported"),
+impl Wallet {
+    /// Create a new wallet with zero balance
+    pub fn new(user_id: uuid::Uuid, public_key: String) -> Self {
+        let now = chrono::Utc::now();
+        Self {
+            id: uuid::Uuid::new_v4(),
+            user_id,
+            public_key,
+            balance_stroops: 0,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    /// Get balance as XLM string for display (e.g., "123.4567890")
+    pub fn balance_xlm_string(&self) -> String {
+        stroops_to_xlm_string(self.balance_stroops)
+    }
+
+    /// Get balance as f64 for legacy compatibility (DEPRECATED: use balance_xlm_string)
+    #[deprecated(note = "Use balance_xlm_string() for display or balance_stroops for arithmetic")]
+    pub fn balance_lumens(&self) -> f64 {
+        self.balance_stroops as f64 / STROOPS_PER_XLM as f64
+    }
+}
+
+/// Balance response for API - uses string representation to avoid precision loss
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WalletBalance {
+    pub wallet_id: uuid::Uuid,
+    pub public_key: String,
+    /// XLM balance as string (e.g., "123.4567890")
+    pub xlm_balance: String,
+    /// XLM balance in stroops for precise arithmetic
+    pub xlm_balance_stroops: i64,
+    pub asset_balances: Vec<AssetBalance>,
+    pub last_updated: chrono::DateTime<chrono::Utc>,
+}
+
+impl WalletBalance {
+    pub fn new(wallet_id: uuid::Uuid, public_key: String, xlm_balance_stroops: i64, asset_balances: Vec<AssetBalance>) -> Self {
+        Self {
+            wallet_id,
+            public_key,
+            xlm_balance: stroops_to_xlm_string(xlm_balance_stroops),
+            xlm_balance_stroops,
+            asset_balances,
+            last_updated: chrono::Utc::now(),
         }
     }
 }
 
-/// Wallet operational status
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum WalletStatus {
-    Active,
-    Inactive,
-    Frozen,
-    Compromised,
-}
-
-/// Wallet record (mirrors the DB wallets table)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Wallet {
-    pub id: Uuid,
-    pub user_id: Uuid,
-    pub stellar_address: String,
-    pub wallet_name: String,
-    pub description: Option<String>,
-    pub wallet_type: WalletType,
-    pub status: WalletStatus,
-    pub balance_lumens: f64,
-    pub is_primary: bool,
-    pub is_verified: bool,
-    pub verification_level: i32,
-    pub metadata: HashMap<String, serde_json::Value>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-    pub last_transaction_at: Option<DateTime<Utc>>,
-    pub transaction_count: i32,
-    pub security_score: i32,
-}
-
-/// Request to create a new wallet
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CreateWalletRequest {
-    pub user_id: Uuid,
-    pub wallet_name: String,
-    pub description: Option<String>,
-    pub wallet_type: WalletType,
-    /// If provided, import this existing Stellar keypair (secret seed)
-    pub secret_seed: Option<String>,
-    pub set_as_primary: bool,
-}
-
-/// Request to import a wallet from a secret seed or mnemonic
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ImportWalletRequest {
-    pub user_id: Uuid,
-    pub wallet_name: String,
-    pub description: Option<String>,
-    /// Stellar secret seed (S...) or BIP-39 mnemonic phrase
-    pub secret_seed: String,
-    pub set_as_primary: bool,
-}
-
-/// Encrypted wallet export bundle
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WalletExport {
-    /// Schema version for forward compatibility
-    pub version: u8,
-    pub wallet_id: Uuid,
-    pub stellar_address: String,
-    pub wallet_name: String,
-    pub wallet_type: WalletType,
-    /// AES-256-GCM encrypted secret seed, base64-encoded
-    pub encrypted_seed: String,
-    /// Random nonce used for encryption, base64-encoded
-    pub encryption_nonce: String,
-    /// PBKDF2 salt for key derivation, base64-encoded
-    pub kdf_salt: String,
-    /// PBKDF2 iteration count
-    pub kdf_iterations: u32,
-    pub exported_at: DateTime<Utc>,
-    /// HMAC-SHA256 over all fields (excluding this one), base64-encoded
-    pub integrity_hmac: String,
-}
-
-/// Request to restore a wallet from an export bundle
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RestoreWalletRequest {
-    pub user_id: Uuid,
-    pub export_bundle: WalletExport,
-    /// Password used to decrypt the export bundle
-    pub password: String,
-    pub set_as_primary: bool,
-}
-
-/// Sync record for cross-device wallet synchronization
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WalletSyncRecord {
-    pub id: Uuid,
-    pub wallet_id: Uuid,
-    pub user_id: Uuid,
-    pub device_id: String,
-    pub device_name: Option<String>,
-    pub last_synced_at: DateTime<Utc>,
-    /// Encrypted wallet state delta, base64-encoded
-    pub encrypted_state: String,
-    pub sync_version: i64,
-}
-
-/// Wallet balance snapshot from Stellar Horizon
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WalletBalance {
-    pub stellar_address: String,
-    pub xlm_balance: f64,
-    pub asset_balances: Vec<AssetBalance>,
-    pub fetched_at: DateTime<Utc>,
-}
-
-/// Individual asset balance
+/// Individual asset balance - stored as integer stroops
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AssetBalance {
     pub asset_code: String,
-    pub asset_issuer: Option<String>,
-    pub balance: f64,
+    pub asset_issuer: String,
+    /// Balance in stroops (smallest unit)
+    pub balance_stroops: i64,
+    pub last_updated: chrono::DateTime<chrono::Utc>,
 }
 
-/// Errors specific to wallet operations
-#[derive(Debug, thiserror::Error)]
-pub enum WalletError {
-    #[error("Wallet not found: {0}")]
-    NotFound(Uuid),
+impl AssetBalance {
+    pub fn new(asset_code: String, asset_issuer: String, balance_stroops: i64) -> Self {
+        Self {
+            asset_code,
+            asset_issuer,
+            balance_stroops,
+            last_updated: chrono::Utc::now(),
+        }
+    }
 
-    #[error("Invalid Stellar address: {0}")]
-    InvalidAddress(String),
+    /// Get balance as string for display
+    pub fn balance_string(&self) -> String {
+        stroops_to_xlm_string(self.balance_stroops)
+    }
 
-    #[error("Invalid secret seed")]
-    InvalidSecretSeed,
+    /// Get balance as f64 for legacy compatibility (DEPRECATED)
+    #[deprecated(note = "Use balance_string() for display or balance_stroops for arithmetic")]
+    pub fn balance(&self) -> f64 {
+        self.balance_stroops as f64 / STROOPS_PER_XLM as f64
+    }
+}
 
-    #[error("Encryption error: {0}")]
-    EncryptionError(String),
+/// Convert stroops to XLM string representation (e.g., 1234567890 -> "123.4567890")
+pub fn stroops_to_xlm_string(stroops: i64) -> String {
+    let xlm = stroops / STROOPS_PER_XLM;
+    let remainder = (stroops % STROOPS_PER_XLM).abs();
+    format!("{}.{:07}", xlm, remainder)
+}
 
-    #[error("Decryption error: wrong password or corrupted data")]
-    DecryptionError,
+/// Parse XLM string to stroops (e.g., "123.4567890" -> 1234567890)
+/// Returns error if more than 7 decimal places or invalid format
+pub fn xlm_string_to_stroops(s: &str) -> Result<i64, String> {
+    let parts: Vec<&str> = s.split('.').collect();
+    match parts.len() {
+        1 => {
+            // No decimal part
+            let whole: i64 = parts[0].parse().map_err(|_| "Invalid whole number")?;
+            Ok(whole * STROOPS_PER_XLM)
+        }
+        2 => {
+            let whole: i64 = parts[0].parse().map_err(|_| "Invalid whole number")?;
+            let decimal = parts[1];
+            if decimal.len() > 7 {
+                return Err("Too many decimal places (max 7)".to_string());
+            }
+            let decimal_padded = format!("{:0<7}", decimal);
+            let fractional: i64 = decimal_padded.parse().map_err(|_| "Invalid decimal part")?;
+            let sign = if whole < 0 { -1 } else { 1 };
+            Ok(whole * STROOPS_PER_XLM + sign * fractional)
+        }
+        _ => Err("Invalid format".to_string()),
+    }
+}
 
-    #[error("Integrity check failed: export bundle may be tampered")]
-    IntegrityError,
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    #[error("Wallet already exists for address: {0}")]
-    DuplicateAddress(String),
+    #[test]
+    fn test_stroops_to_xlm_string() {
+        assert_eq!(stroops_to_xlm_string(0), "0.0000000");
+        assert_eq!(stroops_to_xlm_string(1), "0.0000001");
+        assert_eq!(stroops_to_xlm_string(STROOPS_PER_XLM), "1.0000000");
+        assert_eq!(stroops_to_xlm_string(1234567890), "123.4567890");
+        assert_eq!(stroops_to_xlm_string(-1234567890), "-123.4567890");
+    }
 
-    #[error("User already has a primary wallet")]
-    PrimaryWalletExists,
+    #[test]
+    fn test_xlm_string_to_stroops() {
+        assert_eq!(xlm_string_to_stroops("0").unwrap(), 0);
+        assert_eq!(xlm_string_to_stroops("1").unwrap(), STROOPS_PER_XLM);
+        assert_eq!(xlm_string_to_stroops("123.4567890").unwrap(), 1234567890);
+        assert_eq!(xlm_string_to_stroops("0.0000001").unwrap(), 1);
+        assert_eq!(xlm_string_to_stroops("-123.4567890").unwrap(), -1234567890);
+        assert!(xlm_string_to_stroops("1.12345678").is_err()); // too many decimals
+    }
 
-    #[error("Sync conflict: local version {local} vs remote version {remote}")]
-    SyncConflict { local: i64, remote: i64 },
-
-    #[error("Stellar network error: {0}")]
-    NetworkError(String),
-
-    #[error("Database error: {0}")]
-    DatabaseError(String),
-
-    #[error("Unauthorized: user {0} does not own wallet {1}")]
-    Unauthorized(Uuid, Uuid),
+    #[test]
+    fn test_roundtrip() {
+        let values = vec![0, 1, 100, STROOPS_PER_XLM, 1234567890, -1234567890];
+        for v in values {
+            let s = stroops_to_xlm_string(v);
+            let parsed = xlm_string_to_stroops(&s).unwrap();
+            assert_eq!(v, parsed, "Roundtrip failed for {}", v);
+        }
+    }
 }
