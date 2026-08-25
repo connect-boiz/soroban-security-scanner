@@ -1,12 +1,11 @@
 [package]
 name = "soroban-security-scanner"
 version = "1.0.0"
-edition = "2021"
+edition = "2021
 authors = ["connect-boiz"]
 description = "Security scanner for Soroban smart contracts"
 license = "MIT"
 repository = "https://github.com/gbengaeben/soroban-security-scanner"
-autoexamples = false
 
 [dependencies]
 # Core dependencies
@@ -43,7 +42,6 @@ k8s-openapi = { version = "0.20", features = ["v1_27"] }
 kube = { version = "0.87", features = ["runtime", "derive"] }
 
 
-
 # OAuth
 oauth2 = "4.4"
 url = "2.5"
@@ -67,12 +65,9 @@ serde_yaml = "0.9"
 # Transaction processing dependencies
 zstd = "0.13"
 regex = "1.10"
-fancy-regex = "0.14"
 
 # Configuration
 config = "0.13"
-toml = "0.8"
-num_cpus = "1.16"
 walkdir = "2.4"
 
 # Logging
@@ -102,6 +97,9 @@ http-body-util = "0.1.3"
 # Protocol Analysis
 indexmap = { version = "2", features = ["serde"] }
 
+# Mock server for testing
+mockito = { version = "1.0", optional = true }
+
 [dev-dependencies]
 tokio-test = "0.4"
 mockall = "0.11"
@@ -112,80 +110,18 @@ default = []
 database = ["sqlx"]
 redis-cache = ["redis"]
 full = ["database", "redis-cache"]
+testing = ["mockito"]
 
 # WIP feature gates broken backend modules under active refactoring.
 # Modules behind this gate have 410+ pre-existing compilation errors
 # (borrow checker, missing trait impls, type mismatches) and are
-# being fixed incrementally. Default compilation (no features)
-# passes cleanly with a minimal stub.
+# being fixed incrementally. Default compilation (no features) passes cleanly with a minimal stub.
 broken-modules = []
 
 [[bin]]
 name = "soroban-scanner"
 path = "src/main.rs"
-# The CLI imports types from modules gated behind `broken-modules`
-# (see the header of src/main.rs). Building it requires that feature:
-#   cargo build --features broken-modules
-required-features = ["broken-modules"]
 
 [lib]
 name = "soroban_security_scanner"
 path = "src/lib.rs"
-
-# The `examples/*.rs` contract fixtures (secure/vulnerable contract variants)
-# are scan inputs used by the integration tests, not runnable examples, and
-# they depend on soroban-sdk which is not a dependency of this crate. Disable
-# auto-discovery and declare the real examples explicitly below.
-
-[[example]]
-name = "auth_server"
-path = "examples/auth_server.rs"
-
-[[example]]
-name = "kubernetes_isolated_scanning"
-path = "examples/kubernetes_isolated_scanning.rs"
-required-features = ["broken-modules"]
-
-# The contract integration tests (reentrancy, bounty marketplace) exercise
-# modules gated behind `broken-modules` (escrow, bounty_marketplace,
-# security_analyzer) that depend on soroban-sdk, which is not a dependency
-# of this crate (it lives in the separate contracts/ workspace). Gate them
-# behind the same feature, matching the bin and kubernetes example.
-
-[[test]]
-name = "api_versioning_tests"
-path = "tests/api_versioning_tests.rs"
-
-[[test]]
-name = "audit_trail_integration_tests"
-path = "tests/audit_trail_integration_tests.rs"
-
-[[test]]
-name = "auth_integration_tests"
-path = "tests/auth_integration_tests.rs"
-
-[[test]]
-name = "balance_checks_test"
-path = "tests/balance_checks_test.rs"
-
-[[test]]
-name = "bounty_marketplace_tests"
-path = "tests/bounty_marketplace_tests.rs"
-required-features = ["broken-modules"]
-
-[[test]]
-name = "integration_tests"
-path = "tests/integration_tests.rs"
-
-[[test]]
-name = "reentrancy_test"
-path = "tests/reentrancy_test.rs"
-required-features = ["broken-modules"]
-
-[[test]]
-name = "security_monitoring_baseline_api_tests"
-path = "tests/security_monitoring_baseline_api_tests.rs"
-
-[[test]]
-name = "severity_scoring_integration_tests"
-path = "tests/severity_scoring_integration_tests.rs"
