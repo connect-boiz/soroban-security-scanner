@@ -101,6 +101,29 @@ describe('Security Headers Middleware', () => {
       expect(cspHeader).toContain('https://horizon-futurenet.stellar.org');
     });
 
+    it('should allow local WebSocket connections only outside production', () => {
+      const developmentResponse = middleware(mockRequest);
+      const developmentCsp = developmentResponse.headers.get(
+        'Content-Security-Policy-Report-Only'
+      );
+
+      expect(developmentCsp).toContain('ws://localhost:*');
+
+      (process.env as any).NODE_ENV = 'production';
+      const productionResponse = middleware(mockRequest);
+      const productionCsp = productionResponse.headers.get('Content-Security-Policy');
+
+      expect(productionCsp).not.toContain('ws://localhost:*');
+    });
+
+    it('should not allow wildcard Stellar WebSockets or deprecated mixed-content directives', () => {
+      const response = middleware(mockRequest);
+      const cspHeader = response.headers.get('Content-Security-Policy-Report-Only');
+
+      expect(cspHeader).not.toContain('wss://*.stellar.org');
+      expect(cspHeader).not.toContain('block-all-mixed-content');
+    });
+
     it('should set frame-ancestors to none', () => {
       const response = middleware(mockRequest);
 
