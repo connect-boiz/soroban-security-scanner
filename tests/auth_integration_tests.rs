@@ -305,8 +305,10 @@ fn test_jwt_token_refresh() {
     assert_eq!(claims.sub, "user123");
     assert_eq!(claims.role, "refresh");
 
-    // Generate new access token using refresh token
-    let new_access_token = jwt_service
+    // Exchange the refresh token for a new access + refresh token pair. The
+    // refresh token is rotated: the presented one is consumed and a new one
+    // is returned alongside the access token (Issue #485).
+    let pair = jwt_service
         .refresh_access_token(
             &refresh_token,
             "user123",
@@ -318,10 +320,17 @@ fn test_jwt_token_refresh() {
         .unwrap();
 
     // Validate new access token
-    let new_claims = jwt_service.validate_token(&new_access_token).unwrap();
+    let new_claims = jwt_service.validate_token(&pair.access_token).unwrap();
     assert_eq!(new_claims.sub, "user123");
     assert_eq!(new_claims.email, "user@example.com");
     assert_eq!(new_claims.role, "user");
+
+    // The presented refresh token has been consumed and can no longer be used,
+    // while the rotated refresh token is valid.
+    assert!(jwt_service.validate_refresh_token(&refresh_token).is_err());
+    assert!(jwt_service
+        .validate_refresh_token(&pair.refresh_token)
+        .is_ok());
 }
 
 #[tokio::test]
