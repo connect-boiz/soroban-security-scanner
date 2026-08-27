@@ -212,12 +212,12 @@ impl SessionStore for RedisSessionStore {
 
         // Store session data with TTL
         let ttl = (session.expires_at - Utc::now()).num_seconds() as usize;
-        conn.set_ex(&session_key, session_json, ttl)
+        conn.set_ex::<_, _, ()>(&session_key, session_json, ttl)
             .await
             .map_err(|e| SessionError::Redis(e.to_string()))?;
 
         // Add session to user's session list
-        conn.sadd(&user_sessions_key, &session.session_id)
+        conn.sadd::<_, _, ()>(&user_sessions_key, &session.session_id)
             .await
             .map_err(|e| SessionError::Redis(e.to_string()))?;
 
@@ -260,7 +260,7 @@ impl SessionStore for RedisSessionStore {
         let session_key = self.session_key(&session.session_id);
         let ttl = (session.expires_at - Utc::now()).num_seconds() as usize;
 
-        conn.set_ex(&session_key, session_json, ttl)
+        conn.set_ex::<_, _, ()>(&session_key, session_json, ttl)
             .await
             .map_err(|e| SessionError::Redis(e.to_string()))?;
 
@@ -283,13 +283,13 @@ impl SessionStore for RedisSessionStore {
             let user_sessions_key = self.user_sessions_key(&session_data.user_id);
 
             // Remove from user's session list
-            conn.srem(&user_sessions_key, session_id)
+            conn.srem::<_, _, ()>(&user_sessions_key, session_id)
                 .await
                 .map_err(|e| SessionError::Redis(e.to_string()))?;
         }
 
         // Delete session
-        conn.del(&session_key)
+        conn.del::<_, ()>(&session_key)
             .await
             .map_err(|e| SessionError::Redis(e.to_string()))?;
 
@@ -315,14 +315,14 @@ impl SessionStore for RedisSessionStore {
         let mut count = 0;
         for session_id in &session_ids {
             let session_key = self.session_key(session_id);
-            conn.del(&session_key)
+            conn.del::<_, ()>(&session_key)
                 .await
                 .map_err(|e| SessionError::Redis(e.to_string()))?;
             count += 1;
         }
 
         // Clear user's session list
-        conn.del(&user_sessions_key)
+        conn.del::<_, ()>(&user_sessions_key)
             .await
             .map_err(|e| SessionError::Redis(e.to_string()))?;
 
@@ -365,12 +365,12 @@ impl SessionStore for RedisSessionStore {
             }
 
             // Update user session list with only valid sessions
-            conn.del(&user_sessions_key)
+            conn.del::<_, ()>(&user_sessions_key)
                 .await
                 .map_err(|e| SessionError::Redis(e.to_string()))?;
 
             if !valid_sessions.is_empty() {
-                conn.sadd(&user_sessions_key, &valid_sessions)
+                conn.sadd::<_, _, ()>(&user_sessions_key, &valid_sessions)
                     .await
                     .map_err(|e| SessionError::Redis(e.to_string()))?;
             }
