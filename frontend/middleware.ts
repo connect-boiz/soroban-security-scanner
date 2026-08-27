@@ -152,7 +152,65 @@ function getSecurityHeaders(nonce: string, isProduction: boolean): Record<string
   return headers;
 }
 
-export function middleware(_request: NextRequest) {
+/**
+ * The httpOnly session cookie name, kept in sync with the server-side
+ * session endpoint (app/api/auth/session/route.ts).
+ */
+export const SESSION_COOKIE_NAME = 'soroban_auth_session';
+
+/**
+ * Routes that require an authenticated session to view.
+ *
+ * The application's working area lives under `/` (scanner, bounties,
+ * analytics, wallet, settings, ...) plus the notifications page. Everything
+ * outside `/auth` is treated as part of that protected area.
+ */
+const LOGIN_PATH = '/auth';
+
+function isProtectedPath(pathname: string): boolean {
+  // `/` (trailing slash) and any non-auth path are protected.
+  if (pathname === LOGIN_PATH || pathname.startsWith(`${LOGIN_PATH}/`)) return false;
+  return true;
+}
+
+/**
+ * Decide where an unauthenticated/authenticated request should be sent.
+ *
+ *   - protected path + no session -> redirect to the login page
+ *   - login page + valid session  -> redirect back to the app root
+ *   - otherwise                   -> no redirect
+ *
+ * Exposed as a pure function so the guard is deterministically unit-testable
+ * independent of the environment's headers implementation.
+ */
+export function resolveAuthRedirect(
+  pathname: string,
+  authenticated: boolean,
+  origin: string
+): string | null {
+  if (isProtectedPath(pathname) && !authenticated) {
+    return `${origin}${LOGIN_PATH}`;
+  }
+  if (!isProtectedPath(pathname) && authenticated) {
+    return `${origin}/`;
+  }
+  return null;
+}
+
+/**
+ * Best-effort validation that the request carries a session cookie.
+ *
+ * The cookie is httpOnly, so its mere presence indicates a session that was
+ * established by the server-side endpoint rather than by client-side code.
+ * Route-handler validated reads are reserved for the authenticated session
+ * endpoint itself; here we gate navigation.
+ */
+function hasSessionCookie(request: NextRequest): boolean {
+  const cookie = request.cookies?.get(SESSION_COOKIE_NAME)?.value;
+  return Boolean(cookie && cookie.length > 0);
+}
+
+export function middleware(request: NextRequest) {
   // Generate unique nonce for this request
   const nonce = generateNonce();
 
@@ -176,6 +234,24 @@ export function middleware(_request: NextRequest) {
   // Store nonce in request headers for use in pages
   // This allows pages to access the nonce for inline scripts
   response.headers.set('x-nonce', nonce);
+
+  // Route guard: enforce authentication before the request proceeds.
+  // Guards run only when the request carries routing information (a real
+  // NextRequest). Unit tests that call middleware with a bare stub keep the
+  // header-only behavior.
+  const pathname = request.nextUrl?.pathname;
+  if (typeof pathname === 'string') {
+    const authenticated = hasSessionCookie(request);
+
+    // NextResponse.redirect requires an absolute URL; build one from the
+    // current request origin so relative path redirects work in middleware.
+    const origin = request.nextUrl.origin ?? 'http://localhost:3000';
+    const redirectUrl = resolveAuthRedirect(pathname, authenticated, origin);
+
+    if (redirectUrl) {
+      return NextResponse.redirect(redirectUrl);
+    }
+  }
 
   return response;
 }
