@@ -4,8 +4,8 @@
 //! holding XLM in escrow until bugs are verified and approved.
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, panic_with_error, Address, Bytes, BytesN, Env, Map, 
-    Symbol, Vec, i128, u64,
+    contract, contractimpl, contracttype, panic_with_error, Address, Bytes, BytesN, Env, Map,
+    String, Symbol, Vec, i128, u64,
 };
 
 // Event logging constants
@@ -87,7 +87,13 @@ pub struct BountyMarketplace;
 #[contractimpl]
 impl BountyMarketplace {
     fn require_non_default_address(env: &Env, address: &Address) {
-        let _ = (env, address);
+        let null_address = String::from_str(
+            env,
+            "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+        );
+        if address == &Address::from_string(&null_address) {
+            panic_with_error!(env, ContractError::InvalidInput);
+        }
     }
 
     fn require_positive_amount(env: &Env, amount: i128) {

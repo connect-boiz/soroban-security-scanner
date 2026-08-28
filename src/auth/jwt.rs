@@ -35,7 +35,14 @@ pub enum JwtError {
 }
 
 use crate::auth::token_revocation::TokenRevocationList;
+use chrono::TimeZone;
 use std::sync::Arc;
+
+#[derive(Debug, Clone)]
+pub struct RefreshedTokens {
+    pub access_token: String,
+    pub refresh_token: String,
+}
 
 #[derive(Clone)]
 pub struct JwtService {
@@ -179,6 +186,10 @@ impl JwtService {
             return Err(JwtError::InvalidClaims);
         }
 
+        if self.revocation_list.is_revoked(&token_data.claims.jti) {
+            return Err(JwtError::Revoked);
+        }
+
         Ok(token_data.claims)
     }
 
@@ -206,22 +217,33 @@ impl JwtService {
         role: &str,
         permissions: Vec<String>,
         expires_in_hours: i64,
-    ) -> Result<String, JwtError> {
-        // Validate refresh token
+        refresh_expires_in_days: i64,
+    ) -> Result<RefreshedTokens, JwtError> {
         let claims = self.validate_refresh_token(refresh_token)?;
 
-        // Ensure the refresh token belongs to the same user
         if claims.sub != user_id {
             return Err(JwtError::InvalidClaims);
         }
 
-        // Generate new access token
-        self.generate_token(user_id, email, role, permissions, expires_in_hours)
+        let expiry = Utc
+            .timestamp_opt(claims.exp, 0)
+            .single()
+            .ok_or(JwtError::InvalidClaims)?;
+        self.revocation_list
+            .revoke_token(&claims.jti, user_id, expiry);
+
+        let access_token =
+            self.generate_token(user_id, email, role, permissions, expires_in_hours)?;
+        let new_refresh_token = self.generate_refresh_token(user_id, refresh_expires_in_days)?;
+
+        Ok(RefreshedTokens {
+            access_token,
+            refresh_token: new_refresh_token,
+        })
     }
 
     /// Revoke a single JWT by its jti (Issue #428)
     pub fn revoke_token(&self, jti: &str, user_id: &str, exp: i64) {
-        use chrono::TimeZone;
         let expiry = chrono::Utc.timestamp_opt(exp, 0).unwrap();
         self.revocation_list.revoke_token(jti, user_id, expiry);
     }
@@ -350,7 +372,7 @@ mod tests {
 
         let refresh_token = jwt_service.generate_refresh_token("user123", 7).unwrap();
 
-        let new_access_token = jwt_service
+        let refreshed = jwt_service
             .refresh_access_token(
                 &refresh_token,
                 "user123",
@@ -358,12 +380,46 @@ mod tests {
                 "admin",
                 vec!["read".to_string()],
                 1,
+                7,
             )
             .unwrap();
 
-        let claims = jwt_service.validate_token(&new_access_token).unwrap();
+        let claims = jwt_service.validate_token(&refreshed.access_token).unwrap();
         assert_eq!(claims.sub, "user123");
         assert_eq!(claims.email, "test@example.com");
+
+        assert!(jwt_service
+            .validate_refresh_token(&refreshed.refresh_token)
+            .is_ok());
+        assert!(jwt_service.validate_refresh_token(&refresh_token).is_err());
+    }
+
+    #[test]
+    fn test_refresh_token_replay_is_rejected() {
+        let jwt_service = JwtService::new(
+            TEST_SECRET,
+            TEST_ISSUER.to_string(),
+            TEST_AUDIENCE.to_string(),
+        );
+
+        let refresh_token = jwt_service.generate_refresh_token("user123", 7).unwrap();
+
+        let _first = jwt_service
+            .refresh_access_token(
+                &refresh_token,
+                "user123",
+                "test@example.com",
+                "admin",
+                vec!["read".to_string()],
+                1,
+                7,
+            )
+            .unwrap();
+
+        assert!(matches!(
+            jwt_service.validate_refresh_token(&refresh_token),
+            Err(JwtError::Revoked)
+        ));
     }
 
     #[test]

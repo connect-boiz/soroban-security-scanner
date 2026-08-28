@@ -306,7 +306,7 @@ fn test_jwt_token_refresh() {
     assert_eq!(claims.role, "refresh");
 
     // Generate new access token using refresh token
-    let new_access_token = jwt_service
+    let refreshed = jwt_service
         .refresh_access_token(
             &refresh_token,
             "user123",
@@ -314,11 +314,12 @@ fn test_jwt_token_refresh() {
             "user",
             vec!["read".to_string()],
             24,
+            7,
         )
         .unwrap();
 
     // Validate new access token
-    let new_claims = jwt_service.validate_token(&new_access_token).unwrap();
+    let new_claims = jwt_service.validate_token(&refreshed.access_token).unwrap();
     assert_eq!(new_claims.sub, "user123");
     assert_eq!(new_claims.email, "user@example.com");
     assert_eq!(new_claims.role, "user");
