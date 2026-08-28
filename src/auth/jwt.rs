@@ -1,4 +1,4 @@
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, TimeZone, Utc};
 use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -38,9 +38,18 @@ use crate::auth::token_revocation::TokenRevocationList;
 use chrono::TimeZone;
 use std::sync::Arc;
 
-#[derive(Debug, Clone)]
-pub struct RefreshedTokens {
+/// A freshly minted access + refresh token pair.
+///
+/// Returned by [`JwtService::refresh_access_token`], which rotates the refresh
+/// token on every use. Callers must persist **both** tokens and discard the
+/// refresh token they passed in: the old one has been consumed (revoked) and is
+/// rejected if presented again, which is what defeats refresh-token replay
+/// (Issue #485).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TokenPair {
+    /// Newly issued short-lived access token.
     pub access_token: String,
+    /// Newly issued refresh token that replaces the one just used.
     pub refresh_token: String,
 }
 
@@ -120,8 +129,22 @@ impl JwtService {
         user_id: &str,
         expires_in_days: i64,
     ) -> Result<String, JwtError> {
+        let exp = Utc::now() + Duration::days(expires_in_days);
+        self.generate_refresh_token_until(user_id, exp)
+    }
+
+    /// Issue a refresh token that expires at an explicit instant.
+    ///
+    /// Token rotation ([`Self::refresh_access_token`]) uses this to preserve the
+    /// *original* refresh token's expiry, so repeatedly refreshing can never
+    /// extend a session's absolute lifetime — every rotated token in a chain
+    /// dies exactly when the first one would have.
+    fn generate_refresh_token_until(
+        &self,
+        user_id: &str,
+        exp: DateTime<Utc>,
+    ) -> Result<String, JwtError> {
         let now = Utc::now();
-        let exp = now + Duration::days(expires_in_days);
 
         let claims = JwtClaims {
             sub: user_id.to_string(),
@@ -186,6 +209,12 @@ impl JwtService {
             return Err(JwtError::InvalidClaims);
         }
 
+        // A refresh token is single-use: once refresh_access_token has rotated
+        // (consumed) it, or it has been force-invalidated on a password change,
+        // its jti is on the revocation list and must be rejected even though the
+        // signature and expiry are still valid. Without this check a leaked or
+        // already-used refresh token could be replayed to mint fresh access
+        // tokens indefinitely (Issue #485).
         if self.revocation_list.is_revoked(&token_data.claims.jti) {
             return Err(JwtError::Revoked);
         }
@@ -209,6 +238,18 @@ impl JwtService {
         self.validate_token(token)
     }
 
+    /// Exchange a refresh token for a fresh access + refresh token pair.
+    ///
+    /// The refresh token is **rotated**: the presented token is consumed (added
+    /// to the revocation list) and a brand-new refresh token is issued alongside
+    /// the new access token. Because the presented token is now revoked, using
+    /// it again fails [`Self::validate_refresh_token`], so a leaked or replayed
+    /// refresh token is only ever usable once (Issue #485). The replacement
+    /// refresh token inherits the consumed token's expiry, so rotation never
+    /// extends the session's absolute lifetime.
+    ///
+    /// Callers must persist **both** returned tokens and discard the refresh
+    /// token they passed in.
     pub fn refresh_access_token(
         &self,
         refresh_token: &str,
@@ -217,34 +258,42 @@ impl JwtService {
         role: &str,
         permissions: Vec<String>,
         expires_in_hours: i64,
-        refresh_expires_in_days: i64,
-    ) -> Result<RefreshedTokens, JwtError> {
+    ) -> Result<TokenPair, JwtError> {
+        // Validate the presented refresh token. This now also rejects a token
+        // whose jti has already been revoked/consumed, blocking replay.
         let claims = self.validate_refresh_token(refresh_token)?;
 
+        // Ensure the refresh token belongs to the same user.
         if claims.sub != user_id {
             return Err(JwtError::InvalidClaims);
         }
 
-        let expiry = Utc
+        // Consume the presented refresh token so it can never be used again.
+        // Any later attempt to refresh with it (replay) now fails the revocation
+        // check in validate_refresh_token above.
+        self.revoke_token(&claims.jti, &claims.sub, claims.exp);
+
+        // Preserve the consumed token's expiry so the rotated token cannot
+        // extend the session's absolute lifetime.
+        let refresh_expiry = Utc
             .timestamp_opt(claims.exp, 0)
             .single()
             .ok_or(JwtError::InvalidClaims)?;
-        self.revocation_list
-            .revoke_token(&claims.jti, user_id, expiry);
 
+        // Issue the replacement access + refresh token pair.
         let access_token =
             self.generate_token(user_id, email, role, permissions, expires_in_hours)?;
-        let new_refresh_token = self.generate_refresh_token(user_id, refresh_expires_in_days)?;
+        let refresh_token = self.generate_refresh_token_until(user_id, refresh_expiry)?;
 
-        Ok(RefreshedTokens {
+        Ok(TokenPair {
             access_token,
-            refresh_token: new_refresh_token,
+            refresh_token,
         })
     }
 
     /// Revoke a single JWT by its jti (Issue #428)
     pub fn revoke_token(&self, jti: &str, user_id: &str, exp: i64) {
-        let expiry = chrono::Utc.timestamp_opt(exp, 0).unwrap();
+        let expiry = Utc.timestamp_opt(exp, 0).unwrap();
         self.revocation_list.revoke_token(jti, user_id, expiry);
     }
 
@@ -372,7 +421,7 @@ mod tests {
 
         let refresh_token = jwt_service.generate_refresh_token("user123", 7).unwrap();
 
-        let refreshed = jwt_service
+        let pair = jwt_service
             .refresh_access_token(
                 &refresh_token,
                 "user123",
@@ -384,7 +433,7 @@ mod tests {
             )
             .unwrap();
 
-        let claims = jwt_service.validate_token(&refreshed.access_token).unwrap();
+        let claims = jwt_service.validate_token(&pair.access_token).unwrap();
         assert_eq!(claims.sub, "user123");
         assert_eq!(claims.email, "test@example.com");
 
@@ -452,5 +501,104 @@ mod tests {
             .generate_token("user999", "other@example.com", "user", vec![], 1)
             .unwrap();
         assert!(jwt_service.validate_token(&other).is_ok());
+    }
+
+    #[test]
+    fn test_refresh_token_rotation_preserves_expiry_and_consumes_old_token() {
+        let jwt_service = JwtService::new(
+            TEST_SECRET,
+            TEST_ISSUER.to_string(),
+            TEST_AUDIENCE.to_string(),
+        );
+
+        let refresh_token = jwt_service.generate_refresh_token("user123", 7).unwrap();
+        let original_exp = jwt_service
+            .validate_refresh_token(&refresh_token)
+            .unwrap()
+            .exp;
+
+        // Rotate: exchange the refresh token for a new access + refresh pair.
+        let pair = jwt_service
+            .refresh_access_token(
+                &refresh_token,
+                "user123",
+                "test@example.com",
+                "user",
+                vec!["read".to_string()],
+                1,
+            )
+            .unwrap();
+
+        // A brand-new refresh token is issued (rotation)...
+        assert_ne!(pair.refresh_token, refresh_token);
+        let rotated = jwt_service
+            .validate_refresh_token(&pair.refresh_token)
+            .unwrap();
+        // ...that inherits the original token's absolute expiry (no session
+        // lifetime extension), alongside a working access token.
+        assert_eq!(rotated.exp, original_exp);
+        assert!(jwt_service.validate_token(&pair.access_token).is_ok());
+    }
+
+    #[test]
+    fn test_refresh_token_replay_is_rejected_after_rotation() {
+        let jwt_service = JwtService::new(
+            TEST_SECRET,
+            TEST_ISSUER.to_string(),
+            TEST_AUDIENCE.to_string(),
+        );
+
+        let refresh_token = jwt_service.generate_refresh_token("user123", 7).unwrap();
+
+        // Use the refresh token once — this consumes it.
+        jwt_service
+            .refresh_access_token(
+                &refresh_token,
+                "user123",
+                "test@example.com",
+                "user",
+                vec![],
+                1,
+            )
+            .unwrap();
+
+        // Replaying the same refresh token must now be rejected as revoked,
+        // both at the validation layer...
+        assert!(matches!(
+            jwt_service.validate_refresh_token(&refresh_token),
+            Err(JwtError::Revoked)
+        ));
+        // ...and through the refresh entry point, so no new tokens are minted.
+        assert!(matches!(
+            jwt_service.refresh_access_token(
+                &refresh_token,
+                "user123",
+                "test@example.com",
+                "user",
+                vec![],
+                1,
+            ),
+            Err(JwtError::Revoked)
+        ));
+    }
+
+    #[test]
+    fn test_validate_refresh_token_rejects_revoked_jti() {
+        let jwt_service = JwtService::new(
+            TEST_SECRET,
+            TEST_ISSUER.to_string(),
+            TEST_AUDIENCE.to_string(),
+        );
+
+        let refresh_token = jwt_service.generate_refresh_token("user123", 7).unwrap();
+        let claims = jwt_service.validate_refresh_token(&refresh_token).unwrap();
+
+        // Directly revoke the refresh token's jti (e.g. on password change).
+        jwt_service.revoke_token(&claims.jti, &claims.sub, claims.exp);
+
+        assert!(matches!(
+            jwt_service.validate_refresh_token(&refresh_token),
+            Err(JwtError::Revoked)
+        ));
     }
 }
