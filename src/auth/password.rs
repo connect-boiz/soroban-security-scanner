@@ -251,19 +251,39 @@ impl PasswordService {
     }
 
     pub fn generate_secure_password(&self, length: usize) -> String {
+        use rand::seq::SliceRandom;
         use rand::Rng;
 
-        let charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+-=[]{}|;:,.<>?";
+        let lowercase = "abcdefghijklmnopqrstuvwxyz";
+        let uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        let digits = "0123456789";
+        let symbols = "!@#$%^&*()_+-=[]{}|;:,.<>?";
+        let charset: Vec<char> = [lowercase, uppercase, digits, symbols]
+            .concat()
+            .chars()
+            .collect();
         let mut rng = rand::thread_rng();
 
-        (0..length)
-            .map(|_| {
-                charset
-                    .chars()
-                    .nth(rng.gen_range(0..charset.len()))
-                    .unwrap()
-            })
-            .collect()
+        let len = length.max(4);
+        let mut password = vec![
+            lowercase
+                .chars()
+                .nth(rng.gen_range(0..lowercase.len()))
+                .unwrap(),
+            uppercase
+                .chars()
+                .nth(rng.gen_range(0..uppercase.len()))
+                .unwrap(),
+            digits.chars().nth(rng.gen_range(0..digits.len())).unwrap(),
+            symbols
+                .chars()
+                .nth(rng.gen_range(0..symbols.len()))
+                .unwrap(),
+        ];
+        password.extend((0..len - 4).map(|_| charset[rng.gen_range(0..charset.len())]));
+        password.shuffle(&mut rng);
+        password.truncate(length);
+        password.into_iter().collect()
     }
 
     pub fn needs_rehash(&self, hash: &str) -> bool {

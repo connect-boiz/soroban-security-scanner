@@ -12,9 +12,7 @@ doctest = false
 soroban-sdk = { workspace = true, features = ["alloc"] }
 
 [dev-dependencies]
-soroban-sdk = { workspace = true, features = ["alloc", "testutils"] }
+soroban-sdk = { workspace = true, features = ["testutils"] }
 # Deterministic ed25519 signing for the release-signature tests. Already in the
 # dependency tree via soroban-env-host, so this pulls in no new crate version.
 ed25519-dalek = "2"
-
-

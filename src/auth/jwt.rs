@@ -35,6 +35,7 @@ pub enum JwtError {
 }
 
 use crate::auth::token_revocation::TokenRevocationList;
+use chrono::TimeZone;
 use std::sync::Arc;
 
 /// A freshly minted access + refresh token pair.
@@ -428,12 +429,46 @@ mod tests {
                 "admin",
                 vec!["read".to_string()],
                 1,
+                7,
             )
             .unwrap();
 
         let claims = jwt_service.validate_token(&pair.access_token).unwrap();
         assert_eq!(claims.sub, "user123");
         assert_eq!(claims.email, "test@example.com");
+
+        assert!(jwt_service
+            .validate_refresh_token(&refreshed.refresh_token)
+            .is_ok());
+        assert!(jwt_service.validate_refresh_token(&refresh_token).is_err());
+    }
+
+    #[test]
+    fn test_refresh_token_replay_is_rejected() {
+        let jwt_service = JwtService::new(
+            TEST_SECRET,
+            TEST_ISSUER.to_string(),
+            TEST_AUDIENCE.to_string(),
+        );
+
+        let refresh_token = jwt_service.generate_refresh_token("user123", 7).unwrap();
+
+        let _first = jwt_service
+            .refresh_access_token(
+                &refresh_token,
+                "user123",
+                "test@example.com",
+                "admin",
+                vec!["read".to_string()],
+                1,
+                7,
+            )
+            .unwrap();
+
+        assert!(matches!(
+            jwt_service.validate_refresh_token(&refresh_token),
+            Err(JwtError::Revoked)
+        ));
     }
 
     #[test]

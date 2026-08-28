@@ -316,6 +316,7 @@ fn test_jwt_token_refresh() {
             "user",
             vec!["read".to_string()],
             24,
+            7,
         )
         .unwrap();
 
