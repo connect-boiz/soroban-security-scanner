@@ -382,8 +382,28 @@ async fn register(
     }
     drop(users);
 
-    // Hash password
+    // Enforce password strength policy before hashing.  Weak passwords are
+    // rejected at registration time to prevent weak credentials from ever
+    // reaching the database.
     let password_service = PasswordService::new(PasswordConfig::high_security());
+    match password_service.check_password_strength(password) {
+        Ok(soroban_security_scanner::auth::PasswordStrength::Weak) => {
+            return Ok(Json(json!({
+                "success": false,
+                "error": "Password is too weak. Use at least 8 characters with a \
+                           mix of uppercase, lowercase, numbers, and special characters."
+            })));
+        }
+        Err(e) => {
+            return Ok(Json(json!({
+                "success": false,
+                "error": format!("Invalid password: {}", e)
+            })));
+        }
+        _ => {} // Medium / Strong / VeryStrong – proceed.
+    }
+
+    // Hash password (strength is re-validated internally by hash_password).
     let password_hash = password_service
         .hash_password(password)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
