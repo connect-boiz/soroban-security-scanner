@@ -90,7 +90,6 @@ function buildCSP(nonce: string, isProduction: boolean): string {
 
     // Upgrade insecure requests (HTTP -> HTTPS)
     'upgrade-insecure-requests': [],
-
   };
 
   // Convert directives object to CSP string

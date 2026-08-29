@@ -103,9 +103,7 @@ describe('Security Headers Middleware', () => {
 
     it('should allow local WebSocket connections only outside production', () => {
       const developmentResponse = middleware(mockRequest);
-      const developmentCsp = developmentResponse.headers.get(
-        'Content-Security-Policy-Report-Only'
-      );
+      const developmentCsp = developmentResponse.headers.get('Content-Security-Policy-Report-Only');
 
       expect(developmentCsp).toContain('ws://localhost:*');
 
