@@ -186,7 +186,7 @@ impl LockoutStore for RedisLockoutStore {
         let record_key = self.record_key(&record.user_id);
 
         // Set with TTL of 24 hours
-        conn.set_ex(&record_key, record_json, 86400)
+        conn.set_ex::<_, _, ()>(&record_key, record_json, 86400)
             .await
             .map_err(|e| LockoutError::Redis(e.to_string()))?;
 
@@ -201,7 +201,7 @@ impl LockoutStore for RedisLockoutStore {
             .map_err(|e| LockoutError::Redis(e.to_string()))?;
 
         let record_key = self.record_key(user_id);
-        conn.del(&record_key)
+        conn.del::<_, ()>(&record_key)
             .await
             .map_err(|e| LockoutError::Redis(e.to_string()))?;
 

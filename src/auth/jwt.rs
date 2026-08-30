@@ -57,17 +57,49 @@ pub struct JwtService {
 
 impl JwtService {
     pub fn new(secret: &str, issuer: String, audience: String) -> Self {
+        Self::with_revocation_list(secret, issuer, audience, TokenRevocationList::new())
+    }
+
+    /// Create a JwtService using a specific token revocation list.
+    ///
+    /// Pass a Redis-backed list (see `TokenRevocationList::new_redis`, feature
+    /// `redis-cache`) so revocations survive restarts and are shared across
+    /// instances (Issue #486). `JwtService::new` uses an in-memory list, which
+    /// is only safe for single-instance deployments.
+    pub fn with_revocation_list(
+        secret: &str,
+        issuer: String,
+        audience: String,
+        revocation_list: TokenRevocationList,
+    ) -> Self {
         Self {
             encoding_key: EncodingKey::from_secret(secret.as_ref()),
             decoding_key: DecodingKey::from_secret(secret.as_ref()),
             issuer,
             audience,
             algorithm: Algorithm::HS256,
-            revocation_list: Arc::new(TokenRevocationList::new()),
+            revocation_list: Arc::new(revocation_list),
         }
     }
 
     pub fn with_rsa(private_key: &str, public_key: &str, issuer: String, audience: String) -> Self {
+        Self::with_rsa_and_revocation_list(
+            private_key,
+            public_key,
+            issuer,
+            audience,
+            TokenRevocationList::new(),
+        )
+    }
+
+    /// RSA variant of [`JwtService::with_revocation_list`].
+    pub fn with_rsa_and_revocation_list(
+        private_key: &str,
+        public_key: &str,
+        issuer: String,
+        audience: String,
+        revocation_list: TokenRevocationList,
+    ) -> Self {
         Self {
             encoding_key: EncodingKey::from_rsa_pem(private_key.as_ref())
                 .expect("Invalid RSA private key"),
@@ -76,7 +108,7 @@ impl JwtService {
             issuer,
             audience,
             algorithm: Algorithm::RS256,
-            revocation_list: Arc::new(TokenRevocationList::new()),
+            revocation_list: Arc::new(revocation_list),
         }
     }
 
@@ -452,5 +484,69 @@ mod tests {
             .generate_token("user999", "other@example.com", "user", vec![], 1)
             .unwrap();
         assert!(jwt_service.validate_token(&other).is_ok());
+    }
+
+    /// End-to-end revocation with a Redis-backed list (Issue #486): a token
+    /// issued on one JwtService instance is rejected by a second instance that
+    /// shares the same Redis, proving revocations survive restart/multi-instance.
+    /// Skipped when Redis is unavailable, matching the rate limiting convention.
+    #[cfg(feature = "redis-cache")]
+    #[test]
+    fn test_token_rejected_after_redis_revoke_all_user_tokens() {
+        let url =
+            std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://localhost:6379".to_string());
+        let Ok(client) = redis::Client::open(url.as_str()) else {
+            println!("Skipping Redis test - Redis not available");
+            return;
+        };
+        let prefix = format!("soroban:test:jwt:{}:", Uuid::new_v4());
+        let Ok(list) = TokenRevocationList::new_redis(client.clone(), prefix.clone()) else {
+            println!("Skipping Redis test - Redis not available");
+            return;
+        };
+        let Ok(list_b) = TokenRevocationList::new_redis(client, prefix) else {
+            println!("Skipping Redis test - Redis not available");
+            return;
+        };
+
+        // Two JwtService instances sharing the same Redis revocation store.
+        let service_a = JwtService::with_revocation_list(
+            TEST_SECRET,
+            TEST_ISSUER.to_string(),
+            TEST_AUDIENCE.to_string(),
+            list,
+        );
+        let service_b = JwtService::with_revocation_list(
+            TEST_SECRET,
+            TEST_ISSUER.to_string(),
+            TEST_AUDIENCE.to_string(),
+            list_b,
+        );
+
+        // Issued on A, valid on both instances.
+        let token = service_a
+            .generate_token("user123", "test@example.com", "admin", vec![], 1)
+            .unwrap();
+        assert!(service_a.validate_token(&token).is_ok());
+        assert!(service_b.validate_token(&token).is_ok());
+
+        // Password change on B revokes every active token for the user; A sees
+        // the revocation because both share Redis.
+        let revoked = service_b.revoke_all_user_tokens("user123").unwrap();
+        assert_eq!(revoked, 1);
+        assert!(matches!(
+            service_a.validate_token(&token),
+            Err(JwtError::Revoked)
+        ));
+        assert!(matches!(
+            service_b.validate_token(&token),
+            Err(JwtError::Revoked)
+        ));
+
+        // A different user's token is unaffected.
+        let other = service_a
+            .generate_token("user999", "other@example.com", "user", vec![], 1)
+            .unwrap();
+        assert!(service_b.validate_token(&other).is_ok());
     }
 }

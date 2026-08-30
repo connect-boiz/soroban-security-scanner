@@ -34,14 +34,54 @@ struct AppState {
     auth_services: AuthServices<InMemorySessionStore>,
 }
 
+/// Build the JWT service.
+///
+/// When the `redis-cache` feature is enabled and `REDIS_URL` is set, the token
+/// revocation list is backed by Redis so revoked JWTs stay revoked across
+/// restarts and are shared between instances (Issue #486). Otherwise it falls
+/// back to the in-memory list, which is only safe for single-instance demos.
+fn build_jwt_service() -> JwtService {
+    let secret = "your-super-secret-jwt-key-change-in-production";
+    let issuer = "soroban-security-scanner".to_string();
+    let audience = "soroban-users".to_string();
+
+    #[cfg(feature = "redis-cache")]
+    {
+        if let Ok(redis_url) = std::env::var("REDIS_URL") {
+            match redis::Client::open(redis_url.as_str()) {
+                Ok(client) => {
+                    match soroban_security_scanner::auth::TokenRevocationList::new_redis(
+                        client,
+                        "soroban:auth:".to_string(),
+                    ) {
+                        Ok(revocation_list) => {
+                            println!("🔐 Using Redis-backed JWT revocation list");
+                            return JwtService::with_revocation_list(
+                                secret,
+                                issuer,
+                                audience,
+                                revocation_list,
+                            );
+                        }
+                        Err(e) => eprintln!(
+                            "Redis revocation list unavailable ({e}); falling back to in-memory"
+                        ),
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Invalid REDIS_URL ({e}); falling back to in-memory revocation list")
+                }
+            }
+        }
+    }
+
+    JwtService::new(secret, issuer, audience)
+}
+
 impl AppState {
     async fn new() -> Self {
         // Initialize JWT service
-        let jwt_service = JwtService::new(
-            "your-super-secret-jwt-key-change-in-production",
-            "soroban-security-scanner".to_string(),
-            "soroban-users".to_string(),
-        );
+        let jwt_service = build_jwt_service();
 
         // Initialize password service
         let password_service = PasswordService::new(PasswordConfig::high_security());

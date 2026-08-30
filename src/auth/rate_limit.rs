@@ -173,7 +173,7 @@ impl RateLimitStore for RedisRateLimitStore {
         let record_key = self.record_key(&record.key);
 
         // Set with TTL of 1 hour
-        conn.set_ex(&record_key, record_json, 3600)
+        conn.set_ex::<_, _, ()>(&record_key, record_json, 3600)
             .await
             .map_err(|e| RateLimitError::Redis(e.to_string()))?;
 
@@ -188,7 +188,7 @@ impl RateLimitStore for RedisRateLimitStore {
             .map_err(|e| RateLimitError::Redis(e.to_string()))?;
 
         let record_key = self.record_key(key);
-        conn.del(&record_key)
+        conn.del::<_, ()>(&record_key)
             .await
             .map_err(|e| RateLimitError::Redis(e.to_string()))?;
 
