@@ -13,8 +13,8 @@ export default function SimpleAuthPage() {
 
     try {
       const result = await login(data);
-      persistSession(result.user, data.rememberMe);
-      // In a real app, redirect to dashboard
+      await persistSession(result.user, data.rememberMe);
+      // redirect to dashboard happens via the middleware route guard
     } finally {
       setIsLoading(false);
     }

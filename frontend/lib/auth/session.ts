@@ -1,87 +1,71 @@
 /**
  * Client-side session persistence for the auth flows in `components/auth`.
  *
- * Previously, the "Remember me" checkbox on the login form was collected
- * but never used anywhere — it had no effect on session behavior, which
- * misled users into thinking it changed how long they'd stay signed in
- * (see issue #500).
+ * Previously the "Remember me" flag chose between `localStorage` and
+ * `sessionStorage` for the session token, and both storages are fully
+ * readable and writable by client-side JavaScript. That meant any user
+ * could trivially forge a session by editing client state, and protected
+ * pages were not actually protected (see issue #496).
  *
- * This module gives the flag real, verifiable behavior:
- *   - rememberMe = true  -> the session is written to localStorage, so it
- *     survives closing the tab/browser and is restored on the next visit.
- *   - rememberMe = false -> the session is written to sessionStorage, so
- *     it is cleared as soon as the tab/window is closed.
+ * The session is now owned by the server. The token lives in an
+ * `httpOnly` cookie that client scripts cannot read or write, and it is
+ * established/refreshed/cleared only through the server-side endpoint
+ * `app/api/auth/session` (wired into the middleware route guard). All of
+ * the functions in this module delegate to that endpoint, so there is no
+ * client-accessible token to forge.
  *
- * This intentionally only controls *where* the client keeps its local copy
- * of the session (persistent vs. tab-scoped storage). It does not change
- * how a session is authenticated or refreshed against a backend — that
- * remains the responsibility of the API layer once one exists.
+ *   - persisSession(user, rememberMe) -> POST /api/auth/session to set the httpOnly cookie
+ *   - loadSession()                  -> GET /api/auth/session to read the session from the server
+ *   - clearSession()                 -> DELETE /api/auth/session to clear the httpOnly cookie
  */
 
-const SESSION_STORAGE_KEY = 'soroban_auth_session';
-
-export interface StoredSession<T = unknown> {
-  user: T;
-  rememberMe: boolean;
-  /** Epoch ms when the session was persisted. */
-  storedAt: number;
+export interface SessionUser {
+  email: string;
+  name: string;
+  verified?: boolean;
 }
 
-function getTargetStorage(rememberMe: boolean): Storage | null {
-  if (typeof window === 'undefined') return null;
-  return rememberMe ? window.localStorage : window.sessionStorage;
+/** Shape of the authoritative session returned by the server endpoint. */
+export interface AuthSession {
+  user: SessionUser | null;
+}
+
+const SESSION_ENDPOINT = '/api/auth/session';
+
+/**
+ * Persist a session for the given user by asking the server to set an
+ * httpOnly cookie. `rememberMe` is forwarded so a future backend can apply
+ * a different expiry; the important guarantee is that the value itself is
+ * never readable or writable from the client.
+ */
+export async function persistSession<T = SessionUser>(user: T, rememberMe: boolean): Promise<void> {
+  const response = await fetch(SESSION_ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user, rememberMe }),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to establish a server-side session');
+  }
 }
 
 /**
- * Persist a session for the given user, honoring the rememberMe flag.
- *
- * Any previously stored session (in either storage) is cleared first, so
- * toggling the flag between logins never leaves a stale duplicate behind
- * in the other storage.
+ * Load the current session from the server. Returns the session user, or
+ * `null` when no valid httpOnly session cookie is present.
  */
-export function persistSession<T>(user: T, rememberMe: boolean): void {
-  if (typeof window === 'undefined') return;
+export async function loadSession<T = SessionUser>(): Promise<T | null> {
+  const response = await fetch(SESSION_ENDPOINT, { method: 'GET' });
 
-  clearSession();
-
-  const session: StoredSession<T> = {
-    user,
-    rememberMe,
-    storedAt: Date.now(),
-  };
-
-  const storage = getTargetStorage(rememberMe);
-  storage?.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
-}
-
-/**
- * Load a previously persisted session, if any.
- *
- * Checks localStorage first (a "remembered" session that outlives the
- * tab), then falls back to sessionStorage (a session scoped to the
- * current tab/window).
- */
-export function loadSession<T = unknown>(): StoredSession<T> | null {
-  if (typeof window === 'undefined') return null;
-
-  for (const storage of [window.localStorage, window.sessionStorage]) {
-    const raw = storage.getItem(SESSION_STORAGE_KEY);
-    if (!raw) continue;
-
-    try {
-      return JSON.parse(raw) as StoredSession<T>;
-    } catch {
-      // Corrupt entry — remove it and keep looking in the other storage.
-      storage.removeItem(SESSION_STORAGE_KEY);
-    }
+  if (!response.ok) {
+    return null;
   }
 
-  return null;
+  const data = (await response.json()) as { user?: T | null };
+  return data.user ?? null;
 }
 
-/** Remove any persisted session from both localStorage and sessionStorage. */
-export function clearSession(): void {
-  if (typeof window === 'undefined') return;
-  window.localStorage.removeItem(SESSION_STORAGE_KEY);
-  window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
+/** Clear the server-side session by asking the server to delete the cookie. */
+export async function clearSession(): Promise<void> {
+  await fetch(SESSION_ENDPOINT, { method: 'DELETE' });
 }
