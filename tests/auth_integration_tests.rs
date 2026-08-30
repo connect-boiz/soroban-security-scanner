@@ -306,7 +306,7 @@ fn test_jwt_token_refresh() {
     assert_eq!(claims.role, "refresh");
 
     // Generate new access token using refresh token
-    let new_access_token = jwt_service
+    let refreshed = jwt_service
         .refresh_access_token(
             &refresh_token,
             "user123",
@@ -314,11 +314,12 @@ fn test_jwt_token_refresh() {
             "user",
             vec!["read".to_string()],
             24,
+            7,
         )
         .unwrap();
 
     // Validate new access token
-    let new_claims = jwt_service.validate_token(&new_access_token).unwrap();
+    let new_claims = jwt_service.validate_token(&refreshed.access_token).unwrap();
     assert_eq!(new_claims.sub, "user123");
     assert_eq!(new_claims.email, "user@example.com");
     assert_eq!(new_claims.role, "user");
@@ -610,22 +611,32 @@ async fn test_multiple_user_sessions() {
 #[test]
 fn test_password_rehash_detection() {
     let password_service = PasswordService::new(PasswordConfig::default());
-    let password = "test-password-123!";
+    let password = "Str0ngP@ssw0rd!";
 
-    // Hash password with default config
+    // Hash password with default config.
     let hash = password_service.hash_password(password).unwrap();
 
-    // Check if rehash is needed (should be false for same config)
-    let needs_rehash = password_service.needs_rehash(&hash);
-    assert!(!needs_rehash);
+    // Same config — parameters match, so no rehash is required.
+    assert!(
+        !password_service.needs_rehash(&hash),
+        "needs_rehash() must return false when the stored hash parameters \
+         match the current configuration"
+    );
 
-    // Create a service with different config
+    // A service configured with higher security parameters should flag the
+    // existing hash for upgrade because m_cost / t_cost / p_cost differ.
     let high_security_service = PasswordService::new(PasswordConfig::high_security());
+    assert!(
+        high_security_service.needs_rehash(&hash),
+        "needs_rehash() must return true when stored params are weaker than \
+         the current high-security configuration"
+    );
 
-    // Check if rehash is needed with different config
-    let needs_rehash = high_security_service.needs_rehash(&hash);
-    // This might be true or false depending on the actual parameters
-    // The important thing is that the function works
+    // A malformed hash must always trigger a rehash.
+    assert!(
+        password_service.needs_rehash("invalid-hash"),
+        "needs_rehash() must return true for a malformed hash string"
+    );
 }
 
 #[tokio::test]

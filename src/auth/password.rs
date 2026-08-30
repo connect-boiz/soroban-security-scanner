@@ -85,6 +85,22 @@ impl PasswordService {
             ));
         }
 
+        // Enforce minimum password strength before hashing.
+        // Weak passwords (score 0-2) are rejected to prevent credential
+        // stuffing and brute-force attacks on stored hashes.
+        match self.check_password_strength(password)? {
+            PasswordStrength::Weak => {
+                return Err(PasswordError::WeakPassword(
+                    "Password does not meet the minimum strength requirements. \
+                     Use at least 8 characters and include uppercase letters, \
+                     lowercase letters, numbers, and special characters."
+                        .to_string(),
+                ));
+            }
+            // Medium, Strong, and VeryStrong are accepted.
+            _ => {}
+        }
+
         let salt = SaltString::generate(&mut OsRng);
 
         let params = Params::new(
@@ -251,34 +267,80 @@ impl PasswordService {
     }
 
     pub fn generate_secure_password(&self, length: usize) -> String {
+        use rand::seq::SliceRandom;
         use rand::Rng;
 
-        let charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+-=[]{}|;:,.<>?";
+        let lowercase = "abcdefghijklmnopqrstuvwxyz";
+        let uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        let digits = "0123456789";
+        let symbols = "!@#$%^&*()_+-=[]{}|;:,.<>?";
+        let charset: Vec<char> = [lowercase, uppercase, digits, symbols]
+            .concat()
+            .chars()
+            .collect();
         let mut rng = rand::thread_rng();
 
-        (0..length)
-            .map(|_| {
-                charset
-                    .chars()
-                    .nth(rng.gen_range(0..charset.len()))
-                    .unwrap()
-            })
-            .collect()
+        let len = length.max(4);
+        let mut password = vec![
+            lowercase
+                .chars()
+                .nth(rng.gen_range(0..lowercase.len()))
+                .unwrap(),
+            uppercase
+                .chars()
+                .nth(rng.gen_range(0..uppercase.len()))
+                .unwrap(),
+            digits.chars().nth(rng.gen_range(0..digits.len())).unwrap(),
+            symbols
+                .chars()
+                .nth(rng.gen_range(0..symbols.len()))
+                .unwrap(),
+        ];
+        password.extend((0..len - 4).map(|_| charset[rng.gen_range(0..charset.len())]));
+        password.shuffle(&mut rng);
+        password.truncate(length);
+        password.into_iter().collect()
     }
 
     pub fn needs_rehash(&self, hash: &str) -> bool {
         let parsed_hash = match PasswordHash::new(hash) {
-            Ok(hash) => hash,
-            Err(_) => return true, // Invalid format, needs rehash
+            Ok(h) => h,
+            Err(_) => return true, // Malformed PHC string – must rehash.
         };
 
-        // Check if the hash uses the current algorithm and parameters
+        // Reject any algorithm other than Argon2id.
         match argon2::Algorithm::try_from(parsed_hash.algorithm) {
-            Ok(argon2::Algorithm::Argon2id) => {
-                // This is a simplified check - in production, you'd want more detailed comparison
-                parsed_hash.params.is_empty() // No params found => needs rehash
+            Ok(argon2::Algorithm::Argon2id) => {}
+            _ => return true,
+        }
+
+        // Check the version tag embedded in the PHC string.
+        // V0x13 = version 19 (0x13).  If the stored hash was produced with an
+        // older version it must be re-hashed.
+        if let Some(stored_version) = parsed_hash.version {
+            let current_version: u32 = match self.config.version {
+                argon2::Version::V0x10 => 16,
+                argon2::Version::V0x13 => 19,
+            };
+            if stored_version != current_version {
+                return true;
             }
-            _ => true, // Different algorithm, needs rehash
+        }
+
+        // Extract the stored Argon2 cost parameters from the PHC string and
+        // compare them against the service's current configuration.  Any
+        // mismatch means the hash was produced under weaker (or simply
+        // different) settings and should be upgraded on the next successful
+        // login.
+        match Params::try_from(&parsed_hash) {
+            Ok(stored_params) => {
+                stored_params.m_cost() != self.config.memory_cost
+                    || stored_params.t_cost() != self.config.time_cost
+                    || stored_params.p_cost() != self.config.parallelism
+                    || stored_params.output_len() != Some(self.config.hash_length)
+            }
+            // Could not decode params from the stored hash – safest to rehash.
+            Err(_) => true,
         }
     }
 }
@@ -420,5 +482,116 @@ mod tests {
         assert!(service.hash_password("").is_err());
         assert!(service.verify_password("", "some_hash").is_err());
         assert!(service.check_password_strength("").is_err());
+    }
+
+    // -------------------------------------------------------------------------
+    // Password strength enforcement at hash time
+    // -------------------------------------------------------------------------
+
+    /// Weak passwords must be rejected by hash_password(), not silently stored.
+    #[test]
+    fn test_hash_password_rejects_weak_passwords() {
+        let service = PasswordService::default();
+
+        // Single character – definitely Weak.
+        let result = service.hash_password("a");
+        assert!(
+            result.is_err(),
+            "hash_password() must reject a single-character password"
+        );
+        assert!(matches!(
+            result.unwrap_err(),
+            PasswordError::WeakPassword(_)
+        ));
+
+        // Short numeric-only – Weak.
+        let result = service.hash_password("123");
+        assert!(
+            result.is_err(),
+            "hash_password() must reject a numeric-only short password"
+        );
+        assert!(matches!(
+            result.unwrap_err(),
+            PasswordError::WeakPassword(_)
+        ));
+    }
+
+    /// Medium (and above) passwords must be accepted by hash_password().
+    #[test]
+    fn test_hash_password_accepts_medium_and_stronger_passwords() {
+        let service = PasswordService::default();
+
+        // Medium – should succeed.
+        assert!(
+            service.hash_password("Passw0rdX9").is_ok(),
+            "hash_password() must accept a Medium-strength password"
+        );
+
+        // Strong – should succeed.
+        assert!(
+            service.hash_password("Str0ngP@ssw0rd!").is_ok(),
+            "hash_password() must accept a Strong password"
+        );
+
+        // Very strong – should succeed.
+        assert!(
+            service.hash_password("V3ry$tr0ng&P@ssw0rd!2024#").is_ok(),
+            "hash_password() must accept a VeryStrong password"
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // needs_rehash() – real parameter comparison
+    // -------------------------------------------------------------------------
+
+    /// A hash produced with the default config should not need rehashing when
+    /// checked against the same config.
+    #[test]
+    fn test_needs_rehash_same_config_returns_false() {
+        let service = PasswordService::new(PasswordConfig::default());
+        let hash = service.hash_password("Str0ngP@ssw0rd!").unwrap();
+
+        assert!(
+            !service.needs_rehash(&hash),
+            "needs_rehash() must return false when params match the current config"
+        );
+    }
+
+    /// A hash produced with the default config should need rehashing when
+    /// evaluated against a service configured with higher security parameters.
+    #[test]
+    fn test_needs_rehash_different_config_returns_true() {
+        let default_service = PasswordService::new(PasswordConfig::default());
+        let hash = default_service.hash_password("Str0ngP@ssw0rd!").unwrap();
+
+        // high_security uses different m_cost, t_cost, p_cost, and output_len.
+        let high_security_service = PasswordService::new(PasswordConfig::high_security());
+        assert!(
+            high_security_service.needs_rehash(&hash),
+            "needs_rehash() must return true when stored params differ from current config"
+        );
+    }
+
+    /// A hash produced with high_security config should not need rehashing when
+    /// checked against the same high_security config.
+    #[test]
+    fn test_needs_rehash_high_security_same_config_returns_false() {
+        let service = PasswordService::new(PasswordConfig::high_security());
+        let hash = service.hash_password("V3ry$tr0ng&P@ssw0rd!2024#").unwrap();
+
+        assert!(
+            !service.needs_rehash(&hash),
+            "needs_rehash() must return false for a hash that matches the high-security config"
+        );
+    }
+
+    /// An entirely invalid hash string must trigger a rehash.
+    #[test]
+    fn test_needs_rehash_invalid_hash_returns_true() {
+        let service = PasswordService::default();
+        assert!(
+            service.needs_rehash("not-a-valid-phc-hash"),
+            "needs_rehash() must return true for a malformed hash"
+        );
     }
 }

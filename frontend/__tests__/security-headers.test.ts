@@ -21,10 +21,10 @@ jest.mock('crypto', () => ({
 }));
 
 describe('Security Headers Middleware', () => {
-  // Minimal NextRequest stub — the middleware no longer reads from the request
-  // (request header forwarding was removed to avoid jsdom Headers iteration
-  // incompatibility in NextResponse.next()). See middleware.ts for details.
-  const mockRequest = {} as any;
+  // Minimal NextRequest stub with Headers support for request forwarding tests
+  const mockRequest = {
+    headers: new Headers(),
+  } as any;
 
   beforeEach(() => {
     // Reset env for each test
@@ -160,6 +160,27 @@ describe('Security Headers Middleware', () => {
         response.headers.get('Content-Security-Policy-Report-Only');
 
       expect(cspHeader).toContain(`'nonce-${nonce}'`);
+    });
+
+    it('should forward nonce to request headers for Server Components', () => {
+      const response = middleware(mockRequest);
+      const nonce = response.headers.get('x-nonce');
+
+      expect(response.headers.get('x-middleware-request-x-nonce')).toBe(nonce);
+    });
+
+    it('should forward CSP header to request headers for Next.js nonce injection', () => {
+      const response = middleware(mockRequest);
+
+      const responseCsp =
+        response.headers.get('Content-Security-Policy') ||
+        response.headers.get('Content-Security-Policy-Report-Only');
+      const requestCsp =
+        response.headers.get('x-middleware-request-content-security-policy') ||
+        response.headers.get('x-middleware-request-content-security-policy-report-only');
+
+      expect(requestCsp).toBe(responseCsp);
+      expect(requestCsp).toContain("'nonce-");
     });
   });
 

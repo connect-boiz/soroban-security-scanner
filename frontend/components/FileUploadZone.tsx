@@ -27,6 +27,7 @@ const STATUS_COLORS: Record<FileStatus, string> = {
   uploading: 'text-blue-600',
   complete: 'text-green-600',
   error: 'text-red-500',
+  cancelled: 'text-amber-600',
 };
 
 const STATUS_LABELS: Record<FileStatus, string> = {
@@ -35,6 +36,7 @@ const STATUS_LABELS: Record<FileStatus, string> = {
   uploading: 'Uploading…',
   complete: 'Ready',
   error: 'Failed',
+  cancelled: 'Cancelled',
 };
 
 const PROGRESS_COLORS: Record<FileStatus, 'blue' | 'green' | 'red' | 'gray'> = {
@@ -43,6 +45,7 @@ const PROGRESS_COLORS: Record<FileStatus, 'blue' | 'green' | 'red' | 'gray'> = {
   uploading: 'blue',
   complete: 'green',
   error: 'red',
+  cancelled: 'gray',
 };
 
 function fileExt(name: string): string {
@@ -60,16 +63,59 @@ function FileIcon({ name }: { name: string }) {
   return <span className="text-2xl leading-none select-none">{icon}</span>;
 }
 
+function formatSpeed(bps?: number): string {
+  if (!bps || bps <= 0) return '—';
+  const kbps = bps / 1024;
+  return kbps < 1024 ? `${kbps.toFixed(1)} KB/s` : `${(kbps / 1024).toFixed(1)} MB/s`;
+}
+
+function formatEta(seconds?: number): string {
+  if (seconds === undefined || !isFinite(seconds) || seconds <= 0) return '—';
+  if (seconds < 60) return `${Math.ceil(seconds)}s left`;
+  const m = Math.floor(seconds / 60);
+  const s = Math.ceil(seconds % 60);
+  return `${m}m ${s}s left`;
+}
+
+// Progress bar plus live transfer stats (percentage, speed, ETA) for one file.
+function FileUploadProgress({ entry }: { entry: UploadedFile }) {
+  const { file, status, progress, speedBps, etaSeconds } = entry;
+  return (
+    <div className="space-y-1" aria-label={`Upload progress for ${file.name}`}>
+      <ProgressBar
+        value={progress}
+        color={PROGRESS_COLORS[status]}
+        size="sm"
+        animated={status === 'uploading'}
+        showLabel={false}
+        className="mt-1"
+      />
+      <div className="flex items-center justify-between text-[11px] text-gray-400">
+        <span>{progress}%</span>
+        {status === 'uploading' && (
+          <span className="flex items-center gap-2">
+            <span>{formatSpeed(speedBps)}</span>
+            <span aria-hidden="true">·</span>
+            <span>{formatEta(etaSeconds)}</span>
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function FileRow({
   entry,
   onRemove,
   onRetry,
+  onCancel,
 }: {
   entry: UploadedFile;
   onRemove: (id: string) => void;
   onRetry: (id: string) => void;
+  onCancel: (id: string) => void;
 }) {
-  const { id, file, status, progress, error, preview } = entry;
+  const { id, file, status, error, preview } = entry;
 
   return (
     <li className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 border border-gray-100 group">
@@ -91,7 +137,16 @@ function FileRow({
             <span className={`text-xs font-medium ${STATUS_COLORS[status]}`}>
               {STATUS_LABELS[status]}
             </span>
-            {status === 'error' && (
+            {status === 'uploading' && (
+              <button
+                onClick={() => onCancel(id)}
+                className="text-xs text-amber-600 hover:underline"
+                aria-label={`Cancel uploading ${file.name}`}
+              >
+                Cancel
+              </button>
+            )}
+            {(status === 'error' || status === 'cancelled') && (
               <button
                 onClick={() => onRetry(id)}
                 className="text-xs text-blue-600 hover:underline"
@@ -114,15 +169,8 @@ function FileRow({
 
         {error && <p className="text-xs text-red-500">{error}</p>}
 
-        {status !== 'pending' && status !== 'error' && (
-          <ProgressBar
-            value={progress}
-            color={PROGRESS_COLORS[status]}
-            size="sm"
-            animated={status === 'uploading'}
-            showLabel={false}
-            className="mt-1"
-          />
+        {(status === 'validating' || status === 'uploading' || status === 'complete') && (
+          <FileUploadProgress entry={entry} />
         )}
       </div>
     </li>
@@ -135,6 +183,7 @@ export default function FileUploadZone({
   maxSizeMB = 10,
   allowedTypes = ['.rs', '.wasm', '.toml', '.txt'],
   maxFiles = 5,
+  maxSizeByExt,
 }: FileUploadZoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -149,9 +198,10 @@ export default function FileUploadZone({
     onDrop,
     onInputChange,
     removeFile,
+    cancelUpload,
     retryFile,
     clearAll,
-  } = useFileUpload({ maxSizeMB, allowedTypes, maxFiles });
+  } = useFileUpload({ maxSizeMB, allowedTypes, maxFiles, maxSizeByExt });
 
   const readyFiles = files.filter(f => f.status === 'complete').map(f => f.file);
 
@@ -240,7 +290,13 @@ export default function FileUploadZone({
 
           <ul className="space-y-2" role="list" aria-label="Uploaded files">
             {files.map(entry => (
-              <FileRow key={entry.id} entry={entry} onRemove={removeFile} onRetry={retryFile} />
+              <FileRow
+                key={entry.id}
+                entry={entry}
+                onRemove={removeFile}
+                onRetry={retryFile}
+                onCancel={cancelUpload}
+              />
             ))}
           </ul>
 

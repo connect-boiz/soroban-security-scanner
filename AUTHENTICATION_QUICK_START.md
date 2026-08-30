@@ -574,6 +574,34 @@ rate_limit_service.add_config("auth", RateLimitConfig::strict())?;
 lockout_service.add_config("login", LockoutConfig::strict())?;
 ```
 
+### Persistent JWT Revocation (Redis)
+
+Revoked JWTs are stored in an in-memory list by default, which means revocations are lost on restart and are not shared between instances behind a load balancer. For production, back the revocation list with Redis (feature `redis-cache`) so revoked tokens stay revoked across restarts and across every instance:
+
+```rust
+// Cargo.toml
+// soroban-security-scanner = { version = "1.0", features = ["redis-cache"] }
+
+#[cfg(feature = "redis-cache")]
+let redis_client = redis::Client::open("redis://localhost:6379")?;
+
+// Revocations are stored with a TTL equal to the token's remaining lifetime
+// and are shared by every instance connected to the same Redis.
+#[cfg(feature = "redis-cache")]
+let revocation_list =
+    TokenRevocationList::new_redis(redis_client, "soroban:auth:".to_string())?;
+
+let jwt_service = JwtService::with_revocation_list(
+    "your-super-secret-jwt-key-min-32-chars",
+    "soroban-security-scanner".to_string(),
+    "soroban-users".to_string(),
+    revocation_list,
+);
+```
+
+When the `redis-cache` feature is enabled, `examples/auth_server.rs` builds the
+Redis-backed list automatically when `REDIS_URL` is set.
+
 ## 📚 Next Steps
 
 1. **Review Documentation**: Read `AUTHENTICATION_SERVICE_COMPLETE.md`
@@ -603,6 +631,7 @@ lockout_service.add_config("login", LockoutConfig::strict())?;
 You now have a complete, enterprise-grade authentication service integrated into your Soroban Security Scanner project. The service provides:
 
 ✅ **Secure JWT tokens** with configurable algorithms
+✅ **Persistent JWT revocation** with Redis-backed storage
 ✅ **Strong password hashing** with Argon2id
 ✅ **Flexible session management** with Redis support
 ✅ **Comprehensive rate limiting** with progressive penalties

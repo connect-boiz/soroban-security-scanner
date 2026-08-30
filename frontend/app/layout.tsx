@@ -59,6 +59,9 @@ export const viewport: Viewport = {
   viewportFit: 'cover', // support iPhone notch / safe areas
 };
 
+// Nonces are generated per request in middleware; opt out of static rendering.
+export const dynamic = 'force-dynamic';
+
 export default function RootLayout({ children }: { children: ReactNode }) {
   // Get the CSP nonce from middleware
   const headersList = headers();
@@ -69,7 +72,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body>
         <script
           type="application/ld+json"
-          nonce={nonce}
+          nonce={nonce || undefined}
           dangerouslySetInnerHTML={{
             __html: JSON.stringify({
               ...softwareApplicationJsonLd,
