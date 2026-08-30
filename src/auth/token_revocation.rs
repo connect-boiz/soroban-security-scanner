@@ -218,16 +218,14 @@ impl RedisRevocationBackend {
         let mut conn = backend.connection()?;
         redis::cmd("PING")
             .query::<String>(&mut conn)
-            .map_err(|e| {
-                RevocationError::Storage(format!("Redis ping failed: {e}"))
-            })?;
+            .map_err(|e| RevocationError::Storage(format!("Redis ping failed: {e}")))?;
         Ok(backend)
     }
 
     fn connection(&self) -> Result<redis::Connection, RevocationError> {
-        self.client.get_connection().map_err(|e| {
-            RevocationError::Storage(format!("Redis connection failed: {e}"))
-        })
+        self.client
+            .get_connection()
+            .map_err(|e| RevocationError::Storage(format!("Redis connection failed: {e}")))
     }
 
     fn revoked_key(&self, jti: &str) -> String {
@@ -388,8 +386,7 @@ impl RevocationBackend for RedisRevocationBackend {
                 jti: jti.clone(),
                 user_id: user_id.to_string(),
                 revoked_at: now,
-                original_expiry: DateTime::from_timestamp(expiry as i64, 0)
-                    .unwrap_or(now),
+                original_expiry: DateTime::from_timestamp(expiry as i64, 0).unwrap_or(now),
             };
 
             if let Err(e) = self.set_revoked(&mut conn, &revoked) {
@@ -831,8 +828,8 @@ mod tests {
         /// sharing the same Redis — no in-memory state is involved.
         #[test]
         fn test_redis_revocation_shared_across_instances() {
-            let url = std::env::var("REDIS_URL")
-                .unwrap_or_else(|_| "redis://localhost:6379".to_string());
+            let url =
+                std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://localhost:6379".to_string());
             let client = redis::Client::open(url.as_str()).ok();
             let Some(client) = client else {
                 println!("Skipping Redis test - Redis not available");

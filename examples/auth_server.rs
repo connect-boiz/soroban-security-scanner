@@ -68,9 +68,9 @@ fn build_jwt_service() -> JwtService {
                         ),
                     }
                 }
-                Err(e) => eprintln!(
-                    "Invalid REDIS_URL ({e}); falling back to in-memory revocation list"
-                ),
+                Err(e) => {
+                    eprintln!("Invalid REDIS_URL ({e}); falling back to in-memory revocation list")
+                }
             }
         }
     }

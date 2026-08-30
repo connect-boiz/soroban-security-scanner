@@ -437,8 +437,8 @@ mod tests {
     #[cfg(feature = "redis-cache")]
     #[test]
     fn test_token_rejected_after_redis_revoke_all_user_tokens() {
-        let url = std::env::var("REDIS_URL")
-            .unwrap_or_else(|_| "redis://localhost:6379".to_string());
+        let url =
+            std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://localhost:6379".to_string());
         let Ok(client) = redis::Client::open(url.as_str()) else {
             println!("Skipping Redis test - Redis not available");
             return;
