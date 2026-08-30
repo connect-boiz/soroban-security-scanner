@@ -601,7 +601,11 @@ mod tests {
     fn test_middleware(config: AuthMiddlewareConfig) -> AuthMiddleware<InMemorySessionStore> {
         AuthMiddleware::new(
             AuthServices {
-                jwt_service: Arc::new(JwtService::new("test", "test".to_string(), "test".to_string())),
+                jwt_service: Arc::new(JwtService::new(
+                    "test",
+                    "test".to_string(),
+                    "test".to_string(),
+                )),
                 session_manager: Arc::new(SessionManager::new(
                     InMemorySessionStore::new(),
                     Duration::hours(24),
