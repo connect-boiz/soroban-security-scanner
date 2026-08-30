@@ -64,7 +64,6 @@ impl Default for AuthMiddlewareConfig {
             require_auth: true,
             allowed_paths: vec![
                 "/health".to_string(),
-                "/metrics".to_string(),
                 "/auth/login".to_string(),
                 "/auth/register".to_string(),
                 "/auth/forgot-password".to_string(),
@@ -72,7 +71,7 @@ impl Default for AuthMiddlewareConfig {
                 "/auth/oauth".to_string(),
                 "/docs".to_string(),
                 "/swagger-ui".to_string(),
-                "/api/v1/public*".to_string(),
+                "/api/v1/public/*".to_string(),
             ],
             required_permissions: Vec::new(),
             required_roles: Vec::new(),
@@ -320,11 +319,22 @@ where
             return true;
         }
 
-        // Check prefix matches
+        // Check wildcard matches. Two forms are supported and both are
+        // segment-aware so that a wildcard never bleeds across path boundaries:
+        // - `/prefix/*`  matches `/prefix/<one-segment>`        (single segment)
+        // - `/prefix/**` matches `/prefix/...` at any depth     (recursive)
+        // A bare trailing `*` is NOT permitted because it would let a single
+        // entry such as `/api/v1/public*` match `/api/v1/public-admin` and
+        // unintentionally expose sibling endpoints.
         for allowed_path in &self.config.allowed_paths {
-            if allowed_path.ends_with('*') {
-                let prefix = &allowed_path[..allowed_path.len() - 1];
-                if path.starts_with(prefix) {
+            if let Some(prefix) = allowed_path.strip_suffix("/**") {
+                let prefix_with_slash = format!("{}/", prefix);
+                if path == prefix || path.starts_with(&prefix_with_slash) {
+                    return true;
+                }
+            } else if let Some(prefix) = allowed_path.strip_suffix("/*") {
+                let rest = path.strip_prefix(prefix).unwrap_or("");
+                if rest.starts_with('/') && !rest[1..].contains('/') {
                     return true;
                 }
             }
@@ -580,8 +590,16 @@ mod tests {
 
     #[test]
     fn test_path_matching() {
-        let config = AuthMiddlewareConfig::default();
-        let middleware = AuthMiddleware::new(
+        let middleware = test_middleware(AuthMiddlewareConfig::default());
+
+        assert!(middleware.is_path_allowed("/health"));
+        assert!(middleware.is_path_allowed("/auth/login"));
+        assert!(middleware.is_path_allowed("/api/v1/public/users"));
+        assert!(!middleware.is_path_allowed("/api/v1/private/users"));
+    }
+
+    fn test_middleware(config: AuthMiddlewareConfig) -> AuthMiddleware<InMemorySessionStore> {
+        AuthMiddleware::new(
             AuthServices {
                 jwt_service: Arc::new(JwtService::new(
                     "test",
@@ -598,12 +616,72 @@ mod tests {
                 )),
             },
             config,
-        );
+        )
+    }
 
-        assert!(middleware.is_path_allowed("/health"));
-        assert!(middleware.is_path_allowed("/auth/login"));
+    #[test]
+    fn test_path_matching_does_not_leak_via_nonterminal_prefix() {
+        let middleware = test_middleware(AuthMiddlewareConfig::default());
+
+        // Regression for issue #489: `/api/v1/public*` must no longer expose
+        // sibling endpoints whose names merely share the `public` prefix.
+        // These are NOT children of `/api/v1/public/`, so they must require auth.
+        assert!(!middleware.is_path_allowed("/api/v1/public-admin"));
+        assert!(!middleware.is_path_allowed("/api/v1/publicity"));
+        assert!(!middleware.is_path_allowed("/api/v1/publicious"));
+
+        // `/api/v1/public/*` matches exactly one descendant segment, so deeper
+        // nested children are not inadvertently opened up.
+        assert!(!middleware.is_path_allowed("/api/v1/public/admin/secret"));
+        assert!(!middleware.is_path_allowed("/api/v1/public/status/verbose"));
+
+        // Single-segment public endpoint remains allowed.
         assert!(middleware.is_path_allowed("/api/v1/public/users"));
-        assert!(!middleware.is_path_allowed("/api/v1/private/users"));
+        assert!(middleware.is_path_allowed("/api/v1/public/status"));
+        assert!(middleware.is_path_allowed("/api/v1/public/admin"));
+    }
+
+    #[test]
+    fn test_metrics_is_not_public_by_default() {
+        let middleware = test_middleware(AuthMiddlewareConfig::default());
+
+        // Regression for issue #489: /metrics must not be in the default
+        // allowlist, so it is protected even when auth is required.
+        assert!(!middleware.is_path_allowed("/metrics"));
+        assert!(!middleware.is_path_allowed("/metrics/prefix"));
+    }
+
+    #[test]
+    fn test_explicit_wildcards_match_correct_segments() {
+        let config = AuthMiddlewareConfig {
+            require_auth: true,
+            allowed_paths: vec![
+                "/public/**".to_string(),
+                "/single/*".to_string(),
+                "/single/leaf".to_string(),
+            ],
+            required_permissions: Vec::new(),
+            required_roles: Vec::new(),
+            rate_limit_config: None,
+            session_validation: true,
+            ip_whitelist: Vec::new(),
+            cors_origins: Vec::new(),
+        };
+        let middleware = test_middleware(config);
+
+        // `/public/**` matches any depth recursively.
+        assert!(middleware.is_path_allowed("/public"));
+        assert!(middleware.is_path_allowed("/public/status"));
+        assert!(middleware.is_path_allowed("/public/a/b/c"));
+
+        // `/single/*` matches exactly one segment, no more, no less.
+        assert!(!middleware.is_path_allowed("/single"));
+        assert!(middleware.is_path_allowed("/single/leaf"));
+        assert!(!middleware.is_path_allowed("/single/leaf/deep"));
+
+        // Unrelated sibling paths are not matched.
+        assert!(!middleware.is_path_allowed("/singleleaf"));
+        assert!(!middleware.is_path_allowed("/other/leaf"));
     }
 
     #[test]
