@@ -3,7 +3,17 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import AuthContainer from './AuthContainer';
 
-const SESSION_KEY = 'soroban_auth_session';
+const SESSION_ENDPOINT = '/api/auth/session';
+
+let fetchMock: jest.Mock;
+
+function mockFetchSuccess(body: unknown = { ok: true }) {
+  return Promise.resolve({
+    ok: true,
+    status: 200,
+    json: () => Promise.resolve(body),
+  } as Response);
+}
 
 async function loginAndCompleteMfa(rememberMe: boolean) {
   const user = userEvent.setup();
@@ -39,6 +49,12 @@ describe('AuthContainer - rememberMe session persistence', () => {
   beforeEach(() => {
     window.localStorage.clear();
     window.sessionStorage.clear();
+    fetchMock = jest.fn().mockImplementation(() => mockFetchSuccess());
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+  });
+
+  afterEach(() => {
+    delete (globalThis as { fetch?: typeof fetch }).fetch;
   });
 
   it('does not persist a session until authentication (including MFA) fully completes', async () => {
@@ -51,21 +67,45 @@ describe('AuthContainer - rememberMe session persistence', () => {
 
     await screen.findByLabelText(/verification code/i, {}, { timeout: 3000 });
 
-    expect(window.localStorage.getItem(SESSION_KEY)).toBeNull();
-    expect(window.sessionStorage.getItem(SESSION_KEY)).toBeNull();
+    expect(window.localStorage.getItem('soroban_auth_session')).toBeNull();
+    expect(window.sessionStorage.getItem('soroban_auth_session')).toBeNull();
   });
 
-  it('persists the session in localStorage when rememberMe is checked', async () => {
+  it('POSTs to the server session endpoint when rememberMe is checked (no client storage)', async () => {
     await loginAndCompleteMfa(true);
 
-    expect(window.localStorage.getItem(SESSION_KEY)).not.toBeNull();
-    expect(window.sessionStorage.getItem(SESSION_KEY)).toBeNull();
+    // The server-backed session must never write to client storage.
+    expect(window.localStorage.length).toBe(0);
+    expect(window.sessionStorage.length).toBe(0);
+
+    // Verify persistSession POSTed to the session endpoint with rememberMe=true.
+    const sessionCalls = fetchMock.mock.calls.filter(
+      ([url, init]: [string, RequestInit]) => url === SESSION_ENDPOINT && init?.method === 'POST'
+    );
+    expect(sessionCalls.length).toBe(1);
+    const [, init] = sessionCalls[0];
+    const body = JSON.parse(init.body as string);
+    expect(body.rememberMe).toBe(true);
+    expect(body.user).toBeDefined();
+    expect(body.user.email).toBe('user@example.com');
   }, 10000);
 
-  it('persists the session in sessionStorage (not localStorage) when rememberMe is unchecked', async () => {
+  it('POSTs to the server session endpoint when rememberMe is unchecked (no client storage)', async () => {
     await loginAndCompleteMfa(false);
 
-    expect(window.sessionStorage.getItem(SESSION_KEY)).not.toBeNull();
-    expect(window.localStorage.getItem(SESSION_KEY)).toBeNull();
+    // The server-backed session must never write to client storage.
+    expect(window.localStorage.length).toBe(0);
+    expect(window.sessionStorage.length).toBe(0);
+
+    // Verify persistSession POSTed to the session endpoint with rememberMe=false.
+    const sessionCalls = fetchMock.mock.calls.filter(
+      ([url, init]: [string, RequestInit]) => url === SESSION_ENDPOINT && init?.method === 'POST'
+    );
+    expect(sessionCalls.length).toBe(1);
+    const [, init] = sessionCalls[0];
+    const body = JSON.parse(init.body as string);
+    expect(body.rememberMe).toBe(false);
+    expect(body.user).toBeDefined();
+    expect(body.user.email).toBe('user@example.com');
   }, 10000);
 });

@@ -1,4 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import {
+  SESSION_COOKIE_NAME,
+  isSessionUser,
+  buildSessionCookie,
+} from '../../../../lib/auth/session-cookie';
 
 /**
  * Server-side session management for the auth flow.
@@ -14,27 +19,9 @@ import { NextRequest, NextResponse } from 'next/server';
  *   DELETE -> clears the httpOnly cookie (logout)
  */
 
-export const SESSION_COOKIE_NAME = 'soroban_auth_session';
-
-const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7; // 7 days
-
-export interface SessionUser {
-  email: string;
-  name: string;
-  verified?: boolean;
-}
-
-function isSessionUser(value: unknown): value is SessionUser {
-  if (typeof value !== 'object' || value === null) return false;
-  const candidate = value as Record<string, unknown>;
-  return (
-    typeof candidate.email === 'string' &&
-    candidate.email.length > 0 &&
-    typeof candidate.name === 'string'
-  );
-}
-
-function parseSessionCookie(raw: string | undefined): SessionUser | null {
+function parseSessionCookie(
+  raw: string | undefined
+): { email: string; name: string; verified?: boolean } | null {
   if (!raw) return null;
   try {
     const parsed: unknown = JSON.parse(raw);
@@ -45,22 +32,6 @@ function parseSessionCookie(raw: string | undefined): SessionUser | null {
     // Corrupt cookie value — treat as no session.
   }
   return null;
-}
-
-/**
- * Build the httpOnly session cookie options. `value` is empty for deletion.
- * Exposed separately so the security attributes are unit-testable.
- */
-export function buildSessionCookie(value: string) {
-  return {
-    name: SESSION_COOKIE_NAME as string,
-    value,
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax' as const,
-    path: '/',
-    maxAge: value === '' ? 0 : SESSION_MAX_AGE_SECONDS,
-  };
 }
 
 export async function GET(request: NextRequest) {

@@ -10,13 +10,8 @@
  * where they do not depend on jsdom's `Headers` implementation.
  */
 import { ResponseCookies } from 'next/dist/compiled/@edge-runtime/cookies';
-import {
-  GET,
-  POST,
-  DELETE,
-  SESSION_COOKIE_NAME,
-  buildSessionCookie,
-} from '../app/api/auth/session/route';
+import { GET, POST, DELETE } from '../app/api/auth/session/route';
+import { SESSION_COOKIE_NAME, buildSessionCookie } from '../lib/auth/session-cookie';
 
 const VALID_USER = { email: 'demo@example.com', name: 'Demo' };
 
