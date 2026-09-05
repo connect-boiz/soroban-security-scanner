@@ -91,6 +91,7 @@ pub enum ContractError {
     InvalidRole = 14,
     MultiSigRequired = 15,
     AlreadyApproved = 16,
+    AlreadyVerified = 17,
 }
 
 // Vulnerability structure
@@ -472,6 +473,11 @@ impl SecurityScannerContract {
         let mut report: VulnerabilityReport = reports
             .get(report_id)
             .ok_or(ContractError::NotFound)?;
+
+        // Reject if already verified (prevent double-payout)
+        if report.status != String::from_slice(&env, "pending") {
+            return Err(ContractError::AlreadyVerified);
+        }
 
         // Update status and bounty
         report.status = String::from_slice(&env, "verified");

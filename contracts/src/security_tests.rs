@@ -382,4 +382,58 @@ mod security_tests {
         assert_eq!(proposal.required_approvals, 2); // Should enforce minimum
         assert_eq!(proposal.execution_delay, 86400); // Should enforce minimum 24 hours
     }
+
+    #[test]
+    fn test_verify_vulnerability_prevents_double_payout() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let verifier = Address::generate(&env);
+        let reporter = Address::generate(&env);
+
+        SecurityScannerContract::initialize(env.clone(), admin.clone()).unwrap();
+
+        // Grant verifier role through multi-sig process
+        let proposal_id = SecurityScannerContract::propose_role_grant(
+            env.clone(),
+            admin.clone(),
+            verifier.clone(),
+            Role::Verifier,
+            1,
+            0,
+        ).unwrap();
+        SecurityScannerContract::approve_role_grant(env.clone(), admin.clone(), proposal_id).unwrap();
+        SecurityScannerContract::execute_role_grant(env.clone(), admin.clone(), proposal_id).unwrap();
+
+        // Report vulnerability
+        let contract_id = BytesN::from_array(&env, &[3; 32]);
+        let report_id = SecurityScannerContract::report_vulnerability(
+            env.clone(),
+            reporter.clone(),
+            contract_id,
+            String::from_str(&env, "reentrancy"),
+            String::from_str(&env, "high"),
+            String::from_str(&env, "Double payout test"),
+            String::from_str(&env, "function abc"),
+        ).unwrap();
+
+        // First verification succeeds
+        let result = SecurityScannerContract::verify_vulnerability(
+            env.clone(),
+            verifier.clone(),
+            report_id,
+            100_000,
+        );
+        assert!(result.is_ok());
+
+        // Second verification on same report must be rejected to prevent double-payout
+        let result = SecurityScannerContract::verify_vulnerability(
+            env.clone(),
+            verifier.clone(),
+            report_id,
+            100_000,
+        );
+        assert_eq!(result, Err(ContractError::AlreadyVerified));
+    }
 }
