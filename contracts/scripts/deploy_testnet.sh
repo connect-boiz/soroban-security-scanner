@@ -52,10 +52,11 @@ echo "    deployed: $CONTRACT_ID"
 
 ADMIN_ADDRESS="${ADMIN_ADDRESS:-$(stellar keys address "$KEY_ALIAS")}"
 if [ -z "${TOKEN_ADDRESS:-}" ]; then
-  echo "==> TOKEN_ADDRESS unset — deploying the native (XLM) asset contract"
-  TOKEN_ADDRESS="$(stellar contract asset deploy \
+  echo "==> TOKEN_ADDRESS unset — resolving the native (XLM) asset contract"
+  # The builtin native asset contract already exists on testnet; deploying it
+  # fails with Storage/ExistingValue, so look up its id instead.
+  TOKEN_ADDRESS="$(stellar contract id asset \
     --asset native \
-    --source-account "$KEY_ALIAS" \
     --network "$NETWORK")"
   echo "    token:   $TOKEN_ADDRESS"
 fi

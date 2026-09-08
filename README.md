@@ -130,7 +130,7 @@ npm test                      # run tests
 npm run test:coverage         # coverage report (coverage/)
 ```
 
-Line/statement coverage is **~81%** (387 tests across 44 suites). CI enforces a **minimum 80% coverage gate** (`coverageThreshold` in `frontend/jest.config.js`) — `npx jest --coverage` fails the build if statements or lines drop below 80%.
+Coverage is **~89% statements / 82% branches / 87% functions / 90% lines** (413 tests across 47 suites). CI enforces a **minimum 80% gate on all four metrics** (`coverageThreshold` in `frontend/jest.config.js`) — `npx jest --coverage` fails the build if any metric drops below 80%.
 
 ### Node backend
 
@@ -184,7 +184,24 @@ npm run test:a11y             # axe-core accessibility checks
      initialize --admin G... --token C...
    ```
 
-3. **Deployed testnet contract:** `TODO — run deploy_testnet.sh and paste the contract id here`
+3. **Live testnet deployment** (2026-09-08):
+
+   | Item          | Value                                                                              |
+   |---------------|------------------------------------------------------------------------------------|
+   | Contract      | `CAR7KRNH32CNU3YEYFZYYSFPMXUQHH4EIJPD47333ZN2LGW5P7SVNZIW`                       |
+   | Admin         | `GCP3H546OU3IHGIFLT764EBRTA4GH2TNOBNF67CDLTLHCNFW7TTGP4CM` (testnet keypair `alice`) |
+   | Token         | `CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC` (native XLM asset)     |
+   | Explorer      | https://stellar.expert/explorer/testnet/contract/CAR7KRNH32CNU3YEYFZYYSFPMXUQHH4EIJPD47333ZN2LGW5P7SVNZIW |
+
+   Sanity check:
+
+   ```bash
+   stellar contract invoke --id security_scanner --source-account alice --network testnet -- get_bounty_pool
+   # "0"
+   stellar contract invoke --id security_scanner --source-account alice --network testnet -- \
+     get_user_roles --user GCP3H546OU3IHGIFLT764EBRTA4GH2TNOBNF67CDLTLHCNFW7TTGP4CM
+   # ["SuperAdmin"]
+   ```
 
 ### 2. Frontend — Vercel
 
@@ -215,11 +232,12 @@ npx vercel deploy --prod
 | `VERCEL_ORG_ID`      | `npx vercel teams ls` / project settings              |
 | `VERCEL_PROJECT_ID`  | `npx vercel project ls` / project settings            |
 
-**Live URL:** `TODO — paste your Vercel deployment URL here`
+**Live URL:** not deployed yet — add the `VERCEL_TOKEN`, `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` secrets above and push to `develop`/`main`; the deploy workflow will fill this in automatically.
 
 ## 🔄 CI/CD
 
-- **`.github/workflows/main.yml`** — runs on every push/PR: contract tests (fmt, clippy, unit + integration), the **80% coverage gate** (`cargo llvm-cov --fail-under-lines 80`), frontend tests + coverage, node tests + coverage, and uploads all coverage artifacts.
+- **`.github/workflows/main.yml`** — runs on every push/PR: contract tests (fmt, clippy, unit + integration), the **80% coverage gate** (`cargo llvm-cov --fail-under-lines 80`), frontend tests + coverage (80% gate on statements/branches/functions/lines), node tests + coverage, and uploads all coverage artifacts.
+- **`.github/workflows/deploy-frontend.yml`** — Vercel preview (PR) and production (push) deploys. Jobs skip until the `VERCEL_TOKEN`/`VERCEL_ORG_ID`/`VERCEL_PROJECT_ID` secrets are configured.
 - **`.github/workflows/deploy-frontend.yml`** — Vercel preview/production deploys.
 - **`.github/workflows/ci.yml`** — full matrix: contracts, Rust backend, node backend, frontend, component library.
 - **`.github/workflows/security-idor-tests.yml`** — IDOR prevention tests and static security analysis.

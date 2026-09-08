@@ -24,11 +24,12 @@ const customJestConfig = {
     '!**/node_modules/**',
     '!**/.next/**',
   ],
-  // Enforced when running with --coverage (CI). Statements and lines are the
-  // primary metrics; branch coverage of UI code is reported but not gated.
+  // Enforced when running with --coverage (CI).
   coverageThreshold: {
     global: {
       statements: 80,
+      branches: 80,
+      functions: 80,
       lines: 80,
     },
   },

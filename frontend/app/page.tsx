@@ -148,6 +148,15 @@ const DisputeForm = ({ submission, onSubmitDispute, onCancel }: any) => (
   </div>
 );
 
+// Map dashboard tabs to the help topics that exist in HELP_CONTENT so the
+// help panel never receives an unknown topic (which would crash it).
+const HELP_TOPIC_BY_TAB: Partial<Record<View, string>> = {
+  scanner: 'scan',
+  report: 'vulnerability',
+  'time-travel': 'timeTravelDebugger',
+  batch: 'batchOperations',
+};
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<View>('scanner');
   const [selectedBounty, setSelectedBounty] = useState<Bounty | null>(null);
@@ -322,7 +331,7 @@ export default function App() {
             </div>
             <div className="flex space-x-3">
               <button
-                onClick={() => setHelpPanelTopic(activeTab as any)}
+                onClick={() => setHelpPanelTopic((HELP_TOPIC_BY_TAB[activeTab] ?? null) as any)}
                 className="btn btn-secondary flex items-center gap-2"
               >
                 <HelpCircle className="h-5 w-5" />
@@ -358,7 +367,7 @@ export default function App() {
       {/* Floating Help Button */}
       <div className="fixed bottom-8 right-8 z-[90]">
         <button
-          onClick={() => setHelpPanelTopic(activeTab as any)}
+          onClick={() => setHelpPanelTopic((HELP_TOPIC_BY_TAB[activeTab] ?? null) as any)}
           className="group relative flex items-center justify-center w-14 h-14 bg-[#0f172a] text-white rounded-full shadow-2xl hover:scale-110 transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-blue-500/20"
           aria-label="Get help"
         >

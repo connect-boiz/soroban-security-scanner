@@ -11,16 +11,17 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NODE_VERSION: '18'
+  NODE_VERSION: '20'
   # The Vercel project is linked via these secrets (set once in the repo
-  # settings): VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID.
+  # settings): VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID. Until those
+  # are configured the deploy jobs skip so the check suite stays green.
   VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
   VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
 jobs:
   preview:
     name: Preview deploy (pull request)
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && secrets.VERCEL_TOKEN != ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -41,7 +42,7 @@ jobs:
 
   production:
     name: Production deploy (push)
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && secrets.VERCEL_TOKEN != ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
