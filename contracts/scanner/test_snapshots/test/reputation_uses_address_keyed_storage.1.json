@@ -126,19 +126,19 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM"
                 },
                 {
-                  "bytes": "0404040404040404040404040404040404040404040404040404040404040404"
+                  "bytes": "0808080808080808080808080808080808080808080808080808080808080808"
                 },
                 {
-                  "string": "x"
+                  "string": "reentrancy"
                 },
                 {
-                  "string": "high"
+                  "symbol": "high"
                 },
                 {
-                  "string": "a"
+                  "string": "description"
                 },
                 {
-                  "string": "a.rs"
+                  "string": "lib.rs"
                 }
               ]
             }
@@ -160,19 +160,19 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMDR4"
                 },
                 {
-                  "bytes": "0505050505050505050505050505050505050505050505050505050505050505"
+                  "bytes": "0909090909090909090909090909090909090909090909090909090909090909"
                 },
                 {
-                  "string": "y"
+                  "string": "reentrancy"
                 },
                 {
-                  "string": "high"
+                  "symbol": "high"
                 },
                 {
-                  "string": "b"
+                  "string": "description"
                 },
                 {
-                  "string": "b.rs"
+                  "string": "lib.rs"
                 }
               ]
             }
@@ -769,7 +769,7 @@
                                     "symbol": "contract_id"
                                   },
                                   "val": {
-                                    "bytes": "0404040404040404040404040404040404040404040404040404040404040404"
+                                    "bytes": "0808080808080808080808080808080808080808080808080808080808080808"
                                   }
                                 },
                                 {
@@ -777,7 +777,7 @@
                                     "symbol": "description"
                                   },
                                   "val": {
-                                    "string": "a"
+                                    "string": "description"
                                   }
                                 },
                                 {
@@ -785,7 +785,7 @@
                                     "symbol": "location"
                                   },
                                   "val": {
-                                    "string": "a.rs"
+                                    "string": "lib.rs"
                                   }
                                 },
                                 {
@@ -801,7 +801,7 @@
                                     "symbol": "severity"
                                   },
                                   "val": {
-                                    "string": "high"
+                                    "symbol": "high"
                                   }
                                 },
                                 {
@@ -809,7 +809,7 @@
                                     "symbol": "status"
                                   },
                                   "val": {
-                                    "string": "verified"
+                                    "symbol": "verified"
                                   }
                                 },
                                 {
@@ -825,7 +825,7 @@
                                     "symbol": "vulnerability_type"
                                   },
                                   "val": {
-                                    "string": "x"
+                                    "string": "reentrancy"
                                   }
                                 }
                               ]
@@ -850,7 +850,7 @@
                                     "symbol": "contract_id"
                                   },
                                   "val": {
-                                    "bytes": "0505050505050505050505050505050505050505050505050505050505050505"
+                                    "bytes": "0909090909090909090909090909090909090909090909090909090909090909"
                                   }
                                 },
                                 {
@@ -858,7 +858,7 @@
                                     "symbol": "description"
                                   },
                                   "val": {
-                                    "string": "b"
+                                    "string": "description"
                                   }
                                 },
                                 {
@@ -866,7 +866,7 @@
                                     "symbol": "location"
                                   },
                                   "val": {
-                                    "string": "b.rs"
+                                    "string": "lib.rs"
                                   }
                                 },
                                 {
@@ -882,7 +882,7 @@
                                     "symbol": "severity"
                                   },
                                   "val": {
-                                    "string": "high"
+                                    "symbol": "high"
                                   }
                                 },
                                 {
@@ -890,7 +890,7 @@
                                     "symbol": "status"
                                   },
                                   "val": {
-                                    "string": "verified"
+                                    "symbol": "verified"
                                   }
                                 },
                                 {
@@ -906,7 +906,7 @@
                                     "symbol": "vulnerability_type"
                                   },
                                   "val": {
-                                    "string": "y"
+                                    "string": "reentrancy"
                                   }
                                 }
                               ]

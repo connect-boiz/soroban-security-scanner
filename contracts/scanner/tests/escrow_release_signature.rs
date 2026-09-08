@@ -7,7 +7,7 @@
 
 use ed25519_dalek::{Signer, SigningKey};
 use security_scanner::{ContractError, SecurityScannerContract, SecurityScannerContractClient};
-use soroban_sdk::{testutils::Address as _, token, Address, Bytes, BytesN, Env, String};
+use soroban_sdk::{symbol_short, testutils::Address as _, token, Address, Bytes, BytesN, Env};
 
 struct TestSetup<'a> {
     env: Env,
@@ -69,7 +69,7 @@ fn release_with_valid_signature_succeeds() {
         &depositor,
         &beneficiary,
         &1_000i128,
-        &String::from_str(env, "bounty"),
+        &symbol_short!("bounty"),
         &0u64,
         &Some(public_key),
     );
@@ -80,7 +80,7 @@ fn release_with_valid_signature_succeeds() {
     client.release_escrow(&escrow_id, &depositor, &Some(signature.clone()));
 
     let escrow = client.get_escrow(&escrow_id);
-    assert_eq!(escrow.status, String::from_str(env, "released"));
+    assert_eq!(escrow.status, symbol_short!("released"));
     // Only a signature that actually verified should ever be persisted.
     assert_eq!(escrow.release_signature, Some(signature));
 }
@@ -99,18 +99,18 @@ fn release_without_signature_is_rejected_when_signer_required() {
         &depositor,
         &beneficiary,
         &1_000i128,
-        &String::from_str(env, "bounty"),
+        &symbol_short!("bounty"),
         &0u64,
         &Some(public_key),
     );
 
     // A registered signer but no signature: the release must be refused.
     let result = client.try_release_escrow(&escrow_id, &depositor, &None);
-    assert_eq!(result, Err(Ok(ContractError::Unauthorized)));
+    assert_eq!(result, Err(Ok(ContractError::SignatureMissing)));
 
     // ...and the funds stay put.
     let escrow = client.get_escrow(&escrow_id);
-    assert_eq!(escrow.status, String::from_str(env, "pending"));
+    assert_eq!(escrow.status, symbol_short!("pending"));
 }
 
 #[test]
@@ -128,7 +128,7 @@ fn release_with_forged_signature_is_rejected() {
         &depositor,
         &beneficiary,
         &1_000i128,
-        &String::from_str(env, "bounty"),
+        &symbol_short!("bounty"),
         &0u64,
         &Some(registered_pk),
     );
@@ -145,7 +145,7 @@ fn release_with_forged_signature_is_rejected() {
     );
 
     let escrow = client.get_escrow(&escrow_id);
-    assert_eq!(escrow.status, String::from_str(env, "pending"));
+    assert_eq!(escrow.status, symbol_short!("pending"));
 }
 
 #[test]
@@ -163,7 +163,7 @@ fn release_without_signer_keeps_legacy_behavior() {
         &depositor,
         &beneficiary,
         &1_000i128,
-        &String::from_str(env, "bounty"),
+        &symbol_short!("bounty"),
         &0u64,
         &None,
     );
@@ -171,7 +171,7 @@ fn release_without_signer_keeps_legacy_behavior() {
     client.release_escrow(&escrow_id, &depositor, &None);
 
     let escrow = client.get_escrow(&escrow_id);
-    assert_eq!(escrow.status, String::from_str(env, "released"));
+    assert_eq!(escrow.status, symbol_short!("released"));
     assert_eq!(escrow.release_signature, None);
 }
 
@@ -188,7 +188,7 @@ fn signature_is_ignored_when_no_signer_registered() {
         &depositor,
         &beneficiary,
         &1_000i128,
-        &String::from_str(env, "bounty"),
+        &symbol_short!("bounty"),
         &0u64,
         &None,
     );
@@ -201,6 +201,6 @@ fn signature_is_ignored_when_no_signer_registered() {
     client.release_escrow(&escrow_id, &depositor, &Some(stray));
 
     let escrow = client.get_escrow(&escrow_id);
-    assert_eq!(escrow.status, String::from_str(env, "released"));
+    assert_eq!(escrow.status, symbol_short!("released"));
     assert_eq!(escrow.release_signature, None);
 }

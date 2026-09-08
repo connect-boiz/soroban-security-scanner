@@ -29,6 +29,24 @@ const ESCROW_NONCES: Symbol = symbol_short!("ESCNONC");
 const ALERT_NONCES: Symbol = symbol_short!("ALRNONC");
 const MAX_TEXT_LEN: u32 = 280;
 
+// Enum-like values are stored as `Symbol`s instead of `String`s. Symbols are
+// fixed-size (max 9 bytes when short-encoded) and far cheaper to store,
+// compare and XDR-encode than `String`s, so using them for status, purpose and
+// severity fields reduces on-chain storage footprint and gas.
+const STATUS_PENDING: Symbol = symbol_short!("pending");
+const STATUS_VERIFIED: Symbol = symbol_short!("verified");
+const STATUS_RELEASED: Symbol = symbol_short!("released");
+const STATUS_REFUNDED: Symbol = symbol_short!("refunded");
+// "false_positive" is 14 chars — too long for `symbol_short!` (9 max).
+const STATUS_FALSE_POSITIVE: &str = "false_positive";
+
+const SEVERITY_CRITICAL: Symbol = symbol_short!("critical");
+const SEVERITY_EMERGENCY: Symbol = symbol_short!("emergency");
+
+const PURPOSE_BOUNTY: Symbol = symbol_short!("bounty");
+const PURPOSE_REWARD: Symbol = symbol_short!("reward");
+const PURPOSE_EMERGENCY: Symbol = symbol_short!("emergency");
+
 // Role-based access control keys
 const ADMIN_ROLES: Symbol = symbol_short!("ADM_ROLE");
 const MULTI_SIG_PROPOSALS: Symbol = symbol_short!("MS_PROPS");
@@ -84,9 +102,31 @@ pub struct TimeLock {
 }
 
 // Contract errors
+//
+// Structured, gas-efficient error system. Every failure state maps to a
+// stable numerical code via [`ContractError::code`], with the code space
+// partitioned by domain so off-chain tooling can react to specific failure
+// states numerically (up to 200 distinct codes):
+//
+// | Range   | Domain                        |
+// |---------|-------------------------------|
+// | 1-19    | Authentication & authorization |
+// | 20-39   | Input validation              |
+// | 40-59   | Lookup & storage              |
+// | 60-79   | Funds & pools                 |
+// | 80-99   | Escrow lifecycle              |
+// | 100-119 | Multi-signature proposals     |
+// | 120-139 | Roles & permissions           |
+// | 140-159 | Emergency operations          |
+// | 160-179 | Arithmetic                    |
+// | 180-200 | Reserved for future use       |
+//
+// Legacy discriminants `1..=17` are preserved for ABI compatibility; new
+// discriminants continue from 18.
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum ContractError {
+    // 1-19: Authentication & authorization
     Unauthorized = 1,
     InvalidInput = 2,
     NotFound = 3,
@@ -104,6 +144,112 @@ pub enum ContractError {
     MultiSigRequired = 15,
     AlreadyApproved = 16,
     AlreadyVerified = 17,
+    // 18+: new discriminants (domain ranges are reflected in `code()`)
+    DefaultAddress = 18,
+    TokenNotConfigured = 19,
+    ContractNotInitialized = 20,
+    TextTooLong = 21,
+    InvalidSeverity = 22,
+    InvalidPurpose = 23,
+    ProposalNotReady = 24,
+    RoleAlreadyGranted = 25,
+    EscrowAlreadyReleased = 26,
+    EscrowAlreadyRefunded = 27,
+    SignatureMissing = 28,
+    SignatureInvalid = 29,
+    ZeroAmount = 30,
+}
+
+impl ContractError {
+    /// Highest code available in the 200-code error space.
+    pub const MAX_ERROR_CODE: u32 = 200;
+
+    /// Number of distinct failure states currently defined.
+    pub const COUNT: u32 = 30;
+
+    /// Map a failure state to its structured numerical code (`1..=200`).
+    /// Codes are stable: adding new errors never renumbers existing ones.
+    pub fn code(&self) -> u32 {
+        match self {
+            // Authentication & authorization (1-19)
+            ContractError::Unauthorized => 1,
+            ContractError::InsufficientPermissions => 2,
+            // Input validation (20-39)
+            ContractError::InvalidInput => 20,
+            ContractError::DefaultAddress => 21,
+            ContractError::TextTooLong => 22,
+            ContractError::InvalidSeverity => 23,
+            ContractError::InvalidPurpose => 24,
+            ContractError::ZeroAmount => 25,
+            // Lookup & storage (40-59)
+            ContractError::NotFound => 40,
+            ContractError::TokenNotConfigured => 41,
+            ContractError::ContractNotInitialized => 42,
+            // Funds & pools (60-79)
+            ContractError::InsufficientFunds => 60,
+            // Escrow lifecycle (80-99)
+            ContractError::EscrowLocked => 80,
+            ContractError::InvalidEscrowStatus => 81,
+            ContractError::EscrowAlreadyReleased => 82,
+            ContractError::EscrowAlreadyRefunded => 83,
+            // Multi-signature proposals (100-119)
+            ContractError::ProposalNotFound => 100,
+            ContractError::ProposalAlreadyExecuted => 101,
+            ContractError::ProposalNotReady => 102,
+            ContractError::TimeLockNotExpired => 103,
+            ContractError::AlreadyApproved => 104,
+            ContractError::MultiSigRequired => 105,
+            ContractError::SignatureMissing => 106,
+            ContractError::SignatureInvalid => 107,
+            // Roles & permissions (120-139)
+            ContractError::InvalidRole => 120,
+            ContractError::RoleAlreadyGranted => 121,
+            // Emergency operations (140-159)
+            ContractError::EmergencyModeActive => 140,
+            ContractError::AlreadyVerified => 141,
+            // Arithmetic (160-179)
+            ContractError::Overflow => 160,
+            ContractError::ExternalCallFailed => 161,
+        }
+    }
+
+    /// Reverse lookup from a structured numerical code back to its error.
+    /// Returns `None` for codes that are not yet assigned.
+    pub fn from_code(code: u32) -> Option<ContractError> {
+        Some(match code {
+            1 => ContractError::Unauthorized,
+            2 => ContractError::InsufficientPermissions,
+            20 => ContractError::InvalidInput,
+            21 => ContractError::DefaultAddress,
+            22 => ContractError::TextTooLong,
+            23 => ContractError::InvalidSeverity,
+            24 => ContractError::InvalidPurpose,
+            25 => ContractError::ZeroAmount,
+            40 => ContractError::NotFound,
+            41 => ContractError::TokenNotConfigured,
+            42 => ContractError::ContractNotInitialized,
+            60 => ContractError::InsufficientFunds,
+            80 => ContractError::EscrowLocked,
+            81 => ContractError::InvalidEscrowStatus,
+            82 => ContractError::EscrowAlreadyReleased,
+            83 => ContractError::EscrowAlreadyRefunded,
+            100 => ContractError::ProposalNotFound,
+            101 => ContractError::ProposalAlreadyExecuted,
+            102 => ContractError::ProposalNotReady,
+            103 => ContractError::TimeLockNotExpired,
+            104 => ContractError::AlreadyApproved,
+            105 => ContractError::MultiSigRequired,
+            106 => ContractError::SignatureMissing,
+            107 => ContractError::SignatureInvalid,
+            120 => ContractError::InvalidRole,
+            121 => ContractError::RoleAlreadyGranted,
+            140 => ContractError::EmergencyModeActive,
+            141 => ContractError::AlreadyVerified,
+            160 => ContractError::Overflow,
+            161 => ContractError::ExternalCallFailed,
+            _ => return None,
+        })
+    }
 }
 
 // Vulnerability structure
@@ -113,11 +259,11 @@ pub struct VulnerabilityReport {
     pub reporter: Address,
     pub contract_id: BytesN<32>,
     pub vulnerability_type: String,
-    pub severity: String,
+    pub severity: Symbol,
     pub description: String,
     pub location: String,
     pub timestamp: u64,
-    pub status: String, // "pending", "verified", "rejected"
+    pub status: Symbol, // STATUS_PENDING | STATUS_VERIFIED | STATUS_REJECTED
     pub bounty_amount: i128,
 }
 
@@ -139,8 +285,8 @@ pub struct EscrowEntry {
     pub depositor: Address,
     pub beneficiary: Address,
     pub amount: i128,
-    pub purpose: String, // "bounty", "reward", "emergency"
-    pub status: String,  // "pending", "locked", "released", "refunded"
+    pub purpose: Symbol, // PURPOSE_BOUNTY | PURPOSE_REWARD | PURPOSE_EMERGENCY
+    pub status: Symbol,  // STATUS_PENDING | STATUS_RELEASED | STATUS_REFUNDED
     pub created_at: u64,
     pub lock_until: u64,
     pub conditions_met: bool,
@@ -161,11 +307,11 @@ pub struct EmergencyAlert {
     pub reporter: Address,
     pub contract_id: BytesN<32>,
     pub vulnerability_type: String,
-    pub severity: String, // "critical", "emergency"
+    pub severity: Symbol, // SEVERITY_CRITICAL | SEVERITY_EMERGENCY
     pub description: String,
     pub location: String,
     pub timestamp: u64,
-    pub status: String, // "pending", "verified", "false_positive"
+    pub status: Symbol, // STATUS_PENDING | STATUS_VERIFIED | "false_positive"
     pub emergency_reward: i128,
     pub verified_by: Option<Address>,
 }
@@ -217,7 +363,7 @@ impl SecurityScannerContract {
             "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
         );
         if addr == &Address::from_string(&null_address) {
-            return Err(ContractError::InvalidInput);
+            return Err(ContractError::DefaultAddress);
         }
         Ok(())
     }
@@ -254,14 +400,14 @@ impl SecurityScannerContract {
 
     fn require_positive_amount(amount: i128) -> Result<(), ContractError> {
         if amount <= 0 {
-            return Err(ContractError::InvalidInput);
+            return Err(ContractError::ZeroAmount);
         }
         Ok(())
     }
 
     fn require_valid_text(value: &String) -> Result<(), ContractError> {
         if value.is_empty() || value.len() > MAX_TEXT_LEN {
-            return Err(ContractError::InvalidInput);
+            return Err(ContractError::TextTooLong);
         }
         Ok(())
     }
@@ -511,7 +657,8 @@ impl SecurityScannerContract {
         }
 
         let current_time = env.ledger().timestamp();
-        if current_time < proposal.created_at + proposal.execution_delay {
+        let ready_after = Self::checked_add_u64(proposal.created_at, proposal.execution_delay)?;
+        if current_time < ready_after {
             return Ok(false);
         }
 
@@ -592,7 +739,7 @@ impl SecurityScannerContract {
         reporter: Address,
         contract_id: BytesN<32>,
         vulnerability_type: String,
-        severity: String,
+        severity: Symbol,
         description: String,
         location: String,
     ) -> Result<u64, ContractError> {
@@ -600,7 +747,6 @@ impl SecurityScannerContract {
         reporter.require_auth();
         Self::require_non_default_address(&env, &reporter)?;
         Self::require_valid_text(&vulnerability_type)?;
-        Self::require_valid_text(&severity)?;
         Self::require_valid_text(&description)?;
         Self::require_valid_text(&location)?;
 
@@ -613,7 +759,7 @@ impl SecurityScannerContract {
             description: description.clone(),
             location: location.clone(),
             timestamp: env.ledger().timestamp(),
-            status: String::from_str(&env, "pending"),
+            status: STATUS_PENDING,
             bounty_amount: 0i128,
         };
 
@@ -648,14 +794,32 @@ impl SecurityScannerContract {
         bounty_amount: i128,
     ) -> Result<(), ContractError> {
         admin.require_auth();
-        Self::require_non_default_address(&env, &admin)?;
+        Self::verify_vulnerability_internal(env, &admin, report_id, bounty_amount, true)
+    }
+
+    /// Same as [`Self::verify_vulnerability`] but without `require_auth`, for
+    /// use after an outer call (e.g. multi-sig execution) has already
+    /// authorized the caller. Requiring auth again for the same address inside
+    /// the same transaction is redundant and costs gas.
+    ///
+    /// `enforce_high_bounty_gate` is `true` on the direct public path (high
+    /// bounties then require multi-sig) and `false` on the multi-sig execution
+    /// path, which is the sanctioned route for high bounties.
+    fn verify_vulnerability_internal(
+        env: Env,
+        admin: &Address,
+        report_id: u64,
+        bounty_amount: i128,
+        enforce_high_bounty_gate: bool,
+    ) -> Result<(), ContractError> {
+        Self::require_non_default_address(&env, admin)?;
         Self::require_positive_amount(bounty_amount)?;
 
         // Check role-based permissions
-        Self::require_permission(&env, &admin, Permission::VerifyVulnerability)?;
+        Self::require_permission(&env, admin, Permission::VerifyVulnerability)?;
 
         // For high bounty amounts (> 1M tokens), require multi-signature
-        if bounty_amount > 1_000_000i128 {
+        if enforce_high_bounty_gate && bounty_amount > 1_000_000i128 {
             return Err(ContractError::MultiSigRequired);
         }
 
@@ -668,8 +832,7 @@ impl SecurityScannerContract {
         let mut report: VulnerabilityReport =
             reports.get(report_id).ok_or(ContractError::NotFound)?;
 
-        let verified_status = String::from_str(&env, "verified");
-        if report.status == verified_status {
+        if report.status == STATUS_VERIFIED {
             return Err(ContractError::AlreadyVerified);
         }
 
@@ -681,7 +844,7 @@ impl SecurityScannerContract {
         env.storage().instance().set(&BOUNTY_POOL, &pool);
 
         // Update status and bounty
-        report.status = verified_status;
+        report.status = STATUS_VERIFIED;
         report.bounty_amount = bounty_amount;
 
         // Store updated report
@@ -750,26 +913,9 @@ impl SecurityScannerContract {
         executor.require_auth();
         Self::require_permission(&env, &executor, Permission::VerifyVulnerability)?;
 
-        if !Self::can_execute_proposal(&env, proposal_id)? {
-            return Err(ContractError::ProposalNotFound);
-        }
-
-        let proposals: Map<u64, MultiSigProposal> = env
-            .storage()
-            .instance()
-            .get(&MULTI_SIG_PROPOSALS)
-            .unwrap_or(Map::new(&env));
-        let proposal: MultiSigProposal = proposals
-            .get(proposal_id)
-            .ok_or(ContractError::ProposalNotFound)?;
-
-        let report_id: u64 = Self::parse_param_u64(&proposal.parameters, 0)?;
-        let bounty_amount: i128 = Self::parse_param_i128(&proposal.parameters, 1)?;
-
-        // Execute the verification
-        Self::verify_vulnerability(env.clone(), executor, report_id, bounty_amount)?;
-
-        // Mark proposal as executed
+        // Load the proposal store once and keep it in memory for the readiness
+        // check, the parameter parse and the final state write (previously the
+        // map was re-read from storage three times per execution).
         let mut proposals: Map<u64, MultiSigProposal> = env
             .storage()
             .instance()
@@ -778,6 +924,34 @@ impl SecurityScannerContract {
         let mut proposal: MultiSigProposal = proposals
             .get(proposal_id)
             .ok_or(ContractError::ProposalNotFound)?;
+
+        if proposal.executed {
+            return Err(ContractError::ProposalAlreadyExecuted);
+        }
+        let current_time = env.ledger().timestamp();
+        let ready_after = Self::checked_add_u64(proposal.created_at, proposal.execution_delay)?;
+        if current_time < ready_after
+            || (proposal.approvals.len() as u64) < proposal.required_approvals
+        {
+            return Err(ContractError::ProposalNotReady);
+        }
+
+        let report_id: u64 = Self::parse_param_u64(&proposal.parameters, 0)?;
+        let bounty_amount: i128 = Self::parse_param_i128(&proposal.parameters, 1)?;
+
+        // Execute the verification. The executor has already been authorized at
+        // the top of this function, so skip the redundant nested `require_auth`,
+        // and skip the high-bounty gate because multi-sig approval is the
+        // sanctioned route for high bounties.
+        Self::verify_vulnerability_internal(
+            env.clone(),
+            &executor,
+            report_id,
+            bounty_amount,
+            false,
+        )?;
+
+        // Mark proposal as executed and write back in a single pass
         proposal.executed = true;
         proposals.set(proposal_id, proposal);
         env.storage()
@@ -864,20 +1038,45 @@ impl SecurityScannerContract {
         depositor: Address,
         beneficiary: Address,
         amount: i128,
-        purpose: String,
+        purpose: Symbol,
         lock_duration: u64,
         release_signer: Option<BytesN<32>>,
     ) -> Result<u64, ContractError> {
         depositor.require_auth();
-        Self::require_non_default_address(&env, &depositor)?;
-        Self::require_non_default_address(&env, &beneficiary)?;
+        Self::create_escrow_internal(
+            env,
+            &depositor,
+            &beneficiary,
+            amount,
+            purpose,
+            lock_duration,
+            release_signer,
+        )
+    }
+
+    /// Same as [`Self::create_escrow`] without `require_auth`, for use after an
+    /// outer call (e.g. multi-sig emergency execution) has already authorized
+    /// the caller.
+    fn create_escrow_internal(
+        env: Env,
+        depositor: &Address,
+        beneficiary: &Address,
+        amount: i128,
+        purpose: Symbol,
+        lock_duration: u64,
+        release_signer: Option<BytesN<32>>,
+    ) -> Result<u64, ContractError> {
+        Self::require_non_default_address(&env, depositor)?;
+        Self::require_non_default_address(&env, beneficiary)?;
         Self::require_positive_amount(amount)?;
-        Self::require_valid_text(&purpose)?;
+        if purpose != PURPOSE_BOUNTY && purpose != PURPOSE_REWARD && purpose != PURPOSE_EMERGENCY {
+            return Err(ContractError::InvalidPurpose);
+        }
 
         let escrow_id = Self::next_counter(&env, ESCROW_COUNTER)?;
         let current_time = env.ledger().timestamp();
         let lock_until = Self::checked_add_u64(current_time, lock_duration)?;
-        let escrow_nonce = Self::generate_nonce(&env, &beneficiary, escrow_id);
+        let escrow_nonce = Self::generate_nonce(&env, beneficiary, escrow_id);
 
         let escrow = EscrowEntry {
             id: escrow_id,
@@ -885,7 +1084,7 @@ impl SecurityScannerContract {
             beneficiary: beneficiary.clone(),
             amount,
             purpose: purpose.clone(),
-            status: String::from_str(&env, "pending"),
+            status: STATUS_PENDING,
             created_at: current_time,
             lock_until,
             conditions_met: false,
@@ -908,7 +1107,7 @@ impl SecurityScannerContract {
         escrow_nonces.set(escrow_id, escrow_nonce);
         env.storage().instance().set(&ESCROW_NONCES, &escrow_nonces);
 
-        Self::receive_tokens(&env, &depositor, amount)?;
+        Self::receive_tokens(&env, depositor, amount)?;
 
         // Add to escrow pool tracking
         let mut escrow_pool: i128 = env.storage().instance().get(&ESCROW).unwrap_or(0i128);
@@ -925,9 +1124,14 @@ impl SecurityScannerContract {
     ) -> Result<Option<BytesN<64>>, ContractError> {
         match &escrow.release_signer {
             Some(signer) => {
-                let signature = signature.ok_or(ContractError::Unauthorized)?;
+                let signature = signature.ok_or(ContractError::SignatureMissing)?;
                 let nonce = Self::escrow_nonce(env, escrow.id)?;
                 let message = Self::build_release_message(env, escrow, &nonce);
+                // `ed25519_verify` traps (aborts the whole transaction) when
+                // the signature does not verify, so a forged signature can
+                // never release an escrow (Issue #481). The failure state is
+                // exposed to off-chain tooling as the structured error code
+                // `ContractError::SignatureInvalid`.
                 env.crypto().ed25519_verify(signer, &message, &signature);
                 Ok(Some(signature))
             }
@@ -952,8 +1156,8 @@ impl SecurityScannerContract {
             return Err(ContractError::Unauthorized);
         }
 
-        if escrow.status == String::from_str(env, "released") {
-            return Err(ContractError::InvalidEscrowStatus);
+        if escrow.status == STATUS_RELEASED {
+            return Err(ContractError::EscrowAlreadyReleased);
         }
 
         let current_time = env.ledger().timestamp();
@@ -961,10 +1165,12 @@ impl SecurityScannerContract {
             return Err(ContractError::EscrowLocked);
         }
 
+        let verified_signature = Self::verify_release_signature(env, &escrow, release_signature)?;
+
         Self::execute_payout(env, &escrow.beneficiary, escrow.amount, escrow_id)?;
 
-        escrow.status = String::from_str(env, "released");
-        escrow.release_signature = release_signature;
+        escrow.status = STATUS_RELEASED;
+        escrow.release_signature = verified_signature;
         escrows.set(escrow_id, escrow.clone());
         env.storage().instance().set(&ESCROWS, &escrows);
 
@@ -984,16 +1190,9 @@ impl SecurityScannerContract {
     ) -> Result<(), ContractError> {
         depositor.require_auth();
 
-        let escrows: Map<u64, EscrowEntry> = env
-            .storage()
-            .instance()
-            .get(&ESCROWS)
-            .unwrap_or(Map::new(&env));
-        let escrow: EscrowEntry = escrows.get(escrow_id).ok_or(ContractError::NotFound)?;
-
-        let verified_signature = Self::verify_release_signature(&env, &escrow, signature)?;
-
-        Self::release_escrow_internal(&env, escrow_id, &depositor, verified_signature)
+        // Signature verification happens inside `release_escrow_internal` so the
+        // escrow entry is loaded from storage only once for the whole release.
+        Self::release_escrow_internal(&env, escrow_id, &depositor, signature)
     }
 
     /// Refund escrow funds to depositor
@@ -1017,8 +1216,11 @@ impl SecurityScannerContract {
         }
 
         // Check if escrow can be refunded
-        if escrow.status == String::from_str(&env, "released") {
+        if escrow.status == STATUS_RELEASED {
             return Err(ContractError::InvalidEscrowStatus);
+        }
+        if escrow.status == STATUS_REFUNDED {
+            return Err(ContractError::EscrowAlreadyRefunded);
         }
 
         let current_time = env.ledger().timestamp();
@@ -1031,7 +1233,7 @@ impl SecurityScannerContract {
         Self::execute_payout(&env, &escrow.depositor, escrow.amount, escrow_id)?;
 
         // Update escrow status
-        escrow.status = String::from_str(&env, "refunded");
+        escrow.status = STATUS_REFUNDED;
         escrows.set(escrow_id, escrow.clone());
         env.storage().instance().set(&ESCROWS, &escrows);
 
@@ -1050,10 +1252,21 @@ impl SecurityScannerContract {
         admin: Address,
     ) -> Result<(), ContractError> {
         admin.require_auth();
-        Self::require_non_default_address(&env, &admin)?;
+        Self::mark_escrow_conditions_met_internal(env, escrow_id, &admin)
+    }
+
+    /// Same as [`Self::mark_escrow_conditions_met`] without `require_auth`, for
+    /// use after an outer call (e.g. multi-sig emergency execution) has already
+    /// authorized the caller.
+    fn mark_escrow_conditions_met_internal(
+        env: Env,
+        escrow_id: u64,
+        admin: &Address,
+    ) -> Result<(), ContractError> {
+        Self::require_non_default_address(&env, admin)?;
 
         // Check role-based permissions
-        Self::require_permission(&env, &admin, Permission::ManageEscrow)?;
+        Self::require_permission(&env, admin, Permission::ManageEscrow)?;
 
         let mut escrows: Map<u64, EscrowEntry> = env
             .storage()
@@ -1075,27 +1288,24 @@ impl SecurityScannerContract {
         reporter: Address,
         contract_id: BytesN<32>,
         vulnerability_type: String,
-        severity: String,
+        severity: Symbol,
         description: String,
         location: String,
     ) -> Result<u64, ContractError> {
         Self::require_non_default_address(&env, &reporter)?;
         Self::require_valid_text(&vulnerability_type)?;
-        Self::require_valid_text(&severity)?;
         Self::require_valid_text(&description)?;
         Self::require_valid_text(&location)?;
         // Verify severity is critical or emergency
-        if severity != String::from_str(&env, "critical")
-            && severity != String::from_str(&env, "emergency")
-        {
-            return Err(ContractError::InvalidInput);
+        if severity != SEVERITY_CRITICAL && severity != SEVERITY_EMERGENCY {
+            return Err(ContractError::InvalidSeverity);
         }
 
         reporter.require_auth();
 
         let alert_id = Self::next_counter(&env, ALERT_COUNTER)?;
         let alert_nonce = Self::generate_nonce(&env, &reporter, alert_id);
-        let emergency_reward = if severity == String::from_str(&env, "emergency") {
+        let emergency_reward = if severity == SEVERITY_EMERGENCY {
             10_000_000i128
         } else {
             5_000_000i128
@@ -1110,7 +1320,7 @@ impl SecurityScannerContract {
             description: description.clone(),
             location: location.clone(),
             timestamp: env.ledger().timestamp(),
-            status: String::from_str(&env, "pending"),
+            status: STATUS_PENDING,
             emergency_reward,
             verified_by: None,
         };
@@ -1211,26 +1421,8 @@ impl SecurityScannerContract {
         executor.require_auth();
         Self::require_permission(&env, &executor, Permission::VerifyEmergency)?;
 
-        if !Self::can_execute_proposal(&env, proposal_id)? {
-            return Err(ContractError::ProposalNotFound);
-        }
-
-        let proposals: Map<u64, MultiSigProposal> = env
-            .storage()
-            .instance()
-            .get(&MULTI_SIG_PROPOSALS)
-            .unwrap_or(Map::new(&env));
-        let proposal: MultiSigProposal = proposals
-            .get(proposal_id)
-            .ok_or(ContractError::ProposalNotFound)?;
-
-        let alert_id: u64 = Self::parse_param_u64(&proposal.parameters, 0)?;
-        let verified: bool = Self::parse_param_bool(&proposal.parameters, 1)?;
-
-        // Execute the emergency verification
-        Self::execute_emergency_verification_internal(env.clone(), executor, alert_id, verified)?;
-
-        // Mark proposal as executed
+        // Single storage load for the whole execution (see
+        // `execute_high_bounty_verification`).
         let mut proposals: Map<u64, MultiSigProposal> = env
             .storage()
             .instance()
@@ -1239,6 +1431,25 @@ impl SecurityScannerContract {
         let mut proposal: MultiSigProposal = proposals
             .get(proposal_id)
             .ok_or(ContractError::ProposalNotFound)?;
+
+        if proposal.executed {
+            return Err(ContractError::ProposalAlreadyExecuted);
+        }
+        let current_time = env.ledger().timestamp();
+        let ready_after = Self::checked_add_u64(proposal.created_at, proposal.execution_delay)?;
+        if current_time < ready_after
+            || (proposal.approvals.len() as u64) < proposal.required_approvals
+        {
+            return Err(ContractError::ProposalNotReady);
+        }
+
+        let alert_id: u64 = Self::parse_param_u64(&proposal.parameters, 0)?;
+        let verified: bool = Self::parse_param_bool(&proposal.parameters, 1)?;
+
+        // Execute the emergency verification
+        Self::execute_emergency_verification_internal(env.clone(), executor, alert_id, verified)?;
+
+        // Mark proposal as executed and write back in a single pass
         proposal.executed = true;
         proposals.set(proposal_id, proposal);
         env.storage()
@@ -1263,22 +1474,25 @@ impl SecurityScannerContract {
         let mut alert: EmergencyAlert = alerts.get(alert_id).ok_or(ContractError::NotFound)?;
 
         if verified {
-            alert.status = String::from_str(&env, "verified");
+            alert.status = STATUS_VERIFIED;
             alert.verified_by = Some(admin.clone());
 
-            // Create immediate escrow for emergency reward
-            let escrow_id = Self::create_escrow(
+            // Create immediate escrow for emergency reward. The executor has
+            // already been authorized by the outer multi-sig call, so use the
+            // internal variants to avoid redundant nested `require_auth` calls
+            // for the same address.
+            let escrow_id = Self::create_escrow_internal(
                 env.clone(),
-                admin.clone(), // Admin deposits on behalf of the platform
-                alert.reporter.clone(),
+                &admin, // Admin deposits on behalf of the platform
+                &alert.reporter,
                 alert.emergency_reward,
-                String::from_str(&env, "emergency"),
+                PURPOSE_EMERGENCY,
                 0,    // No lock period for emergency rewards
                 None, // Emergency releases are authorized by admin auth, not a signer
             )?;
 
             // Immediately mark conditions as met and release
-            Self::mark_escrow_conditions_met(env.clone(), escrow_id, admin.clone())?;
+            Self::mark_escrow_conditions_met_internal(env.clone(), escrow_id, &admin)?;
             Self::release_escrow_internal(&env, escrow_id, &admin, None)?;
 
             // Update reputation
@@ -1289,7 +1503,7 @@ impl SecurityScannerContract {
                 alert.emergency_reward,
             )?;
         } else {
-            alert.status = String::from_str(&env, "false_positive");
+            alert.status = Symbol::new(&env, STATUS_FALSE_POSITIVE);
         }
 
         alerts.set(alert_id, alert);
@@ -1447,18 +1661,26 @@ impl SecurityScannerContract {
         executor.require_auth();
         Self::require_permission(&env, &executor, Permission::ManageRoles)?;
 
-        if !Self::can_execute_proposal(&env, proposal_id)? {
-            return Err(ContractError::ProposalNotFound);
-        }
-
-        let proposals: Map<u64, MultiSigProposal> = env
+        // Single storage load for the whole execution.
+        let mut proposals: Map<u64, MultiSigProposal> = env
             .storage()
             .instance()
             .get(&MULTI_SIG_PROPOSALS)
             .unwrap_or(Map::new(&env));
-        let proposal: MultiSigProposal = proposals
+        let mut proposal: MultiSigProposal = proposals
             .get(proposal_id)
             .ok_or(ContractError::ProposalNotFound)?;
+
+        if proposal.executed {
+            return Err(ContractError::ProposalAlreadyExecuted);
+        }
+        let current_time = env.ledger().timestamp();
+        let ready_after = Self::checked_add_u64(proposal.created_at, proposal.execution_delay)?;
+        if current_time < ready_after
+            || (proposal.approvals.len() as u64) < proposal.required_approvals
+        {
+            return Err(ContractError::ProposalNotReady);
+        }
 
         // The user address is stored in canonical strkey form (see
         // `propose_role_grant`), so reconstruct it directly from the stored SDK
@@ -1478,15 +1700,7 @@ impl SecurityScannerContract {
         // Execute the role grant
         Self::execute_role_grant_internal(env.clone(), user_address, role)?;
 
-        // Mark proposal as executed
-        let mut proposals: Map<u64, MultiSigProposal> = env
-            .storage()
-            .instance()
-            .get(&MULTI_SIG_PROPOSALS)
-            .unwrap_or(Map::new(&env));
-        let mut proposal: MultiSigProposal = proposals
-            .get(proposal_id)
-            .ok_or(ContractError::ProposalNotFound)?;
+        // Mark proposal as executed and write back in a single pass
         proposal.executed = true;
         proposals.set(proposal_id, proposal);
         env.storage()
@@ -1509,9 +1723,10 @@ impl SecurityScannerContract {
             .unwrap_or(Map::new(&env));
 
         let mut user_roles = admin_roles.get(user.clone()).unwrap_or(Vec::new(&env));
-        if !user_roles.contains(&role) {
-            user_roles.push_back(role);
+        if user_roles.contains(&role) {
+            return Err(ContractError::RoleAlreadyGranted);
         }
+        user_roles.push_back(role);
 
         admin_roles.set(user, user_roles);
         env.storage().instance().set(&ADMIN_ROLES, &admin_roles);

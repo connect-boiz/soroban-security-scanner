@@ -11,6 +11,10 @@ out/
 build/
 dist/
 
+# Test coverage reports
+coverage/
+lcov.info
+
 # SWC artifacts
 .swc/
 

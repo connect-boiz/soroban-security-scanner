@@ -61,19 +61,19 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM"
                 },
                 {
-                  "bytes": "0303030303030303030303030303030303030303030303030303030303030303"
+                  "bytes": "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"
                 },
                 {
-                  "string": "auth"
+                  "string": "reentrancy"
                 },
                 {
-                  "string": "high"
+                  "symbol": "high"
                 },
                 {
-                  "string": "missing auth"
+                  "string": "description"
                 },
                 {
-                  "string": "admin.rs"
+                  "string": "lib.rs"
                 }
               ]
             }
@@ -639,7 +639,7 @@
                                     "symbol": "contract_id"
                                   },
                                   "val": {
-                                    "bytes": "0303030303030303030303030303030303030303030303030303030303030303"
+                                    "bytes": "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"
                                   }
                                 },
                                 {
@@ -647,7 +647,7 @@
                                     "symbol": "description"
                                   },
                                   "val": {
-                                    "string": "missing auth"
+                                    "string": "description"
                                   }
                                 },
                                 {
@@ -655,7 +655,7 @@
                                     "symbol": "location"
                                   },
                                   "val": {
-                                    "string": "admin.rs"
+                                    "string": "lib.rs"
                                   }
                                 },
                                 {
@@ -671,7 +671,7 @@
                                     "symbol": "severity"
                                   },
                                   "val": {
-                                    "string": "high"
+                                    "symbol": "high"
                                   }
                                 },
                                 {
@@ -679,7 +679,7 @@
                                     "symbol": "status"
                                   },
                                   "val": {
-                                    "string": "pending"
+                                    "symbol": "pending"
                                   }
                                 },
                                 {
@@ -695,7 +695,7 @@
                                     "symbol": "vulnerability_type"
                                   },
                                   "val": {
-                                    "string": "auth"
+                                    "string": "reentrancy"
                                   }
                                 }
                               ]

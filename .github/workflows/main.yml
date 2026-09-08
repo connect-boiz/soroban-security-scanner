@@ -1,0 +1,129 @@
+name: Test & Coverage
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  NODE_VERSION: '18'
+  RUST_VERSION: 'stable'
+
+jobs:
+  contracts:
+    name: Contracts (tests + 80% coverage gate)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./contracts
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          targets: wasm32v1-none
+          components: clippy, rustfmt, llvm-tools-preview
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: './contracts -> target'
+          key: contracts-${{ hashFiles('contracts/Cargo.toml') }}
+          shared-key: contracts-cache
+
+      - name: cargo fmt
+        run: cargo fmt --check
+
+      - name: cargo clippy
+        run: cargo clippy --lib -- -D warnings
+
+      - name: cargo test
+        run: cargo test -p security_scanner
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Coverage (llvm-cov, minimum 80% lines)
+        run: cargo llvm-cov -p security_scanner --fail-under-lines 80 --lcov --output-path lcov.info
+
+      - name: Upload contract coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-lcov
+          path: contracts/lcov.info
+
+  frontend:
+    name: Frontend (tests + coverage report)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build component-library
+        working-directory: ./component-library
+        run: npm ci --no-audit --no-fund && npm run build
+
+      - name: npm ci
+        run: npm ci --no-audit --no-fund
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Tests
+        run: npm test
+
+      - name: Coverage report
+        run: npx jest --coverage --coverageReporters=lcov json text --coverageDirectory=coverage
+
+      - name: Upload frontend coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: frontend/coverage
+
+  node-backend:
+    name: Node backend (tests + coverage report)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: npm ci
+        run: npm ci --no-audit --no-fund
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Tests
+        run: npm test
+
+      - name: Coverage report
+        run: npx jest --coverage --coverageReporters=lcov json text --coverageDirectory=coverage
+
+      - name: Upload node coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: node-backend-coverage
+          path: coverage
