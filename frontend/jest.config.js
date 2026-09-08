@@ -24,6 +24,14 @@ const customJestConfig = {
     '!**/node_modules/**',
     '!**/.next/**',
   ],
+  // Enforced when running with --coverage (CI). Statements and lines are the
+  // primary metrics; branch coverage of UI code is reported but not gated.
+  coverageThreshold: {
+    global: {
+      statements: 80,
+      lines: 80,
+    },
+  },
 };
 
 // createJestConfig is exported this way to ensure that next/jest can load the Next.js config which is async

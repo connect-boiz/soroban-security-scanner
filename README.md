@@ -130,6 +130,8 @@ npm test                      # run tests
 npm run test:coverage         # coverage report (coverage/)
 ```
 
+Line/statement coverage is **~81%** (387 tests across 44 suites). CI enforces a **minimum 80% coverage gate** (`coverageThreshold` in `frontend/jest.config.js`) — `npx jest --coverage` fails the build if statements or lines drop below 80%.
+
 ### Node backend
 
 ```bash

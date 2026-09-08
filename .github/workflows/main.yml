@@ -61,7 +61,7 @@ jobs:
           path: contracts/lcov.info
 
   frontend:
-    name: Frontend (tests + coverage report)
+    name: Frontend (tests + 80% coverage gate)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -89,7 +89,7 @@ jobs:
       - name: Tests
         run: npm test
 
-      - name: Coverage report
+      - name: Coverage (minimum 80% statements/lines, enforced by coverageThreshold)
         run: npx jest --coverage --coverageReporters=lcov json text --coverageDirectory=coverage
 
       - name: Upload frontend coverage report
