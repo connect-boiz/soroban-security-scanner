@@ -35,7 +35,9 @@ NETWORK="${NETWORK:-testnet}"
 CONTRACT_ALIAS="${CONTRACT_ALIAS:-security_scanner}"
 
 echo "==> Building contract WASM (wasm32v1-none, release)"
-cargo build --target wasm32v1-none --release -p security_scanner
+# soroban-sdk 28+ requires building via `stellar contract build` (CLI v25.2.0+),
+# which emits target/wasm32v1-none/release/<crate>.wasm
+stellar contract build
 WASM="target/wasm32v1-none/release/security_scanner.wasm"
 if [ ! -f "$WASM" ]; then
   echo "error: wasm artifact not found at $WASM" >&2

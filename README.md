@@ -15,7 +15,7 @@ A comprehensive security scanning platform for **Soroban smart contracts** on th
 
 ```
 soroban-security-scanner/
-├── contracts/                 # Soroban smart contracts (Rust, soroban-sdk 26)
+├── contracts/                 # Soroban smart contracts (Rust, soroban-sdk 28)
 │   ├── scanner/               #   SecurityScanner contract (bounties, escrow, RBAC, multi-sig)
 │   │   ├── src/lib.rs         #   Contract implementation
 │   │   ├── src/test.rs        #   Unit tests
@@ -80,8 +80,8 @@ cd soroban-security-scanner
 
 ```bash
 cd contracts
-cargo build -p security_scanner          # host build
-cargo build --target wasm32v1-none --release -p security_scanner   # WASM build
+cargo build -p security_scanner   # host build (tests, clippy)
+stellar contract build            # WASM build (soroban-sdk 28+; requires stellar-cli v25.2.0+)
 ```
 
 ### Frontend
@@ -189,20 +189,26 @@ npm run test:a11y             # axe-core accessibility checks
 
    | Item          | Value                                                                              |
    |---------------|------------------------------------------------------------------------------------|
-   | Contract      | `CAR7KRNH32CNU3YEYFZYYSFPMXUQHH4EIJPD47333ZN2LGW5P7SVNZIW`                       |
+   | Contract      | `CCFQFAVBDLBR2XH74LYG7DPTRHE4IIUDCYFTSOSM2T6HSHP5KSM7HYLH` (soroban-sdk 28)      |
    | Admin         | `GCP3H546OU3IHGIFLT764EBRTA4GH2TNOBNF67CDLTLHCNFW7TTGP4CM` (testnet keypair `alice`) |
    | Token         | `CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC` (native XLM asset)     |
-   | Explorer      | https://stellar.expert/explorer/testnet/contract/CAR7KRNH32CNU3YEYFZYYSFPMXUQHH4EIJPD47333ZN2LGW5P7SVNZIW |
+   | Explorer      | https://stellar.expert/explorer/testnet/contract/CCFQFAVBDLBR2XH74LYG7DPTRHE4IIUDCYFTSOSM2T6HSHP5KSM7HYLH |
+
+   > **Note:** the earlier sdk-26 deployment (`CAR7KRNH32CNU3YEYFZYYSFPMXUQHH4EIJPD47333ZN2LGW5P7SVNZIW`) is superseded; the contract was upgraded to soroban-sdk 28 to match testnet's protocol 28 and redeployed.
+
+   **CLI quirk — pass `BytesN` args as raw hex.** stellar-cli v28 encodes a `C...` strkey argument for a `BytesN<32>` parameter in a way the host rejects (`Error(WasmVm, InvalidAction)` / `UnreachableCodeReached` during contract decode), while the same value as 64-char hex works. Always pass `--contract_id <64-hex>` (and `--release_signer <64-hex>` for escrows with a release signer) instead of the strkey.
 
    Sanity check:
 
    ```bash
    stellar contract invoke --id security_scanner --source-account alice --network testnet -- get_bounty_pool
-   # "0"
+   # "49100000"  (funded + partially paid out during E2E verification)
    stellar contract invoke --id security_scanner --source-account alice --network testnet -- \
      get_user_roles --user GCP3H546OU3IHGIFLT764EBRTA4GH2TNOBNF67CDLTLHCNFW7TTGP4CM
    # ["SuperAdmin"]
    ```
+
+   **Live E2E verification (2026-09-09):** the deployed contract was exercised with real testnet transactions — funded the bounty pool (+50M XLM via the native asset contract), reported + verified a vulnerability (bounty paid, reputation updated), ran the full escrow lifecycle (create → conditions-met → release, beneficiary balance +2M XLM on-chain), created/approved multi-sig proposals (high-bounty + emergency) and verified the gates (`#24 ProposalNotReady`, `#15 MultiSigRequired`), and confirmed the structured error codes live (`#10 InsufficientPermissions`, `#16 AlreadyApproved`, `#26 EscrowAlreadyReleased`, `#11 ProposalNotFound`, `#30 ZeroAmount`). Multi-sig *execution* needs ≥2 distinct approvers with a permission; bootstrapping the second approver requires a role grant that itself needs 2 approvals (unit tests grant roles directly), so live execution stops at the approval-count gate.
 
 ### 2. Frontend — Vercel
 
