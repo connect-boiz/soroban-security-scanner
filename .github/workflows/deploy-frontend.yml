@@ -15,13 +15,29 @@ env:
   # The Vercel project is linked via these secrets (set once in the repo
   # settings): VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID. Until those
   # are configured the deploy jobs skip so the check suite stays green.
+  VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
   VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
   VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
 jobs:
+  check-config:
+    name: Check Vercel configuration
+    runs-on: ubuntu-latest
+    outputs:
+      configured: ${{ steps.check.outputs.configured }}
+    steps:
+      - id: check
+        run: |
+          if [ -n "$VERCEL_TOKEN" ] && [ -n "$VERCEL_ORG_ID" ] && [ -n "$VERCEL_PROJECT_ID" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          fi
+
   preview:
     name: Preview deploy (pull request)
-    if: github.event_name == 'pull_request' && secrets.VERCEL_TOKEN != ''
+    needs: check-config
+    if: github.event_name == 'pull_request' && needs.check-config.outputs.configured == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -32,17 +48,18 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Pull Vercel environment (preview)
-        run: npx vercel pull --yes --environment=preview --token=${{ secrets.VERCEL_TOKEN }}
+        run: npx vercel pull --yes --environment=preview --token="$VERCEL_TOKEN"
 
       - name: Build with Vercel
-        run: npx vercel build --yes --token=${{ secrets.VERCEL_TOKEN }}
+        run: npx vercel build --yes --token="$VERCEL_TOKEN"
 
       - name: Deploy to Vercel (preview)
-        run: npx vercel deploy --prebuilt --yes --token=${{ secrets.VERCEL_TOKEN }}
+        run: npx vercel deploy --prebuilt --yes --token="$VERCEL_TOKEN"
 
   production:
     name: Production deploy (push)
-    if: github.event_name == 'push' && secrets.VERCEL_TOKEN != ''
+    needs: check-config
+    if: github.event_name == 'push' && needs.check-config.outputs.configured == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -53,10 +70,10 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Pull Vercel environment (production)
-        run: npx vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+        run: npx vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
 
       - name: Build with Vercel
-        run: npx vercel build --yes --prod --token=${{ secrets.VERCEL_TOKEN }}
+        run: npx vercel build --yes --prod --token="$VERCEL_TOKEN"
 
       - name: Deploy to Vercel (production)
-        run: npx vercel deploy --prebuilt --yes --prod --token=${{ secrets.VERCEL_TOKEN }}
+        run: npx vercel deploy --prebuilt --yes --prod --token="$VERCEL_TOKEN"
