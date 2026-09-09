@@ -6,6 +6,7 @@ A comprehensive security scanning platform for **Soroban smart contracts** on th
 ![Contract coverage](https://img.shields.io/badge/contract%20coverage-96%25-success)
 ![Coverage gate](https://img.shields.io/badge/coverage%20gate-%E2%89%A580%25-blue)
 ![Vercel](https://img.shields.io/badge/deployment-Vercel-black)
+![Vercel deploy](https://github.com/connect-boiz/soroban-security-scanner/actions/workflows/deploy-frontend.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
@@ -224,7 +225,7 @@ npx vercel link          # once — creates .vercel/project.json
 npx vercel deploy --prod
 ```
 
-**Automated deploys:** `.github/workflows/deploy-frontend.yml` deploys a **preview** on every pull request and **production** on pushes to `main`/`develop`. Add these repository secrets:
+**Automated deploys:** `.github/workflows/deploy-frontend.yml` deploys a **preview** on every pull request and **production** on pushes to `main`/`develop`. It needs three repository secrets:
 
 | Secret               | Where to get it                                       |
 |----------------------|-------------------------------------------------------|
@@ -232,13 +233,19 @@ npx vercel deploy --prod
 | `VERCEL_ORG_ID`      | `npx vercel teams ls` / project settings              |
 | `VERCEL_PROJECT_ID`  | `npx vercel project ls` / project settings            |
 
-**Live URL:** not deployed yet — add the `VERCEL_TOKEN`, `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` secrets above and push to `develop`/`main`; the deploy workflow will fill this in automatically.
+**How the secrets gate works:** GitHub Actions does not allow `secrets` in job-level `if:` conditions, so the workflow uses a small `check-config` job: it writes `configured=true`/`false` to `$GITHUB_OUTPUT` depending on whether all three secrets are non-empty, and the `preview`/`production` jobs gate on that output (`if: needs.check-config.outputs.configured == 'true'`).
+
+- **Secrets not set (default):** the `Check Vercel configuration` job runs in ~2s and both deploy jobs **skip** — the run stays green instead of failing on every push.
+- **Secrets set:** deploys start automatically on the **next** push/PR to `main`/`develop` — no workflow changes needed.
+
+To enable real deploys, add the three secrets under **Settings → Secrets and variables → Actions** and push (or re-run the workflow).
+
+**Live URL:** not deployed yet — once the secrets above are configured and the production job has run, paste the resulting Vercel URL here.
 
 ## 🔄 CI/CD
 
 - **`.github/workflows/main.yml`** — runs on every push/PR: contract tests (fmt, clippy, unit + integration), the **80% coverage gate** (`cargo llvm-cov --fail-under-lines 80`), frontend tests + coverage (80% gate on statements/branches/functions/lines), node tests + coverage, and uploads all coverage artifacts.
-- **`.github/workflows/deploy-frontend.yml`** — Vercel preview (PR) and production (push) deploys. Jobs skip until the `VERCEL_TOKEN`/`VERCEL_ORG_ID`/`VERCEL_PROJECT_ID` secrets are configured.
-- **`.github/workflows/deploy-frontend.yml`** — Vercel preview/production deploys.
+- **`.github/workflows/deploy-frontend.yml`** — Vercel preview (PR) and production (push) deploys. A `check-config` job verifies the `VERCEL_TOKEN`/`VERCEL_ORG_ID`/`VERCEL_PROJECT_ID` secrets are set, and the deploy jobs skip until they are (see [Vercel deployment](#2-frontend--vercel)).
 - **`.github/workflows/ci.yml`** — full matrix: contracts, Rust backend, node backend, frontend, component library.
 - **`.github/workflows/security-idor-tests.yml`** — IDOR prevention tests and static security analysis.
 
