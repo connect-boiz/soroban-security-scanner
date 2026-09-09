@@ -41,8 +41,13 @@ jobs:
         run: cargo clippy --lib -- -D warnings
       - name: cargo test
         run: cargo test -p security_scanner
+      - name: Install stellar-cli (for soroban-sdk 28 wasm build)
+        run: |
+          curl -fsSL -o /tmp/stellar-cli.tar.gz https://github.com/stellar/stellar-cli/releases/download/v28.0.0/stellar-cli-28.0.0-x86_64-unknown-linux-gnu.tar.gz
+          tar -xzf /tmp/stellar-cli.tar.gz -C /tmp
+          sudo mv /tmp/stellar /usr/local/bin/stellar
       - name: cargo build (WASM)
-        run: cargo build --target wasm32v1-none --release
+        run: stellar contract build
 
   backend:
     runs-on: ubuntu-latest
