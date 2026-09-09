@@ -249,7 +249,9 @@ npx vercel deploy --prod
 
 To enable real deploys, add the three secrets under **Settings → Secrets and variables → Actions** and push (or re-run the workflow).
 
-**Live URL:** not deployed yet — once the secrets above are configured and the production job has run, paste the resulting Vercel URL here.
+**Live URL:** **https://soroban-security-scanner.vercel.app** (production, deployed 2026-09-09).
+
+To move deploys to CI, add the three secrets under **Settings → Secrets and variables → Actions** and push — the `production` job deploys automatically from then on (the values are `VERCEL_TOKEN` = a Vercel account token from the link above, `VERCEL_ORG_ID` = your team id, `VERCEL_PROJECT_ID` = the project id from `frontend`-linked project).
 
 ## 🔄 CI/CD
 

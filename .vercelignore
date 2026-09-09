@@ -1,0 +1,19 @@
+# Dependencies & build artifacts (installed/built on Vercel's side)
+node_modules
+**/node_modules
+.next
+**/.next
+dist
+**/dist
+target
+**/target
+coverage
+**/coverage
+
+# VCS & local tooling
+.git
+.vercel
+frontend/.vercel
+.env
+.env.*
+!.env.example

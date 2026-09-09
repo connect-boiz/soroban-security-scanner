@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { randomBytes } from 'crypto';
 
 /**
  * Security Headers Middleware
@@ -23,7 +22,10 @@ interface CSPDirectives {
  * Generate a cryptographically secure nonce for CSP
  */
 function generateNonce(): string {
-  return randomBytes(16).toString('base64');
+  // Edge runtime has no Node 'crypto' module — use the Web Crypto API.
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return btoa(String.fromCharCode(...bytes));
 }
 
 /**
