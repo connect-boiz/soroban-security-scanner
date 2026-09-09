@@ -182,8 +182,11 @@ npm run test:a11y             # axe-core accessibility checks
      --source-account alice --network testnet --alias security_scanner
 
    stellar contract invoke --id security_scanner --source-account alice --network testnet -- \
-     initialize --admin G... --token C...
+     initialize --admin GCP3H546OU3IHGIFLT764EBRTA4GH2TNOBNF67CDLTLHCNFW7TTGP4CM \
+                --token CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC
    ```
+
+   (The `initialize` values above are the verified live ones; `deploy_testnet.sh` also prints the new contract id in hex, which is the form to pass as `--contract_id` in later calls — see the CLI quirk note below.)
 
 3. **Live testnet deployment** (2026-09-08):
 
