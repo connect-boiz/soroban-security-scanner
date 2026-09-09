@@ -32,9 +32,20 @@ function generateNonce(): string {
  * Build Content Security Policy header value
  *
  * @param nonce - Cryptographic nonce for inline scripts
- * @param reportOnly - Whether to use report-only mode (for testing)
+ * @param isProduction - Whether to exclude development-only connection sources
  */
-function buildCSP(nonce: string, reportOnly: boolean = false): string {
+function buildCSP(nonce: string, isProduction: boolean): string {
+  const connectSources = [
+    "'self'",
+    'https://horizon.stellar.org', // Mainnet
+    'https://horizon-testnet.stellar.org', // Testnet
+    'https://horizon-futurenet.stellar.org', // Futurenet
+  ];
+
+  if (!isProduction) {
+    connectSources.push('ws://localhost:*');
+  }
+
   const directives: CSPDirectives = {
     // Default fallback for all resource types
     'default-src': ["'self'"],
@@ -60,15 +71,9 @@ function buildCSP(nonce: string, reportOnly: boolean = false): string {
     // Fonts: self-hosted only
     'font-src': ["'self'"],
 
-    // API connections: self + Stellar Horizon endpoints + WebSocket
-    'connect-src': [
-      "'self'",
-      'https://horizon.stellar.org', // Mainnet
-      'https://horizon-testnet.stellar.org', // Testnet
-      'https://horizon-futurenet.stellar.org', // Futurenet
-      'ws://localhost:*', // Local WebSocket development
-      'wss://*.stellar.org', // Stellar WebSocket endpoints
-    ],
+    // API connections: self + the exact Stellar Horizon endpoints used by the app.
+    // Local WebSocket access is development-only.
+    'connect-src': connectSources,
 
     // Frames: completely disabled
     'frame-src': ["'none'"],
@@ -87,9 +92,6 @@ function buildCSP(nonce: string, reportOnly: boolean = false): string {
 
     // Upgrade insecure requests (HTTP -> HTTPS)
     'upgrade-insecure-requests': [],
-
-    // Block mixed content
-    'block-all-mixed-content': [],
   };
 
   // Convert directives object to CSP string
@@ -112,7 +114,7 @@ function getSecurityHeaders(nonce: string, isProduction: boolean): Record<string
     // Use report-only in development, enforcing in production
     [isProduction ? 'Content-Security-Policy' : 'Content-Security-Policy-Report-Only']: buildCSP(
       nonce,
-      !isProduction
+      isProduction
     ),
 
     // HTTP Strict Transport Security (HSTS)
