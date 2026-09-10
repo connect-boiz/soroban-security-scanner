@@ -328,4 +328,64 @@ describe('Security Headers Middleware', () => {
       });
     });
   });
+
+  describe('Cache directives on sensitive routes', () => {
+    // The existing stub has no nextUrl, so paths are supplied explicitly here.
+    const requestFor = (pathname: string) =>
+      ({
+        headers: new Headers(),
+        nextUrl: { pathname },
+      }) as any;
+
+    it('should set no-store on the auth route', () => {
+      const response = middleware(requestFor('/auth'));
+
+      expect(response.headers.get('Cache-Control')).toContain('no-store');
+      expect(response.headers.get('Pragma')).toBe('no-cache');
+    });
+
+    it('should set no-store on nested auth routes', () => {
+      const response = middleware(requestFor('/auth/reset'));
+
+      expect(response.headers.get('Cache-Control')).toContain('no-store');
+    });
+
+    // This is the assertion that keeps the change from becoming a caching
+    // regression: a blanket no-store would pass the two tests above and still
+    // strip caching from the entire application.
+    it('should NOT set cache directives on ordinary routes', () => {
+      const response = middleware(requestFor('/dashboard'));
+
+      expect(response.headers.get('Cache-Control')).toBeNull();
+      expect(response.headers.get('Pragma')).toBeNull();
+    });
+
+    it('should NOT set cache directives on the landing page', () => {
+      const response = middleware(requestFor('/'));
+
+      expect(response.headers.get('Cache-Control')).toBeNull();
+    });
+
+    it('should not match routes that merely start with the same characters', () => {
+      const response = middleware(requestFor('/authors'));
+
+      expect(response.headers.get('Cache-Control')).toBeNull();
+    });
+
+    it('should leave the rest of the security headers unchanged', () => {
+      const sensitive = middleware(requestFor('/auth'));
+      const ordinary = middleware(requestFor('/dashboard'));
+
+      ['X-Frame-Options', 'X-Content-Type-Options', 'Referrer-Policy'].forEach(header => {
+        expect(sensitive.headers.get(header)).toBe(ordinary.headers.get(header));
+      });
+    });
+
+    it('should keep working when the request has no nextUrl', () => {
+      const response = middleware(mockRequest);
+
+      expect(response.headers.get('X-Frame-Options')).toBe('DENY');
+      expect(response.headers.get('Cache-Control')).toBeNull();
+    });
+  });
 });
