@@ -104,9 +104,37 @@ function buildCSP(nonce: string, reportOnly: boolean = false): string {
 }
 
 /**
- * Get all security headers
+ * Routes whose responses must never be stored by a browser or a shared cache.
+ *
+ * Kept as prefixes rather than exact matches so nested routes (/auth/reset,
+ * /auth/callback) inherit the rule instead of being forgotten one at a time.
  */
-function getSecurityHeaders(nonce: string, isProduction: boolean): Record<string, string> {
+const NO_STORE_PREFIXES = ['/auth'] as const;
+
+/**
+ * Whether a path serves post-authentication or credential-bearing content.
+ *
+ * An empty path is treated as not sensitive: that is what a request without a
+ * resolvable pathname looks like, and defaulting those to `no-store` would
+ * disable caching for the whole application.
+ */
+function isSensitivePath(pathname: string): boolean {
+  return NO_STORE_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+  );
+}
+
+/**
+ * Get all security headers
+ *
+ * `pathname` decides only the caching directives. Everything else is identical
+ * on every response, which is why it stays outside the per-route branch.
+ */
+function getSecurityHeaders(
+  nonce: string,
+  isProduction: boolean,
+  pathname = ''
+): Record<string, string> {
   const headers: Record<string, string> = {
     // Content Security Policy
     // Use report-only in development, enforcing in production
@@ -149,6 +177,20 @@ function getSecurityHeaders(nonce: string, isProduction: boolean): Record<string
     // Note: Cross-Origin-Embedder-Policy is NOT set because it would block
     // third-party resources (Stellar Horizon) that don't send CORP headers.
     // Only enable COEP after verifying all external resources support it.
+
+    // Keep authenticated pages out of browser and shared caches.
+    //
+    // Scoped to sensitive routes on purpose: a blanket `no-store` would strip
+    // caching from every static and marketing response as well, which is a
+    // performance regression rather than a hardening step.
+    //
+    // `Pragma` is sent alongside `Cache-Control` for HTTP/1.0 intermediaries
+    // that predate `Cache-Control` and would otherwise cache the response.
+    ...(isSensitivePath(pathname) && {
+      'Cache-Control': 'no-store, no-cache, must-revalidate, private',
+      Pragma: 'no-cache',
+      Expires: '0',
+    }),
   };
 
   return headers;
@@ -161,8 +203,14 @@ export function middleware(request: NextRequest) {
   // Determine if we're in production
   const isProduction = process.env.NODE_ENV === 'production';
 
+  // Read the path defensively. In Next.js `nextUrl` is always present, but the
+  // middleware is also exercised directly from unit tests with a minimal request
+  // stub. Falling back to an empty path keeps those callers on the previous
+  // behaviour instead of throwing.
+  const pathname = request.nextUrl?.pathname ?? '';
+
   // Get security headers
-  const securityHeaders = getSecurityHeaders(nonce, isProduction);
+  const securityHeaders = getSecurityHeaders(nonce, isProduction, pathname);
 
   // Forward nonce on the incoming request so Server Components can read it via
   // headers().get('x-nonce') in layout.tsx and apply it to inline scripts.
