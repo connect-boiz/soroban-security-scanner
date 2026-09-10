@@ -382,6 +382,7 @@ impl SecurityScannerContract {
         env.storage().instance().set(&BOUNTY_POOL, &0i128);
         env.storage().instance().set(&EMERGENCY_POOL, &0i128);
         env.storage().instance().set(&REPORTS, &Map::<u64, VulnerabilityReport>::new(&env));
+        env.storage().instance().set(&REPUTATION, &Map::<Address, Reputation>::new(&env));
         env.storage().instance().set(&ESCROWS, &Map::<u64, EscrowEntry>::new(&env));
         env.storage().instance().set(&EMERGENCY_ALERTS, &Map::<u64, EmergencyAlert>::new(&env));
         env.storage().instance().set(&REPORT_NONCES, &Map::<u64, BytesN<32>>::new(&env));
@@ -566,12 +567,10 @@ impl SecurityScannerContract {
             .ok_or(ContractError::NotFound)
     }
 
-    /// Get researcher reputation
+    /// Get researcher reputation - fixed: uses REPUTATION Map<Address,Reputation> instead of Symbol::short overflow
     pub fn get_reputation(env: Env, researcher: Address) -> Result<Reputation, ContractError> {
-        let rep_key = Symbol::short(&format!("REP_{:?}", researcher));
-        env.storage().instance()
-            .get(&rep_key)
-            .ok_or(ContractError::NotFound)
+        let rep_map: Map<Address, Reputation> = env.storage().instance().get(&REPUTATION).unwrap_or(Map::new(&env));
+        rep_map.get(researcher).ok_or(ContractError::NotFound)
     }
 
     /// Add funds to bounty pool
@@ -592,18 +591,15 @@ impl SecurityScannerContract {
         env.storage().instance().get(&BOUNTY_POOL).unwrap_or(0i128)
     }
 
-    /// Helper function to update reputation
+    /// Helper function to update reputation - fixed: uses REPUTATION Map to avoid Symbol::short overflow (was Symbol::short(&format!("REP_{:?}",...)) >9 chars)
     fn update_reputation(
         env: Env,
         researcher: Address,
         successful_reports: u64,
         earnings: i128,
     ) -> Result<(), ContractError> {
-        let rep_key = Symbol::short(&format!("REP_{:?}", researcher));
-        
-        let mut reputation: Reputation = env.storage().instance()
-            .get(&rep_key)
-            .unwrap_or(Reputation {
+        let mut rep_map: Map<Address, Reputation> = env.storage().instance().get(&REPUTATION).unwrap_or(Map::new(&env));
+        let mut reputation: Reputation = rep_map.get(researcher.clone()).unwrap_or(Reputation {
                 researcher: researcher.clone(),
                 score: 0,
                 successful_reports: 0,
@@ -616,7 +612,8 @@ impl SecurityScannerContract {
         let score_from_earnings = Self::checked_non_negative_i128_to_u64(reputation.total_earnings / 1_000_000)?;
         reputation.score = Self::checked_add_u64(score_from_reports, score_from_earnings)?;
 
-        env.storage().instance().set(&rep_key, &reputation);
+        rep_map.set(researcher.clone(), reputation);
+        env.storage().instance().set(&REPUTATION, &rep_map);
 
         Ok(())
     }
