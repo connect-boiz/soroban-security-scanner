@@ -45,7 +45,7 @@ NETWORK="${NETWORK:-testnet}"
 CONTRACT_ALIAS="${CONTRACT_ALIAS:-security_scanner}"
 
 echo "==> Building contract WASM (wasm32v1-none, release)"
-# soroban-sdk 28+ requires building via `stellar contract build` (CLI v25.2.0+),
+# soroban-sdk 27+ requires building via `stellar contract build` (CLI v25.2.0+),
 # which emits target/wasm32v1-none/release/<crate>.wasm
 stellar contract build
 WASM="target/wasm32v1-none/release/security_scanner.wasm"

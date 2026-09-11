@@ -15,7 +15,7 @@ A comprehensive security scanning platform for **Soroban smart contracts** on th
 
 ```
 soroban-security-scanner/
-├── contracts/                 # Soroban smart contracts (Rust, soroban-sdk 28)
+├── contracts/                 # Soroban smart contracts (Rust, soroban-sdk 27)
 │   ├── scanner/               #   SecurityScanner contract (bounties, escrow, RBAC, multi-sig)
 │   │   ├── src/lib.rs         #   Contract implementation
 │   │   ├── src/test.rs        #   Unit tests
@@ -81,7 +81,7 @@ cd soroban-security-scanner
 ```bash
 cd contracts
 cargo build -p security_scanner   # host build (tests, clippy)
-stellar contract build            # WASM build (soroban-sdk 28+; requires stellar-cli v25.2.0+)
+stellar contract build            # WASM build (soroban-sdk 27; requires stellar-cli v27.1.0+)
 ```
 
 ### Frontend
@@ -191,15 +191,14 @@ npm run test:a11y             # axe-core accessibility checks
 3. **Live testnet deployment** (2026-09-08):
 
    | Item          | Value                                                                              |
-   |---------------|------------------------------------------------------------------------------------|
-   | Contract      | `CCFQFAVBDLBR2XH74LYG7DPTRHE4IIUDCYFTSOSM2T6HSHP5KSM7HYLH` (soroban-sdk 28)      |
+   |---------------|------------------------------------------------------------------------------------|    | Contract      | `CCFQFAVBDLBR2XH74LYG7DPTRHE4IIUDCYFTSOSM2T6HSHP5KSM7HYLH` (soroban-sdk 27)      |
    | Admin         | `GCP3H546OU3IHGIFLT764EBRTA4GH2TNOBNF67CDLTLHCNFW7TTGP4CM` (testnet keypair `alice`) |
    | Token         | `CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC` (native XLM asset)     |
    | Explorer      | https://stellar.expert/explorer/testnet/contract/CCFQFAVBDLBR2XH74LYG7DPTRHE4IIUDCYFTSOSM2T6HSHP5KSM7HYLH |
 
-   > **Note:** the earlier sdk-26 deployment (`CAR7KRNH32CNU3YEYFZYYSFPMXUQHH4EIJPD47333ZN2LGW5P7SVNZIW`) is superseded; the contract was upgraded to soroban-sdk 28 to match testnet's protocol 28 and redeployed.
+   > **Note:** the contract was pinned to soroban-sdk 27.0.6 (stable, Protocol 27 mainnet-compatible).
 
-   **CLI quirk — pass `BytesN` args as raw hex.** stellar-cli v28 encodes a `C...` strkey argument for a `BytesN<32>` parameter in a way the host rejects (`Error(WasmVm, InvalidAction)` / `UnreachableCodeReached` during contract decode), while the same value as 64-char hex works. Always pass `--contract_id <64-hex>` (and `--release_signer <64-hex>` for escrows with a release signer) instead of the strkey.
+   **CLI quirk — pass `BytesN` args as raw hex.** Some stellar-cli versions encode a `C...` strkey argument for a `BytesN<32>` parameter in a way the host rejects (`Error(WasmVm, InvalidAction)` / `UnreachableCodeReached` during contract decode), while the same value as 64-char hex works. Always pass `--contract_id <64-hex>` (and `--release_signer <64-hex>` for escrows with a release signer) instead of the strkey.
 
    Sanity check:
 

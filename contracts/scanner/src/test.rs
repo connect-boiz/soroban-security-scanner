@@ -20,7 +20,7 @@ fn setup() -> TestContext<'static> {
 
     let admin = Address::generate(&env);
     let issuer = Address::generate(&env);
-    let token_contract = env.register_stellar_asset_contract_v2(issuer.clone());
+    let token_contract = env.register_stellar_asset_contract(issuer.clone());
     let token_id = token_contract.address();
     let token = token::Client::new(&env, &token_id);
     let token_admin = token::StellarAssetClient::new(&env, &token_id);
@@ -76,7 +76,7 @@ fn initialize_rejects_default_admin() {
     env.mock_all_auths();
 
     let issuer = Address::generate(&env);
-    let token_contract = env.register_stellar_asset_contract_v2(issuer.clone());
+    let token_contract = env.register_stellar_asset_contract(issuer.clone());
     let token_id = token_contract.address();
     let contract_id = env.register(SecurityScannerContract, ());
     let client = SecurityScannerContractClient::new(&env, &contract_id);
