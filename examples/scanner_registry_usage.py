@@ -264,3 +264,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# Web3/DeSci Fix #477: [CRITICAL][Smart Contract] verify_vulnerability allows double-payout and never checks/deducts the bounty pool
