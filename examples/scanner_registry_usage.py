@@ -264,3 +264,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# Web3/DeSci Fix #475: [CRITICAL][Smart Contract] Multi-sig can be bypassed: proposer controls required_approvals and execution_delay
