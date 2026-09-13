@@ -1,5 +1,13 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import {
+  CSRF_COOKIE_NAME,
+  CSRF_HEADER_NAME,
+  generateCsrfToken,
+  isSameOriginRequest,
+  isStateChangingMethod,
+  tokensMatch,
+} from './lib/security/csrf';
 
 /**
  * Security Headers Middleware
@@ -154,7 +162,38 @@ function getSecurityHeaders(nonce: string, isProduction: boolean): Record<string
   return headers;
 }
 
+function readCookie(request: NextRequest, name: string): string | null {
+  return request.cookies?.get(name)?.value ?? null;
+}
+
+/**
+ * CSRF gate for state-changing requests. Returns a 403 response when the
+ * request fails origin verification, or when a mutating `/api/` request
+ * does not echo the double-submit token. Returns null when allowed.
+ */
+function rejectCsrf(request: NextRequest): NextResponse | null {
+  if (!isStateChangingMethod(request.method)) return null;
+
+  if (!isSameOriginRequest(request.headers)) {
+    return new NextResponse('Forbidden: cross-site request blocked', { status: 403 });
+  }
+
+  const pathname = request.nextUrl?.pathname ?? '';
+  if (pathname.startsWith('/api/')) {
+    const cookieToken = readCookie(request, CSRF_COOKIE_NAME);
+    const headerToken = request.headers.get(CSRF_HEADER_NAME);
+    if (!tokensMatch(cookieToken, headerToken)) {
+      return new NextResponse('Forbidden: invalid CSRF token', { status: 403 });
+    }
+  }
+
+  return null;
+}
+
 export function middleware(request: NextRequest) {
+  const csrfRejection = rejectCsrf(request);
+  if (csrfRejection) return csrfRejection;
+
   // Generate unique nonce for this request
   const nonce = generateNonce();
 
@@ -189,6 +228,18 @@ export function middleware(request: NextRequest) {
 
   // Also expose nonce on the response for integration tests and debugging
   response.headers.set('x-nonce', nonce);
+
+  // Issue the double-submit CSRF token once per browser. Readable by same-site
+  // scripts (not HttpOnly) so client code can echo it; SameSite=Strict keeps
+  // it off cross-site requests.
+  if (!readCookie(request, CSRF_COOKIE_NAME)) {
+    response.cookies.set(CSRF_COOKIE_NAME, generateCsrfToken(), {
+      httpOnly: false,
+      sameSite: 'strict',
+      secure: isProduction,
+      path: '/',
+    });
+  }
 
   return response;
 }
