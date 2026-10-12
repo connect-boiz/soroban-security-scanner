@@ -36,8 +36,7 @@ fn setup() -> TestSetup<'static> {
 
     let admin = Address::generate(&env);
     let issuer = Address::generate(&env);
-    let token_contract = env.register_stellar_asset_contract(issuer);
-    let token_id = token_contract.address();
+    let token_id = env.register_stellar_asset_contract_v2(issuer).address();
     let token_admin = token::StellarAssetClient::new(&env, &token_id);
 
     let contract_id = env.register(SecurityScannerContract, ());

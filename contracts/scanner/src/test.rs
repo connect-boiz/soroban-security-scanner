@@ -20,8 +20,7 @@ fn setup() -> TestContext<'static> {
 
     let admin = Address::generate(&env);
     let issuer = Address::generate(&env);
-    let token_contract = env.register_stellar_asset_contract(issuer.clone());
-    let token_id = token_contract.address();
+    let token_id = env.register_stellar_asset_contract_v2(issuer.clone()).address();
     let token = token::Client::new(&env, &token_id);
     let token_admin = token::StellarAssetClient::new(&env, &token_id);
 
@@ -76,8 +75,7 @@ fn initialize_rejects_default_admin() {
     env.mock_all_auths();
 
     let issuer = Address::generate(&env);
-    let token_contract = env.register_stellar_asset_contract(issuer.clone());
-    let token_id = token_contract.address();
+    let token_id = env.register_stellar_asset_contract_v2(issuer.clone()).address();
     let contract_id = env.register(SecurityScannerContract, ());
     let client = SecurityScannerContractClient::new(&env, &contract_id);
 
@@ -1106,3 +1104,99 @@ fn get_proposal_not_found() {
         Err(Ok(ContractError::ProposalNotFound))
     );
 }
+
+// ---------------------------------------------------------------------------
+// Nonce generation, anti-replay, and cryptographic verification (#482)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn report_generates_unique_and_unpredictable_nonces() {
+    let ctx = setup();
+    let reporter = Address::generate(&ctx.env);
+
+    let id1 = report(&ctx, &reporter, 1, SEVERITY_CRITICAL);
+    let id2 = report(&ctx, &reporter, 2, SEVERITY_CRITICAL);
+
+    let nonce1 = ctx.client.get_report_nonce(&id1);
+    let nonce2 = ctx.client.get_report_nonce(&id2);
+
+    assert_ne!(nonce1, nonce2, "Subsequent report nonces must be unique and unpredictable");
+    assert!(ctx.client.is_nonce_used(&nonce1));
+    assert!(ctx.client.is_nonce_used(&nonce2));
+
+    // Verify nonce matches
+    assert!(ctx.client.verify_report_nonce(&id1, &nonce1));
+    assert!(!ctx.client.verify_report_nonce(&id1, &nonce2));
+}
+
+#[test]
+fn escrow_generates_and_verifies_nonces() {
+    let ctx = setup();
+    let depositor = Address::generate(&ctx.env);
+    let beneficiary = Address::generate(&ctx.env);
+
+    ctx.token_admin.mint(&depositor, &50_000);
+    let escrow_id = ctx.client.create_escrow(
+        &depositor,
+        &beneficiary,
+        &10_000,
+        &PURPOSE_BOUNTY,
+        &100,
+        &None,
+    );
+
+    let nonce = ctx.client.get_escrow_nonce(&escrow_id);
+    assert!(ctx.client.is_nonce_used(&nonce));
+    assert!(ctx.client.verify_escrow_nonce(&escrow_id, &nonce));
+
+    let bogus_nonce = BytesN::from_array(&ctx.env, &[0xff; 32]);
+    assert!(!ctx.client.verify_escrow_nonce(&escrow_id, &bogus_nonce));
+}
+
+#[test]
+fn emergency_alert_generates_and_verifies_nonces() {
+    let ctx = setup();
+    let reporter = Address::generate(&ctx.env);
+
+    let alert_id = ctx.client.report_emergency_vulnerability(
+        &reporter,
+        &BytesN::from_array(&ctx.env, &[7u8; 32]),
+        &String::from_str(&ctx.env, "critical_overflow"),
+        &SEVERITY_EMERGENCY,
+        &String::from_str(&ctx.env, "exploit_details"),
+        &String::from_str(&ctx.env, "pool.rs:42"),
+    );
+
+    let nonce = ctx.client.get_alert_nonce(&alert_id);
+    assert!(ctx.client.is_nonce_used(&nonce));
+    assert!(ctx.client.verify_alert_nonce(&alert_id, &nonce));
+
+    let unknown_nonce = BytesN::from_array(&ctx.env, &[0xaa; 32]);
+    assert!(!ctx.client.is_nonce_used(&unknown_nonce));
+}
+
+#[test]
+fn verification_requires_stored_nonce() {
+    let ctx = setup();
+    let admin = ctx.admin.clone();
+    grant_roles_direct(&ctx, &admin, vec![&ctx.env, Role::Verifier]);
+
+    ctx.token_admin.mint(&admin, &500_000);
+    ctx.client.fund_bounty_pool(&admin, &500_000);
+
+    let reporter = Address::generate(&ctx.env);
+    let report_id = report(&ctx, &reporter, 5, symbol_short!("medium"));
+
+    // Verify report nonce is present and valid
+    let nonce = ctx.client.get_report_nonce(&report_id);
+    assert!(ctx.client.verify_report_nonce(&report_id, &nonce));
+
+    // Normal verification succeeds
+    let res = ctx.client.try_verify_vulnerability(&admin, &report_id, &10_000);
+    assert!(res.is_ok());
+
+    // Second verification rejected
+    let res_again = ctx.client.try_verify_vulnerability(&admin, &report_id, &10_000);
+    assert_eq!(res_again, Err(Ok(ContractError::AlreadyVerified)));
+}
+

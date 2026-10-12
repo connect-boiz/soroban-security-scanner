@@ -27,6 +27,7 @@ const ALERT_COUNTER: Symbol = symbol_short!("ALRTCTR");
 const REPORT_NONCES: Symbol = symbol_short!("RPTNONC");
 const ESCROW_NONCES: Symbol = symbol_short!("ESCNONC");
 const ALERT_NONCES: Symbol = symbol_short!("ALRNONC");
+const USED_NONCES: Symbol = symbol_short!("USDNONC");
 const MAX_TEXT_LEN: u32 = 280;
 
 // Enum-like values are stored as `Symbol`s instead of `String`s. Symbols are
@@ -442,7 +443,8 @@ impl SecurityScannerContract {
         Ok(next)
     }
 
-    fn generate_nonce(env: &Env, seed: &Address, counter: u64) -> BytesN<32> {
+    fn generate_nonce(env: &Env, seed: &Address, counter: u64) -> Result<BytesN<32>, ContractError> {
+        let prng_bytes: BytesN<32> = env.prng().gen();
         let payload = format!(
             "{:?}:{}:{}:{}",
             seed,
@@ -450,8 +452,32 @@ impl SecurityScannerContract {
             env.ledger().sequence(),
             env.ledger().timestamp()
         );
-        let bytes = Bytes::from_slice(env, payload.as_bytes());
-        env.crypto().sha256(&bytes).into()
+        let mut data = Bytes::from_slice(env, payload.as_bytes());
+        data.append(&Bytes::from(&prng_bytes));
+        let nonce: BytesN<32> = env.crypto().sha256(&data).into();
+
+        let mut used_nonces: Map<BytesN<32>, bool> = env
+            .storage()
+            .instance()
+            .get(&USED_NONCES)
+            .unwrap_or(Map::new(env));
+        if used_nonces.contains_key(nonce.clone()) {
+            return Err(ContractError::InvalidInput);
+        }
+        used_nonces.set(nonce.clone(), true);
+        env.storage().instance().set(&USED_NONCES, &used_nonces);
+
+        Ok(nonce)
+    }
+
+    /// Load the per-report nonce created in `report_vulnerability`.
+    fn report_nonce(env: &Env, report_id: u64) -> Result<BytesN<32>, ContractError> {
+        let report_nonces: Map<u64, BytesN<32>> = env
+            .storage()
+            .instance()
+            .get(&REPORT_NONCES)
+            .unwrap_or(Map::new(env));
+        report_nonces.get(report_id).ok_or(ContractError::NotFound)
     }
 
     /// Load the per-escrow nonce created in `create_escrow`.
@@ -462,6 +488,16 @@ impl SecurityScannerContract {
             .get(&ESCROW_NONCES)
             .unwrap_or(Map::new(env));
         escrow_nonces.get(escrow_id).ok_or(ContractError::NotFound)
+    }
+
+    /// Load the per-alert nonce created in `report_emergency_vulnerability`.
+    fn alert_nonce(env: &Env, alert_id: u64) -> Result<BytesN<32>, ContractError> {
+        let alert_nonces: Map<u64, BytesN<32>> = env
+            .storage()
+            .instance()
+            .get(&ALERT_NONCES)
+            .unwrap_or(Map::new(env));
+        alert_nonces.get(alert_id).ok_or(ContractError::NotFound)
     }
 
     /// Build the canonical message a release signer must sign to authorize a
@@ -715,6 +751,9 @@ impl SecurityScannerContract {
         env.storage()
             .instance()
             .set(&ALERT_NONCES, &Map::<u64, BytesN<32>>::new(&env));
+        env.storage()
+            .instance()
+            .set(&USED_NONCES, &Map::<BytesN<32>, bool>::new(&env));
 
         // Initialize role-based access control
         Self::initialize_role_permissions(&env);
@@ -764,7 +803,7 @@ impl SecurityScannerContract {
         };
 
         let report_id = Self::next_counter(&env, REPORT_COUNTER)?;
-        let report_nonce = Self::generate_nonce(&env, &reporter, report_id);
+        let report_nonce = Self::generate_nonce(&env, &reporter, report_id)?;
         let mut reports: Map<u64, VulnerabilityReport> = env
             .storage()
             .instance()
@@ -835,6 +874,9 @@ impl SecurityScannerContract {
         if report.status == STATUS_VERIFIED {
             return Err(ContractError::AlreadyVerified);
         }
+
+        // Verify that report has a valid, stored nonce before payout
+        let _report_nonce = Self::report_nonce(&env, report_id)?;
 
         let mut pool: i128 = env.storage().instance().get(&BOUNTY_POOL).unwrap_or(0i128);
         if pool < bounty_amount {
@@ -1076,7 +1118,7 @@ impl SecurityScannerContract {
         let escrow_id = Self::next_counter(&env, ESCROW_COUNTER)?;
         let current_time = env.ledger().timestamp();
         let lock_until = Self::checked_add_u64(current_time, lock_duration)?;
-        let escrow_nonce = Self::generate_nonce(&env, beneficiary, escrow_id);
+        let escrow_nonce = Self::generate_nonce(&env, beneficiary, escrow_id)?;
 
         let escrow = EscrowEntry {
             id: escrow_id,
@@ -1166,6 +1208,7 @@ impl SecurityScannerContract {
         }
 
         let verified_signature = Self::verify_release_signature(env, &escrow, release_signature)?;
+        let _escrow_nonce = Self::escrow_nonce(env, escrow_id)?;
 
         Self::execute_payout(env, &escrow.beneficiary, escrow.amount, escrow_id)?;
 
@@ -1230,6 +1273,7 @@ impl SecurityScannerContract {
             return Err(ContractError::EscrowLocked);
         }
 
+        let _escrow_nonce = Self::escrow_nonce(&env, escrow_id)?;
         Self::execute_payout(&env, &escrow.depositor, escrow.amount, escrow_id)?;
 
         // Update escrow status
@@ -1304,7 +1348,7 @@ impl SecurityScannerContract {
         reporter.require_auth();
 
         let alert_id = Self::next_counter(&env, ALERT_COUNTER)?;
-        let alert_nonce = Self::generate_nonce(&env, &reporter, alert_id);
+        let alert_nonce = Self::generate_nonce(&env, &reporter, alert_id)?;
         let emergency_reward = if severity == SEVERITY_EMERGENCY {
             10_000_000i128
         } else {
@@ -1474,6 +1518,7 @@ impl SecurityScannerContract {
         let mut alert: EmergencyAlert = alerts.get(alert_id).ok_or(ContractError::NotFound)?;
 
         if verified {
+            let _alert_nonce = Self::alert_nonce(&env, alert_id)?;
             alert.status = STATUS_VERIFIED;
             alert.verified_by = Some(admin.clone());
 
@@ -1529,6 +1574,61 @@ impl SecurityScannerContract {
         let escrow = Self::get_escrow(env.clone(), escrow_id)?;
         let nonce = Self::escrow_nonce(&env, escrow_id)?;
         Ok(Self::build_release_message(&env, &escrow, &nonce))
+    }
+
+    /// Get the cryptographic nonce bound to a vulnerability report
+    pub fn get_report_nonce(env: Env, report_id: u64) -> Result<BytesN<32>, ContractError> {
+        Self::report_nonce(&env, report_id)
+    }
+
+    /// Get the cryptographic nonce bound to an escrow entry
+    pub fn get_escrow_nonce(env: Env, escrow_id: u64) -> Result<BytesN<32>, ContractError> {
+        Self::escrow_nonce(&env, escrow_id)
+    }
+
+    /// Get the cryptographic nonce bound to an emergency alert
+    pub fn get_alert_nonce(env: Env, alert_id: u64) -> Result<BytesN<32>, ContractError> {
+        Self::alert_nonce(&env, alert_id)
+    }
+
+    /// Verify whether a report matches an expected cryptographic nonce (anti-replay verification)
+    pub fn verify_report_nonce(
+        env: Env,
+        report_id: u64,
+        expected_nonce: BytesN<32>,
+    ) -> Result<bool, ContractError> {
+        let actual = Self::report_nonce(&env, report_id)?;
+        Ok(actual == expected_nonce)
+    }
+
+    /// Verify whether an escrow matches an expected cryptographic nonce (anti-replay verification)
+    pub fn verify_escrow_nonce(
+        env: Env,
+        escrow_id: u64,
+        expected_nonce: BytesN<32>,
+    ) -> Result<bool, ContractError> {
+        let actual = Self::escrow_nonce(&env, escrow_id)?;
+        Ok(actual == expected_nonce)
+    }
+
+    /// Verify whether an alert matches an expected cryptographic nonce (anti-replay verification)
+    pub fn verify_alert_nonce(
+        env: Env,
+        alert_id: u64,
+        expected_nonce: BytesN<32>,
+    ) -> Result<bool, ContractError> {
+        let actual = Self::alert_nonce(&env, alert_id)?;
+        Ok(actual == expected_nonce)
+    }
+
+    /// Check whether a nonce has been registered/consumed globally
+    pub fn is_nonce_used(env: Env, nonce: BytesN<32>) -> bool {
+        let used_nonces: Map<BytesN<32>, bool> = env
+            .storage()
+            .instance()
+            .get(&USED_NONCES)
+            .unwrap_or(Map::new(&env));
+        used_nonces.contains_key(nonce)
     }
 
     /// Get emergency alert details
