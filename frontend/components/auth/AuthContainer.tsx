@@ -79,7 +79,19 @@ export default function AuthContainer({
         onAuthSuccess?.(result.user);
       }
     } catch (err) {
-      handleError(err instanceof Error ? err.message : 'Login failed');
+      const errorMsg = err instanceof Error ? err.message : 'Login failed';
+      if (
+        errorMsg.toLowerCase().includes('no account') ||
+        errorMsg.toLowerCase().includes('not found') ||
+        errorMsg.toLowerCase().includes('does not exist') ||
+        errorMsg.toLowerCase().includes('user not registered') ||
+        errorMsg.toLowerCase().includes('wrong password') ||
+        errorMsg.toLowerCase().includes('incorrect password')
+      ) {
+        handleError('Invalid email or password');
+      } else {
+        handleError(errorMsg);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -102,7 +114,20 @@ export default function AuthContainer({
       // Optionally redirect to login or show verification screen
       setTimeout(() => setCurrentView('login'), 2000);
     } catch (err) {
-      handleError(err instanceof Error ? err.message : 'Sign up failed');
+      const errorMsg = err instanceof Error ? err.message : 'Sign up failed';
+      if (
+        errorMsg.toLowerCase().includes('already exists') ||
+        errorMsg.toLowerCase().includes('already registered') ||
+        errorMsg.toLowerCase().includes('user exists') ||
+        errorMsg.toLowerCase().includes('email taken') ||
+        errorMsg.toLowerCase().includes('duplicate')
+      ) {
+        handleError(
+          'Unable to complete registration. If you already have an account, please sign in or reset your password.'
+        );
+      } else {
+        handleError(errorMsg);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -116,7 +141,18 @@ export default function AuthContainer({
       await resetPassword(email);
       handleSuccess('Password reset link sent successfully!');
     } catch (err) {
-      handleError(err instanceof Error ? err.message : 'Password reset failed');
+      const errorMsg = err instanceof Error ? err.message : '';
+      if (
+        errorMsg.toLowerCase().includes('no account') ||
+        errorMsg.toLowerCase().includes('not found') ||
+        errorMsg.toLowerCase().includes('does not exist') ||
+        errorMsg.toLowerCase().includes('unregistered')
+      ) {
+        // Prevent account enumeration: display generic success even if account is not registered
+        handleSuccess('Password reset link sent successfully!');
+      } else {
+        handleError(errorMsg || 'Password reset failed');
+      }
     } finally {
       setIsLoading(false);
     }

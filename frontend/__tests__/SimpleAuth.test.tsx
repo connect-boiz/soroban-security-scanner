@@ -183,6 +183,57 @@ describe('SimpleAuth', () => {
     expect(onResetPassword).toHaveBeenCalledWith('ada@example.com');
   });
 
+  it('sanitizes user-not-found login errors to prevent account enumeration', async () => {
+    onLogin.mockRejectedValueOnce(new Error('No account found with this email'));
+    renderAuth();
+    fireEvent.change(screen.getByPlaceholderText('Enter your email'), {
+      target: { value: 'a@b.com' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('Enter your password'), {
+      target: { value: 'password123' },
+    });
+    submit(/sign in/i);
+    expect(await screen.findByText('Invalid email or password')).toBeInTheDocument();
+    expect(screen.queryByText('No account found with this email')).not.toBeInTheDocument();
+  });
+
+  it('sanitizes duplicate account signup errors to prevent account enumeration', async () => {
+    onSignUp.mockRejectedValueOnce(new Error('An account with this email already exists'));
+    renderAuth();
+    fireEvent.click(screen.getByRole('button', { name: /sign up/i }));
+    fireEvent.change(screen.getByPlaceholderText('First name'), { target: { value: 'Ada' } });
+    fireEvent.change(screen.getByPlaceholderText('Last name'), { target: { value: 'Lovelace' } });
+    fireEvent.change(screen.getByPlaceholderText('Enter your email'), {
+      target: { value: 'ada@example.com' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('Create a password'), {
+      target: { value: 'password123' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('Confirm your password'), {
+      target: { value: 'password123' },
+    });
+    fireEvent.click(screen.getByLabelText(/I agree to the Terms/));
+    submit(/create account/i);
+    expect(
+      await screen.findByText(
+        'Unable to complete registration. If you already have an account, please sign in or reset your password.'
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByText('An account with this email already exists')).not.toBeInTheDocument();
+  });
+
+  it('shows generic success message on reset password even if email does not exist', async () => {
+    onResetPassword.mockRejectedValueOnce(new Error('No account found with this email'));
+    renderAuth();
+    fireEvent.click(screen.getByRole('button', { name: /forgot password/i }));
+    fireEvent.change(screen.getByPlaceholderText('Enter your email'), {
+      target: { value: 'nonexistent@example.com' },
+    });
+    submit(/send reset link/i);
+    expect(await screen.findByText('Password reset link sent!')).toBeInTheDocument();
+    expect(screen.queryByText('No account found with this email')).not.toBeInTheDocument();
+  });
+
   it('switches views and clears the form', () => {
     renderAuth();
     fireEvent.change(screen.getByPlaceholderText('Enter your email'), {

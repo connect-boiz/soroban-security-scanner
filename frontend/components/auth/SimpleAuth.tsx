@@ -153,7 +153,45 @@ export default function SimpleAuth({
         setTimeout(() => setCurrentView('login'), 2000);
       }
     } catch (error: any) {
-      setMessage({ type: 'error', text: error.message || 'An error occurred' });
+      const errorMsg = (error?.message || '').toLowerCase();
+      let text = error?.message || 'An error occurred';
+
+      if (currentView === 'login') {
+        if (
+          errorMsg.includes('no account') ||
+          errorMsg.includes('not found') ||
+          errorMsg.includes('does not exist') ||
+          errorMsg.includes('wrong password') ||
+          errorMsg.includes('incorrect password')
+        ) {
+          text = 'Invalid email or password';
+        }
+      } else if (currentView === 'signup') {
+        if (
+          errorMsg.includes('already exists') ||
+          errorMsg.includes('already registered') ||
+          errorMsg.includes('user exists') ||
+          errorMsg.includes('email taken') ||
+          errorMsg.includes('duplicate')
+        ) {
+          text =
+            'Unable to complete registration. If you already have an account, please sign in or reset your password.';
+        }
+      } else if (currentView === 'reset') {
+        if (
+          errorMsg.includes('no account') ||
+          errorMsg.includes('not found') ||
+          errorMsg.includes('does not exist') ||
+          errorMsg.includes('unregistered')
+        ) {
+          // Do not reveal account absence; show generic success message
+          setMessage({ type: 'success', text: 'Password reset link sent!' });
+          setTimeout(() => setCurrentView('login'), 2000);
+          return;
+        }
+      }
+
+      setMessage({ type: 'error', text });
     }
   };
 

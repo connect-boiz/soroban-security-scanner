@@ -15,6 +15,9 @@ export default function SimpleAuthPage() {
       const result = await login(data);
       persistSession(result.user, data.rememberMe);
       // In a real app, redirect to dashboard
+    } catch (err) {
+      // Prevent account enumeration by always providing generic auth failure
+      throw new Error('Invalid email or password');
     } finally {
       setIsLoading(false);
     }
@@ -25,6 +28,11 @@ export default function SimpleAuthPage() {
 
     try {
       await signUp(data);
+    } catch (err) {
+      // Prevent account enumeration by returning generic registration message
+      throw new Error(
+        'Unable to complete registration. If you already have an account, please sign in or reset your password.'
+      );
     } finally {
       setIsLoading(false);
     }
@@ -35,6 +43,8 @@ export default function SimpleAuthPage() {
 
     try {
       await resetPassword(email);
+    } catch (err) {
+      // Prevent account enumeration: do not propagate account-absence errors
     } finally {
       setIsLoading(false);
     }

@@ -97,6 +97,15 @@ describe('AuthContainer', () => {
     expect(await screen.findByText('Invalid credentials')).toBeInTheDocument();
   });
 
+  it('sanitizes user-not-found login errors to prevent account enumeration', async () => {
+    loginMock.mockRejectedValue(new Error('No account found with this email'));
+    render(<AuthContainer />);
+    fillLogin();
+    submitForm();
+    expect(await screen.findByText('Invalid email or password')).toBeInTheDocument();
+    expect(screen.queryByText('No account found with this email')).not.toBeInTheDocument();
+  });
+
   it('switches to signup and creates an account', async () => {
     render(<AuthContainer />);
     fireEvent.click(screen.getByRole('button', { name: /sign up/i }));
@@ -116,6 +125,30 @@ describe('AuthContainer', () => {
     expect(signUpMock).toHaveBeenCalledWith(expect.objectContaining({ email: 'ada@example.com' }));
   });
 
+  it('sanitizes duplicate account signup errors to prevent account enumeration', async () => {
+    signUpMock.mockRejectedValue(new Error('An account with this email already exists'));
+    render(<AuthContainer />);
+    fireEvent.click(screen.getByRole('button', { name: /sign up/i }));
+    expect((await screen.findAllByText('Create Account')).length).toBeGreaterThan(0);
+    fireEvent.change(screen.getByLabelText(/first name/i), { target: { value: 'Ada' } });
+    fireEvent.change(screen.getByLabelText(/last name/i), { target: { value: 'Lovelace' } });
+    fireEvent.change(screen.getByLabelText(/email address/i), {
+      target: { value: 'ada@example.com' },
+    });
+    fireEvent.change(screen.getByLabelText(/^password/i), { target: { value: 'Password123!' } });
+    fireEvent.change(screen.getByLabelText(/confirm password/i), {
+      target: { value: 'Password123!' },
+    });
+    fireEvent.click(screen.getByRole('checkbox', { name: /terms/i }));
+    submitForm();
+    expect(
+      await screen.findByText(
+        'Unable to complete registration. If you already have an account, please sign in or reset your password.'
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByText('An account with this email already exists')).not.toBeInTheDocument();
+  });
+
   it('navigates to the reset password view and sends a reset link', async () => {
     render(<AuthContainer />);
     fireEvent.click(screen.getByRole('button', { name: /forgot password/i }));
@@ -126,6 +159,19 @@ describe('AuthContainer', () => {
     submitForm();
     expect(await screen.findByText('Password reset link sent successfully!')).toBeInTheDocument();
     expect(resetPasswordMock).toHaveBeenCalledWith('ada@example.com');
+  });
+
+  it('shows identical reset confirmation when account does not exist to prevent enumeration', async () => {
+    resetPasswordMock.mockRejectedValue(new Error('No account found with this email'));
+    render(<AuthContainer />);
+    fireEvent.click(screen.getByRole('button', { name: /forgot password/i }));
+    expect(await screen.findByText('Reset Password')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/email address/i), {
+      target: { value: 'nonexistent@example.com' },
+    });
+    submitForm();
+    expect(await screen.findByText('Password reset link sent successfully!')).toBeInTheDocument();
+    expect(screen.queryByText('No account found with this email')).not.toBeInTheDocument();
   });
 
   it('completes MFA verification with the demo code', async () => {
