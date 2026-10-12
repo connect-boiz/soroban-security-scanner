@@ -150,35 +150,17 @@ impl EmergencyStop {
     /// Setup signal handlers for Windows
     #[cfg(windows)]
     fn setup_signal_handlers(sender: Sender<StopCommand>) -> Result<()> {
-        use std::sync::mpsc::channel;
-        use windows::Win32::System::Console::{
-            SetConsoleCtrlHandler, CTRL_BREAK_EVENT, CTRL_CLOSE_EVENT, CTRL_C_EVENT,
-            PHANDLER_ROUTINE,
-        };
-
-        let (tx, rx) = channel();
-        let sender_clone = sender.clone();
-
         thread::spawn(move || {
-            if let Ok(reason) = rx.recv() {
-                let _ = sender_clone.send(StopCommand::UserInitiated { reason });
+            if let Ok(rt) = tokio::runtime::Builder::new_current_thread().enable_all().build() {
+                rt.block_on(async {
+                    if let Ok(()) = tokio::signal::ctrl_c().await {
+                        let _ = sender.send(StopCommand::UserInitiated {
+                            reason: "Ctrl+C received".to_string(),
+                        });
+                    }
+                });
             }
         });
-
-        unsafe {
-            let handler: PHANDLER_ROUTINE = std::mem::transmute(Box::new(move |ctrl_type| {
-                let reason = match ctrl_type {
-                    CTRL_C_EVENT => "Ctrl+C pressed".to_string(),
-                    CTRL_BREAK_EVENT => "Ctrl+Break pressed".to_string(),
-                    CTRL_CLOSE_EVENT => "Console window closed".to_string(),
-                    _ => format!("Control signal {}", ctrl_type),
-                };
-                let _ = tx.send(reason);
-                true // Return true to indicate we handled the signal
-            }));
-
-            SetConsoleCtrlHandler(handler, true)?;
-        }
 
         Ok(())
     }

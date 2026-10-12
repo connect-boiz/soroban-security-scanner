@@ -211,7 +211,7 @@ impl SessionStore for RedisSessionStore {
         let user_sessions_key = self.user_sessions_key(&session.user_id);
 
         // Store session data with TTL
-        let ttl = (session.expires_at - Utc::now()).num_seconds() as usize;
+        let ttl = (session.expires_at - Utc::now()).num_seconds().max(1) as usize;
         conn.set_ex::<_, _, ()>(&session_key, session_json, ttl)
             .await
             .map_err(|e| SessionError::Redis(e.to_string()))?;
@@ -220,6 +220,11 @@ impl SessionStore for RedisSessionStore {
         conn.sadd::<_, _, ()>(&user_sessions_key, &session.session_id)
             .await
             .map_err(|e| SessionError::Redis(e.to_string()))?;
+
+        // Set TTL on user sessions key to avoid leaking orphaned sets
+        let _ = conn
+            .expire::<_, ()>(&user_sessions_key, (ttl * 2).max(86400))
+            .await;
 
         Ok(())
     }
@@ -258,11 +263,16 @@ impl SessionStore for RedisSessionStore {
             .map_err(|e| SessionError::Serialization(e.to_string()))?;
 
         let session_key = self.session_key(&session.session_id);
-        let ttl = (session.expires_at - Utc::now()).num_seconds() as usize;
+        let ttl = (session.expires_at - Utc::now()).num_seconds().max(1) as usize;
 
         conn.set_ex::<_, _, ()>(&session_key, session_json, ttl)
             .await
             .map_err(|e| SessionError::Redis(e.to_string()))?;
+
+        let user_sessions_key = self.user_sessions_key(&session.user_id);
+        let _ = conn
+            .expire::<_, ()>(&user_sessions_key, (ttl * 2).max(86400))
+            .await;
 
         Ok(())
     }
@@ -330,52 +340,74 @@ impl SessionStore for RedisSessionStore {
     }
 
     async fn cleanup_expired_sessions(&self) -> Result<usize, SessionError> {
-        // Redis automatically handles expiration, so we just need to clean up user session lists
         let mut conn = self
             .client
             .get_async_connection()
             .await
             .map_err(|e| SessionError::Redis(e.to_string()))?;
 
-        // This is a simplified cleanup - in production you'd want a more sophisticated approach
+        // Non-blocking cursor-based SCAN over user_sessions sets (replaces blocking KEYS)
         let pattern = format!("{}:user_sessions:*", self.key_prefix);
-        let keys: Vec<String> = conn
-            .keys(&pattern)
-            .await
-            .map_err(|e| SessionError::Redis(e.to_string()))?;
-
+        let mut cursor: u64 = 0;
         let mut total_cleaned = 0;
-        for user_sessions_key in keys {
-            let session_ids: Vec<String> = conn
-                .smembers(&user_sessions_key)
+
+        loop {
+            let (next_cursor, keys): (u64, Vec<String>) = redis::cmd("SCAN")
+                .arg(cursor)
+                .arg("MATCH")
+                .arg(&pattern)
+                .arg("COUNT")
+                .arg(100)
+                .query_async(&mut conn)
                 .await
                 .map_err(|e| SessionError::Redis(e.to_string()))?;
 
-            let mut valid_sessions = Vec::new();
-            for session_id in session_ids {
-                let session_key = self.session_key(&session_id);
-                let exists: bool = conn
-                    .exists(&session_key)
+            for user_sessions_key in keys {
+                let session_ids: Vec<String> = conn
+                    .smembers(&user_sessions_key)
                     .await
                     .map_err(|e| SessionError::Redis(e.to_string()))?;
 
-                if exists {
-                    valid_sessions.push(session_id);
+                if session_ids.is_empty() {
+                    let _ = conn.del::<_, ()>(&user_sessions_key).await;
+                    continue;
+                }
+
+                let mut expired_sids = Vec::new();
+                for session_id in &session_ids {
+                    let session_key = self.session_key(session_id);
+                    let exists: bool = conn
+                        .exists(&session_key)
+                        .await
+                        .map_err(|e| SessionError::Redis(e.to_string()))?;
+
+                    if !exists {
+                        expired_sids.push(session_id.clone());
+                    }
+                }
+
+                if !expired_sids.is_empty() {
+                    let expired_count = expired_sids.len();
+                    total_cleaned += expired_count;
+
+                    if expired_count == session_ids.len() {
+                        conn.del::<_, ()>(&user_sessions_key)
+                            .await
+                            .map_err(|e| SessionError::Redis(e.to_string()))?;
+                    } else {
+                        for expired_id in &expired_sids {
+                            conn.srem::<_, _, ()>(&user_sessions_key, expired_id)
+                                .await
+                                .map_err(|e| SessionError::Redis(e.to_string()))?;
+                        }
+                    }
                 }
             }
 
-            // Update user session list with only valid sessions
-            conn.del::<_, ()>(&user_sessions_key)
-                .await
-                .map_err(|e| SessionError::Redis(e.to_string()))?;
-
-            if !valid_sessions.is_empty() {
-                conn.sadd::<_, _, ()>(&user_sessions_key, &valid_sessions)
-                    .await
-                    .map_err(|e| SessionError::Redis(e.to_string()))?;
+            cursor = next_cursor;
+            if cursor == 0 {
+                break;
             }
-
-            total_cleaned += valid_sessions.len();
         }
 
         Ok(total_cleaned)
@@ -607,11 +639,11 @@ mod tests {
         let store = InMemorySessionStore::new();
         let manager = SessionManager::new(store, Duration::hours(24));
 
-        let session1 = manager
+        let _session1 = manager
             .create_session("user123", "test@example.com", "user", None, None, None)
             .await
             .unwrap();
-        let session2 = manager
+        let _session2 = manager
             .create_session("user123", "test@example.com", "user", None, None, None)
             .await
             .unwrap();
@@ -646,5 +678,77 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(value, Some("login".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_expired_sessions_count() {
+        let store = InMemorySessionStore::new();
+        let manager = SessionManager::new(store, Duration::seconds(1));
+
+        let _ = manager
+            .create_session("user1", "test1@example.com", "user", None, None, Some(Duration::seconds(1)))
+            .await
+            .unwrap();
+
+        let _ = manager
+            .create_session("user2", "test2@example.com", "user", None, None, Some(Duration::hours(1)))
+            .await
+            .unwrap();
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(1500)).await;
+
+        let cleaned = manager.cleanup_expired_sessions().await.unwrap();
+        assert_eq!(cleaned, 1);
+    }
+
+    #[cfg(feature = "redis-cache")]
+    mod redis_session_tests {
+        use super::*;
+
+        fn get_redis_client() -> Option<redis::Client> {
+            let url = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://localhost:6379".to_string());
+            let client = redis::Client::open(url.as_str()).ok()?;
+            let mut conn = client.get_connection().ok()?;
+            redis::cmd("PING").query::<String>(&mut conn).ok()?;
+            Some(client)
+        }
+
+        #[tokio::test]
+        async fn test_redis_session_scan_cleanup() {
+            let Some(client) = get_redis_client() else {
+                println!("Skipping Redis test - Redis not available");
+                return;
+            };
+
+            let prefix = format!("test_session_{}", uuid::Uuid::new_v4());
+            let store = RedisSessionStore::new(client, prefix);
+
+            // Active session
+            let active = SessionData {
+                session_id: "active_sid".to_string(),
+                user_id: "user_a".to_string(),
+                user_email: "a@test.com".to_string(),
+                user_role: "user".to_string(),
+                ip_address: None,
+                user_agent: None,
+                created_at: Utc::now(),
+                last_accessed: Utc::now(),
+                expires_at: Utc::now() + Duration::hours(1),
+                is_active: true,
+                metadata: HashMap::new(),
+            };
+            store.create_session(active).await.unwrap();
+
+            // Expired session: manually insert into user_sessions without session key
+            let mut conn = store.client.get_async_connection().await.unwrap();
+            let user_b_key = format!("{}:user_sessions:user_b", store.key_prefix);
+            let _: () = redis::cmd("SADD").arg(&user_b_key).arg("expired_sid").query_async(&mut conn).await.unwrap();
+
+            let cleaned = store.cleanup_expired_sessions().await.unwrap();
+            assert_eq!(cleaned, 1);
+
+            let active_sessions = store.get_active_sessions("user_a").await.unwrap();
+            assert_eq!(active_sessions.len(), 1);
+        }
     }
 }
