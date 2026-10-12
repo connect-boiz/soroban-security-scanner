@@ -12,6 +12,7 @@ pub struct ScanResult {
     pub file_path: String,
     pub vulnerabilities: Vec<crate::vulnerabilities::VulnerabilityType>,
     pub invariant_violations: Vec<crate::invariants::InvariantRule>,
+    pub temporal_violations: Vec<crate::invariants::TemporalViolation>,
     pub recommendations: Vec<String>,
 }
 
@@ -21,12 +22,15 @@ impl ScanResult {
             file_path,
             vulnerabilities: Vec::new(),
             invariant_violations: Vec::new(),
+            temporal_violations: Vec::new(),
             recommendations: Vec::new(),
         }
     }
 
     pub fn has_issues(&self) -> bool {
-        !self.vulnerabilities.is_empty() || !self.invariant_violations.is_empty()
+        !self.vulnerabilities.is_empty()
+            || !self.invariant_violations.is_empty()
+            || !self.temporal_violations.is_empty()
     }
 
     pub fn severity_count(&self) -> (usize, usize, usize) {
@@ -128,6 +132,10 @@ pub mod event_logging;
 pub mod gas_limits;
 pub mod incremental_scan;
 pub mod invariants;
+pub use invariants::{
+    InvariantRule, SequenceDiagram, StateDelta, StateNode, StateTransition, TemporalInvariant,
+    TemporalViolation,
+};
 pub mod report;
 pub mod scanners;
 pub mod secure_id_generation;

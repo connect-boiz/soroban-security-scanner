@@ -100,6 +100,10 @@ enum Commands {
         /// Override incremental mode and force a full scan
         #[arg(long)]
         force_full: bool,
+
+        /// Maximum path exploration depth for temporal invariant checks (default: 5)
+        #[arg(long, default_value = "5")]
+        temporal_depth: usize,
     },
 
     /// Run comprehensive scan (security + invariants)
@@ -131,6 +135,10 @@ enum Commands {
         /// Override incremental mode and force a full scan
         #[arg(long)]
         force_full: bool,
+
+        /// Maximum path exploration depth for temporal invariant checks (default: 5)
+        #[arg(long, default_value = "5")]
+        temporal_depth: usize,
     },
 
     /// Generate default configuration file
@@ -677,6 +685,7 @@ fn main() -> Result<()> {
             verbose,
             incremental,
             force_full,
+            temporal_depth,
         } => run_invariant_scan(
             path,
             format,
@@ -685,6 +694,7 @@ fn main() -> Result<()> {
             verbose,
             incremental,
             force_full,
+            temporal_depth,
         ),
         Commands::Scan {
             path,
@@ -694,6 +704,7 @@ fn main() -> Result<()> {
             verbose,
             incremental,
             force_full,
+            temporal_depth,
         } => run_comprehensive_scan(
             path,
             format,
@@ -702,6 +713,7 @@ fn main() -> Result<()> {
             verbose,
             incremental,
             force_full,
+            temporal_depth,
         ),
         Commands::Init { path } => generate_config(path),
         Commands::ListChecks { severity } => list_vulnerability_checks(severity),
@@ -940,6 +952,7 @@ fn run_invariant_scan(
     verbose: bool,
     incremental: bool,
     force_full: bool,
+    temporal_depth: usize,
 ) -> Result<()> {
     use stellar_security_scanner::incremental_scan;
 
@@ -955,10 +968,11 @@ fn run_invariant_scan(
     }
 
     let config = load_config(config_path)?;
-    let scanner = InvariantScanner::new()?;
+    let scanner = InvariantScanner::new()?.with_temporal_depth(temporal_depth);
 
     if verbose {
         println!("Scanning path: {}", path.display());
+        println!("Temporal exploration depth: {}", temporal_depth);
         println!("Output format: {}", format);
         if let Some(ref output_path) = output {
             println!("Output file: {}", output_path.display());
@@ -1063,6 +1077,7 @@ fn run_comprehensive_scan(
     verbose: bool,
     incremental: bool,
     force_full: bool,
+    temporal_depth: usize,
 ) -> Result<()> {
     use stellar_security_scanner::incremental_scan;
 
@@ -1084,10 +1099,11 @@ fn run_comprehensive_scan(
 
     let config = load_config(config_path)?;
     let security_scanner = SecurityScanner::new()?;
-    let invariant_scanner = InvariantScanner::new()?;
+    let invariant_scanner = InvariantScanner::new()?.with_temporal_depth(temporal_depth);
 
     if verbose {
         println!("Scanning path: {}", path.display());
+        println!("Temporal exploration depth: {}", temporal_depth);
         println!("Output format: {}", format);
         if let Some(ref output_path) = output {
             println!("Output file: {}", output_path.display());

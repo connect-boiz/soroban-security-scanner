@@ -23,6 +23,7 @@ pub struct InvariantScanner {
     invariant_rules: Vec<(InvariantRule, Regex)>,
     emergency_stop: EmergencyStop,
     pub watchdog: ScanWatchdog,
+    pub temporal_depth: usize,
 }
 
 impl SecurityScanner {
@@ -484,6 +485,7 @@ impl InvariantScanner {
             invariant_rules: Vec::new(),
             emergency_stop,
             watchdog,
+            temporal_depth: 5,
         };
 
         scanner.initialize_rules()?;
@@ -496,6 +498,7 @@ impl InvariantScanner {
             invariant_rules: Vec::new(),
             emergency_stop,
             watchdog,
+            temporal_depth: 5,
         };
 
         scanner.initialize_rules()?;
@@ -510,10 +513,16 @@ impl InvariantScanner {
             invariant_rules: Vec::new(),
             emergency_stop,
             watchdog,
+            temporal_depth: 5,
         };
 
         scanner.initialize_rules()?;
         Ok(scanner)
+    }
+
+    pub fn with_temporal_depth(mut self, depth: usize) -> Self {
+        self.temporal_depth = depth;
+        self
     }
 
     fn initialize_rules(&mut self) -> Result<()> {
@@ -612,6 +621,25 @@ impl InvariantScanner {
 
             if pattern.is_match(&content).unwrap_or(false) {
                 result.invariant_violations.push(rule.clone());
+            }
+        }
+
+        // Temporal Invariant Verification
+        if self.temporal_depth > 0 && !content.is_empty() {
+            let diagram = crate::invariants::SequenceDiagram::from_contract_source(&content);
+            for (rule, _) in &self.invariant_rules {
+                if self.emergency_stop.is_stopped() || self.watchdog.has_timed_out() {
+                    break;
+                }
+                if let Err(violation) = rule.temporal_check(&diagram, self.temporal_depth) {
+                    if !result.invariant_violations.contains(rule) {
+                        result.invariant_violations.push(rule.clone());
+                    }
+                    result
+                        .recommendations
+                        .push(format!("Temporal invariant violation: {}", violation));
+                    result.temporal_violations.push(violation);
+                }
             }
         }
 
