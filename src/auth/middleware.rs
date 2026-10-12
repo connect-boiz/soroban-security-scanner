@@ -1,11 +1,12 @@
 use axum::{
-    extract::{Request, State},
+    extract::{ConnectInfo, Request, State},
     http::{HeaderMap, StatusCode},
     middleware::Next,
     response::Response,
 };
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use thiserror::Error;
 
@@ -56,6 +57,9 @@ pub struct AuthMiddlewareConfig {
     pub session_validation: bool,
     pub ip_whitelist: Vec<String>,
     pub cors_origins: Vec<String>,
+    pub trusted_proxies: Vec<String>,
+    pub trust_all_proxies: bool,
+    pub client_ip_header: Option<String>,
 }
 
 impl Default for AuthMiddlewareConfig {
@@ -80,6 +84,9 @@ impl Default for AuthMiddlewareConfig {
             session_validation: true,
             ip_whitelist: Vec::new(),
             cors_origins: Vec::new(),
+            trusted_proxies: Vec::new(),
+            trust_all_proxies: false,
+            client_ip_header: None,
         }
     }
 }
@@ -186,7 +193,7 @@ where
         // Check IP whitelist if configured
         if !self.config.ip_whitelist.is_empty() {
             if let Some(ip) = &ip_address {
-                if !self.config.ip_whitelist.contains(ip) {
+                if !is_ip_in_whitelist(ip, &self.config.ip_whitelist) {
                     return Err(StatusCode::FORBIDDEN);
                 }
             } else {
@@ -333,31 +340,96 @@ where
         false
     }
 
-    fn extract_ip_address(&self, request: &Request) -> Option<String> {
-        // Try various headers in order of preference
-        let headers = [
-            "x-forwarded-for",
-            "x-real-ip",
-            "cf-connecting-ip",
-            "x-client-ip",
-            "x-forwarded",
-            "forwarded-for",
-            "forwarded",
-        ];
+    pub fn extract_ip_address(&self, request: &Request) -> Option<String> {
+        let peer_ip = request
+            .extensions()
+            .get::<ConnectInfo<SocketAddr>>()
+            .map(|ci| ci.0.ip())
+            .or_else(|| request.extensions().get::<SocketAddr>().map(|sa| sa.ip()));
 
-        for header in &headers {
-            if let Some(value) = request.headers().get(*header) {
-                if let Ok(ip_str) = value.to_str() {
-                    // X-Forwarded-For can contain multiple IPs, take the first one
-                    let ip = ip_str.split(',').next()?.trim();
-                    if !ip.is_empty() {
+        // Case 1: Peer socket is known
+        if let Some(peer) = peer_ip {
+            let is_peer_trusted = self.config.trust_all_proxies
+                || is_ip_trusted(&peer, &self.config.trusted_proxies);
+
+            if !is_peer_trusted {
+                // The connection came directly from an untrusted peer.
+                // Client-supplied forwarding headers MUST NOT be trusted.
+                return Some(peer.to_string());
+            }
+
+            // The immediate peer is a trusted proxy. Inspect forwarding headers.
+            if let Some(forwarded_ip) = self.extract_from_forwarding_headers(request) {
+                return Some(forwarded_ip);
+            }
+
+            // Fallback to the trusted proxy's IP if headers contained no valid untrusted hop
+            return Some(peer.to_string());
+        }
+
+        // Case 2: Peer socket not in extensions (e.g. test environments or specific proxy layers)
+        if self.config.trust_all_proxies || !self.config.trusted_proxies.is_empty() {
+            if let Some(forwarded_ip) = self.extract_from_forwarding_headers(request) {
+                return Some(forwarded_ip);
+            }
+        }
+
+        None
+    }
+
+    fn extract_from_forwarding_headers(&self, request: &Request) -> Option<String> {
+        // 1. Explicit configured client IP header (e.g. "cf-connecting-ip" or "x-real-ip")
+        if let Some(header_name) = &self.config.client_ip_header {
+            if let Some(value) = request.headers().get(header_name) {
+                if let Ok(s) = value.to_str() {
+                    let first = s.split(',').next().unwrap_or("").trim();
+                    if let Ok(ip) = first.parse::<IpAddr>() {
                         return Some(ip.to_string());
                     }
                 }
             }
         }
 
-        // Fall back to connection info (not available in all contexts)
+        // 2. Traverse X-Forwarded-For from right to left (most-recently added hop by trusted proxies)
+        if let Some(value) = request.headers().get("x-forwarded-for") {
+            if let Ok(s) = value.to_str() {
+                let hops: Vec<&str> = s
+                    .split(',')
+                    .map(|h| h.trim())
+                    .filter(|h| !h.is_empty())
+                    .collect();
+
+                for hop in hops.into_iter().rev() {
+                    if let Ok(ip) = hop.parse::<IpAddr>() {
+                        if !is_ip_trusted(&ip, &self.config.trusted_proxies) {
+                            return Some(ip.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. Fallback proxy headers if no explicit client_ip_header was set
+        let fallback_headers = [
+            "cf-connecting-ip",
+            "x-real-ip",
+            "x-client-ip",
+            "forwarded-for",
+        ];
+
+        for header in &fallback_headers {
+            if let Some(value) = request.headers().get(*header) {
+                if let Ok(s) = value.to_str() {
+                    let first = s.split(',').next().unwrap_or("").trim();
+                    if let Ok(ip) = first.parse::<IpAddr>() {
+                        if !is_ip_trusted(&ip, &self.config.trusted_proxies) {
+                            return Some(ip.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
         None
     }
 
@@ -368,6 +440,41 @@ where
             .and_then(|h| h.to_str().ok())
             .map(|s| s.to_string())
     }
+}
+
+fn is_ip_trusted(ip: &IpAddr, trusted_proxies: &[String]) -> bool {
+    for proxy_str in trusted_proxies {
+        if let Ok(network) = proxy_str.parse::<ipnetwork::IpNetwork>() {
+            if network.contains(*ip) {
+                return true;
+            }
+        } else if let Ok(proxy_ip) = proxy_str.parse::<IpAddr>() {
+            if &proxy_ip == ip {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn is_ip_in_whitelist(ip_str: &str, whitelist: &[String]) -> bool {
+    if whitelist.contains(&ip_str.to_string()) {
+        return true;
+    }
+    if let Ok(ip) = ip_str.parse::<IpAddr>() {
+        for entry in whitelist {
+            if let Ok(network) = entry.parse::<ipnetwork::IpNetwork>() {
+                if network.contains(ip) {
+                    return true;
+                }
+            } else if let Ok(target_ip) = entry.parse::<IpAddr>() {
+                if target_ip == ip {
+                    return true;
+                }
+            }
+        }
+    }
+    false
 }
 
 // Axum middleware function
@@ -637,5 +744,100 @@ mod tests {
         assert!(!has_permission(&request, "admin"));
         assert!(has_role(&request, "admin"));
         assert!(!has_role(&request, "user"));
+    }
+
+    #[test]
+    fn test_extract_ip_untrusted_peer_ignores_spoofed_headers() {
+        let config = AuthMiddlewareConfig {
+            trusted_proxies: vec!["10.0.0.0/8".to_string()],
+            ..Default::default()
+        };
+        let middleware = AuthMiddleware::new(
+            AuthServices {
+                jwt_service: Arc::new(JwtService::new("test", "test".to_string(), "test".to_string())),
+                session_manager: Arc::new(SessionManager::new(InMemorySessionStore::new(), Duration::hours(24))),
+                rate_limit_service: Arc::new(RateLimitService::new(InMemoryRateLimitStore::new())),
+                account_lockout_service: Arc::new(AccountLockoutService::new(InMemoryLockoutStore::new())),
+            },
+            config,
+        );
+
+        let mut request = Request::builder()
+            .method(Method::GET)
+            .uri("/test")
+            .header("x-forwarded-for", "127.0.0.1, 10.0.0.1")
+            .header("cf-connecting-ip", "127.0.0.1")
+            .body(Body::empty())
+            .unwrap();
+
+        // Direct connection from public IP (untrusted peer)
+        let peer_addr: SocketAddr = "198.51.100.77:4321".parse().unwrap();
+        request.extensions_mut().insert(ConnectInfo(peer_addr));
+
+        let extracted = middleware.extract_ip_address(&request);
+        assert_eq!(extracted, Some("198.51.100.77".to_string()), "Must ignore spoofed headers when peer is untrusted");
+    }
+
+    #[test]
+    fn test_extract_ip_trusted_proxy_extracts_client_hop() {
+        let config = AuthMiddlewareConfig {
+            trusted_proxies: vec!["10.0.0.0/8".to_string()],
+            ..Default::default()
+        };
+        let middleware = AuthMiddleware::new(
+            AuthServices {
+                jwt_service: Arc::new(JwtService::new("test", "test".to_string(), "test".to_string())),
+                session_manager: Arc::new(SessionManager::new(InMemorySessionStore::new(), Duration::hours(24))),
+                rate_limit_service: Arc::new(RateLimitService::new(InMemoryRateLimitStore::new())),
+                account_lockout_service: Arc::new(AccountLockoutService::new(InMemoryLockoutStore::new())),
+            },
+            config,
+        );
+
+        let mut request = Request::builder()
+            .method(Method::GET)
+            .uri("/test")
+            .header("x-forwarded-for", "1.1.1.1, 203.0.113.195, 10.0.0.1")
+            .body(Body::empty())
+            .unwrap();
+
+        // Connection from trusted proxy
+        let peer_addr: SocketAddr = "10.0.0.2:8080".parse().unwrap();
+        request.extensions_mut().insert(ConnectInfo(peer_addr));
+
+        let extracted = middleware.extract_ip_address(&request);
+        assert_eq!(extracted, Some("203.0.113.195".to_string()), "Must extract right-most untrusted hop");
+    }
+
+    #[test]
+    fn test_extract_ip_custom_header_with_trusted_proxy() {
+        let config = AuthMiddlewareConfig {
+            trusted_proxies: vec!["172.16.0.0/12".to_string()],
+            client_ip_header: Some("cf-connecting-ip".to_string()),
+            ..Default::default()
+        };
+        let middleware = AuthMiddleware::new(
+            AuthServices {
+                jwt_service: Arc::new(JwtService::new("test", "test".to_string(), "test".to_string())),
+                session_manager: Arc::new(SessionManager::new(InMemorySessionStore::new(), Duration::hours(24))),
+                rate_limit_service: Arc::new(RateLimitService::new(InMemoryRateLimitStore::new())),
+                account_lockout_service: Arc::new(AccountLockoutService::new(InMemoryLockoutStore::new())),
+            },
+            config,
+        );
+
+        let mut request = Request::builder()
+            .method(Method::GET)
+            .uri("/test")
+            .header("cf-connecting-ip", "198.51.100.99")
+            .body(Body::empty())
+            .unwrap();
+
+        // Peer is in trusted proxy range
+        let peer_addr: SocketAddr = "172.16.5.1:443".parse().unwrap();
+        request.extensions_mut().insert(ConnectInfo(peer_addr));
+
+        let extracted = middleware.extract_ip_address(&request);
+        assert_eq!(extracted, Some("198.51.100.99".to_string()));
     }
 }
