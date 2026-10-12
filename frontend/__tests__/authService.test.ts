@@ -16,6 +16,9 @@ import {
   verifyMfa,
   getPendingMfaCode,
   isMockAuthEnabled,
+  resetMfaState,
+  setMfaCooldownSeconds,
+  getMfaStatus,
 } from '../lib/auth/authService';
 
 const credentials = {
@@ -31,6 +34,7 @@ const mutableEnv = process.env as Record<string, string | undefined>;
 beforeEach(() => {
   delete process.env.NEXT_PUBLIC_ENABLE_MOCK_AUTH;
   mutableEnv.NODE_ENV = 'test';
+  resetMfaState();
 });
 
 describe('authService - no hardcoded credentials', () => {
@@ -89,7 +93,7 @@ describe('authService - MFA uses a generated one-time code', () => {
     await sendMfaCode('totp');
     const firstCode = getPendingMfaCode();
 
-    await resendMfaCode('sms');
+    await resendMfaCode('sms', { force: true });
     const secondCode = getPendingMfaCode();
 
     expect(secondCode).toMatch(/^\d{6}$/);
@@ -100,6 +104,47 @@ describe('authService - MFA uses a generated one-time code', () => {
       'Invalid verification code'
     );
   }, 10000);
+});
+
+describe('authService - MFA rate limiting, throttling, and lockout', () => {
+  beforeEach(() => {
+    resetMfaState();
+  });
+
+  it('enforces resend cooldown throttling', async () => {
+    await sendMfaCode('totp');
+    // Immediate resend without force should be throttled
+    await expect(resendMfaCode('totp')).rejects.toThrow(
+      /Please wait \d+s before requesting a new code/
+    );
+  }, 10000);
+
+  it('allows resend once cooldown is bypassed or reset', async () => {
+    await sendMfaCode('totp');
+    setMfaCooldownSeconds(0);
+    await expect(resendMfaCode('totp')).resolves.toBeUndefined();
+  }, 10000);
+
+  it('locks account after 5 failed verification attempts', async () => {
+    await sendMfaCode('totp');
+
+    // 4 failed attempts should report remaining attempts
+    for (let i = 1; i <= 4; i++) {
+      await expect(verifyMfa('999999', 'totp')).rejects.toThrow(
+        `Invalid verification code. ${5 - i} attempt(s) remaining.`
+      );
+    }
+
+    // 5th failed attempt triggers lockout
+    await expect(verifyMfa('999999', 'totp')).rejects.toThrow(
+      'Too many failed attempts. Account is temporarily locked. Please try again in 15 minutes.'
+    );
+
+    // Subsequent verify, send, or resend attempts are blocked
+    await expect(verifyMfa('999999', 'totp')).rejects.toThrow(/temporarily locked/);
+    await expect(sendMfaCode('totp')).rejects.toThrow(/temporarily locked/);
+    await expect(resendMfaCode('totp', { force: true })).rejects.toThrow(/temporarily locked/);
+  }, 15000);
 });
 
 describe('authService - production guard', () => {

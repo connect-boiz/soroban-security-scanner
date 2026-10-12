@@ -28,6 +28,10 @@ interface MultiFactorAuthProps {
   userPhone?: string;
   /** The one-time code "sent" by the demo mock, displayed in demo mode only. */
   demoCode?: string | null;
+  /** Whether MFA attempts are currently locked out. */
+  isLocked?: boolean;
+  /** Custom lockout message to display. */
+  lockoutMessage?: string | null;
 }
 
 export default function MultiFactorAuth({
@@ -39,6 +43,8 @@ export default function MultiFactorAuth({
   userEmail = '',
   userPhone = '',
   demoCode = null,
+  isLocked = false,
+  lockoutMessage = null,
 }: MultiFactorAuthProps) {
   const [method, setMethod] = useState<MfaMethod>(selectedMethod);
   const [code, setCode] = useState('');
@@ -118,12 +124,14 @@ export default function MultiFactorAuth({
     try {
       await onVerify(code, method);
     } catch (error) {
-      // Error handling is managed by parent component
+      if (error instanceof Error) {
+        setErrors({ code: error.message });
+      }
     }
   };
 
   const handleResendCode = async (newMethod: MfaMethod) => {
-    if (resendTimer > 0 || isResending) return;
+    if (resendTimer > 0 || isResending || isLocked) return;
 
     setIsResending(true);
     try {
@@ -133,7 +141,9 @@ export default function MultiFactorAuth({
       setErrors({});
       setTouched(false);
     } catch (error) {
-      // Error handling is managed by parent component
+      if (error instanceof Error) {
+        setErrors({ code: error.message });
+      }
     } finally {
       setIsResending(false);
     }
@@ -144,7 +154,7 @@ export default function MultiFactorAuth({
     setCode('');
     setErrors({});
     setTouched(false);
-    setResendTimer(0);
+    // Keep active resend countdown running across method switches to prevent cooldown bypass
   };
 
   const formatMethodText = (method: MfaMethod): string => {
@@ -243,12 +253,26 @@ export default function MultiFactorAuth({
         </div>
 
         {/* Demo-mode one-time code hint (mock auth only, never in production) */}
-        {demoCode && (
+        {demoCode && !isLocked && (
           <div className="mb-6 p-3 bg-amber-50 border border-amber-200 rounded-lg">
             <p className="text-sm text-amber-800">
               Demo mode: your one-time code is{' '}
               <span className="font-mono font-semibold tracking-widest">{demoCode}</span>
             </p>
+          </div>
+        )}
+
+        {/* Lockout Banner */}
+        {(isLocked || lockoutMessage) && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start" role="alert">
+            <AlertCircle className="h-5 w-5 text-red-600 mt-0.5 mr-3 flex-shrink-0" />
+            <div>
+              <h3 className="text-sm font-semibold text-red-800">Account Temporarily Locked</h3>
+              <p className="text-sm text-red-700 mt-1">
+                {lockoutMessage ||
+                  'Too many failed verification attempts. Please wait 15 minutes before trying again.'}
+              </p>
+            </div>
           </div>
         )}
 
@@ -274,7 +298,7 @@ export default function MultiFactorAuth({
                 }`}
                 placeholder={method === 'totp' ? '000000' : '0000'}
                 maxLength={method === 'totp' ? 6 : 8}
-                disabled={isLoading}
+                disabled={isLoading || isLocked}
                 autoComplete="one-time-code"
               />
               {errors.code && touched && (
@@ -304,7 +328,7 @@ export default function MultiFactorAuth({
             <button
               type="button"
               onClick={() => handleResendCode(method)}
-              disabled={resendTimer > 0 || isResending || isLoading}
+              disabled={resendTimer > 0 || isResending || isLoading || isLocked}
               className="text-sm text-blue-600 hover:text-blue-500 font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-optimized"
             >
               {isResending ? 'Sending...' : 'Resend'}
@@ -314,7 +338,7 @@ export default function MultiFactorAuth({
           {/* Submit Button */}
           <button
             type="submit"
-            disabled={isLoading || code.length === 0}
+            disabled={isLoading || isLocked || code.length === 0}
             className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-optimized"
           >
             {isLoading ? (

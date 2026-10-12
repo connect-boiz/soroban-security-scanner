@@ -37,6 +37,8 @@ export default function AuthContainer({
   const [rememberMe, setRememberMe] = useState(false);
   // The one-time code the mock MFA flow "sent", shown only in demo mode.
   const [demoMfaCode, setDemoMfaCode] = useState<string | null>(null);
+  const [isMfaLocked, setIsMfaLocked] = useState(false);
+  const [mfaLockoutMessage, setMfaLockoutMessage] = useState<string | null>(null);
 
   const clearMessages = () => {
     setError(null);
@@ -131,10 +133,17 @@ export default function AuthContainer({
       const user = { email: userEmail, verified: true };
       persistSession(user, rememberMe);
       setDemoMfaCode(null);
+      setIsMfaLocked(false);
+      setMfaLockoutMessage(null);
       handleSuccess('Authentication successful!');
       onAuthSuccess?.(user);
     } catch (err) {
-      handleError(err instanceof Error ? err.message : 'Verification failed');
+      const msg = err instanceof Error ? err.message : 'Verification failed';
+      if (msg.includes('temporarily locked')) {
+        setIsMfaLocked(true);
+        setMfaLockoutMessage(msg);
+      }
+      handleError(msg);
     } finally {
       setIsLoading(false);
     }
@@ -149,7 +158,12 @@ export default function AuthContainer({
       setDemoMfaCode(getPendingMfaCode());
       handleSuccess(`New code sent via ${method}`);
     } catch (err) {
-      handleError(err instanceof Error ? err.message : 'Failed to resend code');
+      const msg = err instanceof Error ? err.message : 'Failed to resend code';
+      if (msg.includes('temporarily locked')) {
+        setIsMfaLocked(true);
+        setMfaLockoutMessage(msg);
+      }
+      handleError(msg);
     } finally {
       setIsLoading(false);
     }
@@ -195,6 +209,8 @@ export default function AuthContainer({
             userPhone={userPhone}
             demoCode={demoMfaCode}
             isLoading={isLoading}
+            isLocked={isMfaLocked}
+            lockoutMessage={mfaLockoutMessage}
           />
         );
 

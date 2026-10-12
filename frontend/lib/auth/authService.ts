@@ -53,6 +53,21 @@ const MOCK_AUTH_FLAG = 'NEXT_PUBLIC_ENABLE_MOCK_AUTH';
 /** The most recently "sent" one-time code in mock mode. */
 let pendingMfaCode: string | null = null;
 
+/** Maximum failed MFA verification attempts before account lockout */
+export const MAX_MFA_ATTEMPTS = 5;
+
+/** Default MFA resend cooldown in seconds */
+export const DEFAULT_MFA_RESEND_COOLDOWN_SECONDS = 60;
+
+/** Default MFA lockout duration in seconds (15 minutes) */
+export const DEFAULT_MFA_LOCKOUT_SECONDS = 15 * 60;
+
+let mfaResendCooldownSeconds = DEFAULT_MFA_RESEND_COOLDOWN_SECONDS;
+let mfaLockoutSeconds = DEFAULT_MFA_LOCKOUT_SECONDS;
+let lastMfaSentTimestamp: number = 0;
+let failedMfaAttempts: number = 0;
+let mfaLockoutUntil: number = 0;
+
 /**
  * Whether the mock implementation may run.
  *
@@ -90,6 +105,53 @@ function generateSixDigitCode(): string {
 /** The one-time code the mock most recently "sent", if any. */
 export function getPendingMfaCode(): string | null {
   return pendingMfaCode;
+}
+
+/** Configures the cooldown in seconds between MFA resend requests. */
+export function setMfaCooldownSeconds(seconds: number): void {
+  mfaResendCooldownSeconds = Math.max(0, seconds);
+}
+
+/** Configures the duration of MFA lockout in seconds. */
+export function setMfaLockoutSeconds(seconds: number): void {
+  mfaLockoutSeconds = Math.max(0, seconds);
+}
+
+/** Clears all MFA rate limiting and verification state (useful for test resets). */
+export function resetMfaState(): void {
+  pendingMfaCode = null;
+  lastMfaSentTimestamp = 0;
+  failedMfaAttempts = 0;
+  mfaLockoutUntil = 0;
+  mfaResendCooldownSeconds = DEFAULT_MFA_RESEND_COOLDOWN_SECONDS;
+  mfaLockoutSeconds = DEFAULT_MFA_LOCKOUT_SECONDS;
+}
+
+/** Returns the current MFA throttling and lockout status. */
+export function getMfaStatus(): {
+  isLocked: boolean;
+  lockoutRemainingSeconds: number;
+  resendCooldownRemainingSeconds: number;
+  failedAttempts: number;
+  remainingAttempts: number;
+} {
+  const now = Date.now();
+  const isLocked = now < mfaLockoutUntil;
+  const lockoutRemainingSeconds = isLocked ? Math.ceil((mfaLockoutUntil - now) / 1000) : 0;
+  const timeSinceLastSent = now - lastMfaSentTimestamp;
+  const cooldownMs = mfaResendCooldownSeconds * 1000;
+  const resendCooldownRemainingSeconds =
+    lastMfaSentTimestamp > 0 && timeSinceLastSent < cooldownMs
+      ? Math.ceil((cooldownMs - timeSinceLastSent) / 1000)
+      : 0;
+
+  return {
+    isLocked,
+    lockoutRemainingSeconds,
+    resendCooldownRemainingSeconds,
+    failedAttempts: failedMfaAttempts,
+    remainingAttempts: Math.max(0, MAX_MFA_ATTEMPTS - failedMfaAttempts),
+  };
 }
 
 /**
@@ -134,29 +196,83 @@ export async function resetPassword(email: string): Promise<void> {
  */
 export async function sendMfaCode(_method: string): Promise<void> {
   assertMockAuthAllowed();
+  const now = Date.now();
+  if (now < mfaLockoutUntil) {
+    const mins = Math.ceil((mfaLockoutUntil - now) / 60000);
+    throw new Error(
+      `Too many failed attempts. Account is temporarily locked. Please try again in ${mins} minute(s).`
+    );
+  }
   await simulateDelay(500);
   pendingMfaCode = generateSixDigitCode();
+  lastMfaSentTimestamp = Date.now();
 }
 
-/** Mock MFA code re-send. Regenerates the one-time code. */
-export async function resendMfaCode(_method: string): Promise<void> {
+/**
+ * Mock MFA code re-send. Regenerates the one-time code subject to
+ * cooldown rate limiting.
+ */
+export async function resendMfaCode(
+  _method: string,
+  options?: { force?: boolean }
+): Promise<void> {
   assertMockAuthAllowed();
+  const now = Date.now();
+  if (now < mfaLockoutUntil) {
+    const mins = Math.ceil((mfaLockoutUntil - now) / 60000);
+    throw new Error(
+      `Too many failed attempts. Account is temporarily locked. Please try again in ${mins} minute(s).`
+    );
+  }
+
+  const cooldownMs = mfaResendCooldownSeconds * 1000;
+  const timeSinceLastSent = now - lastMfaSentTimestamp;
+  if (!options?.force && lastMfaSentTimestamp > 0 && timeSinceLastSent < cooldownMs) {
+    const remaining = Math.ceil((cooldownMs - timeSinceLastSent) / 1000);
+    throw new Error(`Please wait ${remaining}s before requesting a new code.`);
+  }
+
   await simulateDelay(500);
   pendingMfaCode = generateSixDigitCode();
+  lastMfaSentTimestamp = Date.now();
 }
 
 /**
  * Mock MFA verification. Only accepts the code that was previously
- * "sent"; the code is invalidated after a successful check. There is no
- * fixed or guessable code.
+ * "sent"; the code is invalidated after a successful check. Throttled
+ * with progressive attempt limits and lockout after MAX_MFA_ATTEMPTS.
  */
 export async function verifyMfa(code: string, _method: string): Promise<void> {
   assertMockAuthAllowed();
+  const now = Date.now();
+  if (now < mfaLockoutUntil) {
+    const mins = Math.ceil((mfaLockoutUntil - now) / 60000);
+    throw new Error(
+      `Too many failed attempts. Account is temporarily locked. Please try again in ${mins} minute(s).`
+    );
+  }
+  if (mfaLockoutUntil > 0 && now >= mfaLockoutUntil) {
+    failedMfaAttempts = 0;
+    mfaLockoutUntil = 0;
+  }
+
   await simulateDelay(1000);
 
   if (!pendingMfaCode || code !== pendingMfaCode) {
-    throw new Error('Invalid verification code');
+    failedMfaAttempts += 1;
+    if (failedMfaAttempts >= MAX_MFA_ATTEMPTS) {
+      mfaLockoutUntil = Date.now() + mfaLockoutSeconds * 1000;
+      throw new Error(
+        'Too many failed attempts. Account is temporarily locked. Please try again in 15 minutes.'
+      );
+    }
+    const remaining = MAX_MFA_ATTEMPTS - failedMfaAttempts;
+    throw new Error(`Invalid verification code. ${remaining} attempt(s) remaining.`);
   }
 
+  // Success: reset pending code and attempt counters
   pendingMfaCode = null;
+  failedMfaAttempts = 0;
+  mfaLockoutUntil = 0;
+  lastMfaSentTimestamp = 0;
 }

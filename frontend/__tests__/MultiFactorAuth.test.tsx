@@ -102,6 +102,49 @@ describe('MultiFactorAuth', () => {
     jest.useRealTimers();
   });
 
+  it('preserves resend cooldown when switching verification methods', async () => {
+    jest.useFakeTimers();
+    const onResendCode = jest.fn().mockResolvedValue(undefined);
+    render(
+      <MultiFactorAuth
+        onVerify={jest.fn()}
+        onBack={jest.fn()}
+        onResendCode={onResendCode}
+        userPhone="+1234567890"
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /resend/i }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByText(/Resend code in 60s/)).toBeInTheDocument();
+
+    // Switch to SMS method - cooldown should still be active
+    fireEvent.click(screen.getByRole('button', { name: /sms/i }));
+    expect(screen.getByText(/Resend code in 60s/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /resend/i })).toBeDisabled();
+    jest.useRealTimers();
+  });
+
+  it('disables form elements and renders lockout banner when isLocked is true', () => {
+    render(
+      <MultiFactorAuth
+        onVerify={jest.fn()}
+        onBack={jest.fn()}
+        onResendCode={jest.fn()}
+        isLocked={true}
+        lockoutMessage="Account is temporarily locked. Please try again in 15 minutes."
+      />
+    );
+    expect(screen.getByText('Account Temporarily Locked')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Account is temporarily locked\. Please try again in 15 minutes\./)
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/verification code/i)).toBeDisabled();
+    expect(screen.getByRole('button', { name: /resend/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /verify code/i })).toBeDisabled();
+  });
+
   it('calls onBack when the back button is clicked', () => {
     const onBack = jest.fn();
     render(<MultiFactorAuth onVerify={jest.fn()} onBack={onBack} onResendCode={jest.fn()} />);
