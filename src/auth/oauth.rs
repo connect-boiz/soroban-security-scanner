@@ -1,10 +1,10 @@
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use oauth2::{
-    basic::BasicClient, AuthUrl, ClientId, ClientSecret, CsrfToken, RedirectUrl, Scope,
-    TokenResponse, TokenUrl,
+    basic::BasicClient, AuthUrl, ClientId, ClientSecret, CsrfToken, PkceCodeChallenge,
+    PkceCodeVerifier, RedirectUrl, Scope, TokenResponse, TokenUrl,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -28,6 +28,15 @@ pub struct OAuthConfig {
     pub auth_url: String,
     pub token_url: String,
     pub scopes: Vec<String>,
+    #[serde(default)]
+    pub use_pkce: bool,
+}
+
+impl OAuthConfig {
+    pub fn with_pkce(mut self) -> Self {
+        self.use_pkce = true;
+        self
+    }
 }
 
 #[derive(Debug, Error)]
@@ -80,6 +89,7 @@ impl OAuthProvider {
                     "https://www.googleapis.com/auth/userinfo.email".to_string(),
                     "https://www.googleapis.com/auth/userinfo.profile".to_string(),
                 ],
+                use_pkce: false,
             },
             OAuthProvider::GitHub => OAuthConfig {
                 client_id: "".to_string(),
@@ -88,6 +98,7 @@ impl OAuthProvider {
                 auth_url: "https://github.com/login/oauth/authorize".to_string(),
                 token_url: "https://github.com/login/oauth/access_token".to_string(),
                 scopes: vec!["user:email".to_string()],
+                use_pkce: false,
             },
             OAuthProvider::Microsoft => OAuthConfig {
                 client_id: "".to_string(),
@@ -101,6 +112,7 @@ impl OAuthProvider {
                     "email".to_string(),
                     "profile".to_string(),
                 ],
+                use_pkce: false,
             },
             OAuthProvider::Discord => OAuthConfig {
                 client_id: "".to_string(),
@@ -109,6 +121,7 @@ impl OAuthProvider {
                 auth_url: "https://discord.com/api/oauth2/authorize".to_string(),
                 token_url: "https://discord.com/api/oauth2/token".to_string(),
                 scopes: vec!["identify".to_string(), "email".to_string()],
+                use_pkce: false,
             },
             OAuthProvider::Facebook => OAuthConfig {
                 client_id: "".to_string(),
@@ -117,23 +130,255 @@ impl OAuthProvider {
                 auth_url: "https://www.facebook.com/v18.0/dialog/oauth".to_string(),
                 token_url: "https://graph.facebook.com/v18.0/oauth/access_token".to_string(),
                 scopes: vec!["email".to_string(), "public_profile".to_string()],
+                use_pkce: false,
             },
         }
     }
 }
 
-/// A stored OAuth state token entry with expiry timing
-#[derive(Debug, Clone)]
-struct StateEntry {
-    provider: String,
-    expires_at: u64,
+/// A stored OAuth state token entry with expiry timing and optional PKCE verifier
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StateEntry {
+    pub provider: String,
+    pub expires_at: u64,
+    #[serde(default)]
+    pub pkce_verifier: Option<String>,
+}
+
+#[async_trait::async_trait]
+pub trait OAuthStateStore: Send + Sync {
+    async fn store_state(&self, state: &str, entry: StateEntry) -> Result<(), OAuthError>;
+    async fn validate_and_remove_state(&self, state: &str) -> Result<StateEntry, OAuthError>;
+    async fn cleanup_expired(&self) -> Result<usize, OAuthError>;
+}
+
+#[derive(Default)]
+pub struct InMemoryOAuthStateStore {
+    store: Mutex<HashMap<String, StateEntry>>,
+}
+
+impl InMemoryOAuthStateStore {
+    pub fn new() -> Self {
+        Self {
+            store: Mutex::new(HashMap::new()),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl OAuthStateStore for InMemoryOAuthStateStore {
+    async fn store_state(&self, state: &str, entry: StateEntry) -> Result<(), OAuthError> {
+        let mut store = self.store.lock().map_err(|e| {
+            OAuthError::ConfigError(format!("Failed to acquire state store lock: {}", e))
+        })?;
+        store.insert(state.to_string(), entry);
+        Ok(())
+    }
+
+    async fn validate_and_remove_state(&self, state: &str) -> Result<StateEntry, OAuthError> {
+        let mut store = self.store.lock().map_err(|e| {
+            OAuthError::ConfigError(format!("Failed to acquire state store lock: {}", e))
+        })?;
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        let entry = store.remove(state).ok_or(OAuthError::InvalidState)?;
+
+        if now > entry.expires_at {
+            return Err(OAuthError::InvalidState);
+        }
+
+        Ok(entry)
+    }
+
+    async fn cleanup_expired(&self) -> Result<usize, OAuthError> {
+        let mut store = self.store.lock().map_err(|e| {
+            OAuthError::ConfigError(format!("Failed to acquire state store lock: {}", e))
+        })?;
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        let before = store.len();
+        store.retain(|_, entry| entry.expires_at > now);
+        Ok(before - store.len())
+    }
+}
+
+#[cfg(feature = "redis-cache")]
+pub struct RedisOAuthStateStore {
+    client: redis::Client,
+    key_prefix: String,
+}
+
+#[cfg(feature = "redis-cache")]
+impl RedisOAuthStateStore {
+    pub fn new(client: redis::Client, key_prefix: String) -> Self {
+        Self { client, key_prefix }
+    }
+
+    fn state_key(&self, state: &str) -> String {
+        format!("{}:oauth:state:{}", self.key_prefix, state)
+    }
+}
+
+#[cfg(feature = "redis-cache")]
+#[async_trait::async_trait]
+impl OAuthStateStore for RedisOAuthStateStore {
+    async fn store_state(&self, state: &str, entry: StateEntry) -> Result<(), OAuthError> {
+        let mut conn = self
+            .client
+            .get_async_connection()
+            .await
+            .map_err(|e| OAuthError::NetworkError(format!("Redis connection failed: {}", e)))?;
+
+        let json = serde_json::to_string(&entry)
+            .map_err(|e| OAuthError::SerializationError(e.to_string()))?;
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        let ttl = entry.expires_at.saturating_sub(now).max(1);
+
+        redis::cmd("SETEX")
+            .arg(self.state_key(state))
+            .arg(ttl)
+            .arg(json)
+            .query_async::<_, ()>(&mut conn)
+            .await
+            .map_err(|e| OAuthError::NetworkError(format!("Redis setex failed: {}", e)))?;
+
+        Ok(())
+    }
+
+    async fn validate_and_remove_state(&self, state: &str) -> Result<StateEntry, OAuthError> {
+        let mut conn = self
+            .client
+            .get_async_connection()
+            .await
+            .map_err(|e| OAuthError::NetworkError(format!("Redis connection failed: {}", e)))?;
+
+        let key = self.state_key(state);
+
+        let script = r#"
+            local val = redis.call('GET', KEYS[1])
+            if val then
+                redis.call('DEL', KEYS[1])
+            end
+            return val
+        "#;
+
+        let json_opt: Option<String> = redis::Script::new(script)
+            .key(&key)
+            .invoke_async(&mut conn)
+            .await
+            .map_err(|e| OAuthError::NetworkError(format!("Redis script failed: {}", e)))?;
+
+        let json = json_opt.ok_or(OAuthError::InvalidState)?;
+        let entry: StateEntry = serde_json::from_str(&json)
+            .map_err(|e| OAuthError::SerializationError(e.to_string()))?;
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        if now > entry.expires_at {
+            return Err(OAuthError::InvalidState);
+        }
+
+        Ok(entry)
+    }
+
+    async fn cleanup_expired(&self) -> Result<usize, OAuthError> {
+        Ok(0)
+    }
+}
+
+pub struct SignedOAuthStateStore {
+    secret: Vec<u8>,
+}
+
+impl SignedOAuthStateStore {
+    pub fn new(secret: impl Into<Vec<u8>>) -> Self {
+        Self {
+            secret: secret.into(),
+        }
+    }
+
+    pub fn generate_signed_state(&self, entry: &StateEntry) -> Result<String, OAuthError> {
+        use base64::Engine;
+        let json_bytes = serde_json::to_vec(entry)
+            .map_err(|e| OAuthError::SerializationError(e.to_string()))?;
+        let hmac_hex = self.compute_hmac(&json_bytes);
+        let encoded_payload = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&json_bytes);
+        Ok(format!("{}.{}", encoded_payload, hmac_hex))
+    }
+
+    fn compute_hmac(&self, data: &[u8]) -> String {
+        use hmac::{Hmac, Mac};
+        use sha2::Sha256;
+        let mut mac = Hmac::<Sha256>::new_from_slice(&self.secret).expect("HMAC can take any key length");
+        mac.update(data);
+        hex::encode(mac.finalize().into_bytes())
+    }
+}
+
+#[async_trait::async_trait]
+impl OAuthStateStore for SignedOAuthStateStore {
+    async fn store_state(&self, _state: &str, _entry: StateEntry) -> Result<(), OAuthError> {
+        Ok(())
+    }
+
+    async fn validate_and_remove_state(&self, state: &str) -> Result<StateEntry, OAuthError> {
+        use base64::Engine;
+        let parts: Vec<&str> = state.split('.').collect();
+        if parts.len() != 2 {
+            return Err(OAuthError::InvalidState);
+        }
+
+        let json_bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(parts[0])
+            .map_err(|_| OAuthError::InvalidState)?;
+
+        let expected_hmac = self.compute_hmac(&json_bytes);
+        if parts[1] != expected_hmac {
+            return Err(OAuthError::InvalidState);
+        }
+
+        let entry: StateEntry = serde_json::from_slice(&json_bytes)
+            .map_err(|_| OAuthError::InvalidState)?;
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        if now > entry.expires_at {
+            return Err(OAuthError::InvalidState);
+        }
+
+        Ok(entry)
+    }
+
+    async fn cleanup_expired(&self) -> Result<usize, OAuthError> {
+        Ok(0)
+    }
 }
 
 /// OAuth service for managing social login integrations
 pub struct OAuthService {
     clients: HashMap<String, BasicClient>,
     configs: HashMap<String, OAuthConfig>,
-    state_store: Mutex<HashMap<String, StateEntry>>,
+    pub(crate) state_store: Mutex<HashMap<String, StateEntry>>,
+    custom_state_store: Option<Arc<dyn OAuthStateStore>>,
 }
 
 impl Default for OAuthService {
@@ -151,7 +396,22 @@ impl OAuthService {
             clients: HashMap::new(),
             configs: HashMap::new(),
             state_store: Mutex::new(HashMap::new()),
+            custom_state_store: None,
         }
+    }
+
+    pub fn with_state_store(mut self, custom_state_store: Arc<dyn OAuthStateStore>) -> Self {
+        self.custom_state_store = Some(custom_state_store);
+        self
+    }
+
+    #[cfg(feature = "redis-cache")]
+    pub fn with_redis_store(self, client: redis::Client, key_prefix: String) -> Self {
+        self.with_state_store(Arc::new(RedisOAuthStateStore::new(client, key_prefix)))
+    }
+
+    pub fn with_signed_state(self, secret: impl Into<Vec<u8>>) -> Self {
+        self.with_state_store(Arc::new(SignedOAuthStateStore::new(secret)))
     }
 
     pub fn add_provider(
@@ -182,6 +442,67 @@ impl OAuthService {
     }
 
     pub fn get_authorization_url(&self, provider: &str) -> Result<(String, CsrfToken), OAuthError> {
+        let config = self.configs.get(provider).ok_or_else(|| {
+            OAuthError::ConfigError(format!("Provider {} config not found", provider))
+        })?;
+
+        if config.use_pkce {
+            let (url, csrf_token, _) = self.get_authorization_url_with_pkce(provider)?;
+            Ok((url, csrf_token))
+        } else {
+            let (url, csrf_token, _) = self.generate_auth_url(provider, false)?;
+            self.store_state(provider, csrf_token.secret())?;
+            Ok((url, csrf_token))
+        }
+    }
+
+    pub fn get_authorization_url_with_pkce(
+        &self,
+        provider: &str,
+    ) -> Result<(String, CsrfToken, PkceCodeVerifier), OAuthError> {
+        let (url, csrf_token, pkce_verifier) = self.generate_auth_url(provider, true)?;
+        let verifier = pkce_verifier.ok_or_else(|| {
+            OAuthError::ConfigError("Failed to generate PKCE verifier".to_string())
+        })?;
+        self.store_state_with_pkce(provider, csrf_token.secret(), Some(verifier.secret().clone()))?;
+        Ok((url, csrf_token, verifier))
+    }
+
+    pub async fn get_authorization_url_async(
+        &self,
+        provider: &str,
+    ) -> Result<(String, CsrfToken), OAuthError> {
+        let config = self.configs.get(provider).ok_or_else(|| {
+            OAuthError::ConfigError(format!("Provider {} config not found", provider))
+        })?;
+
+        if config.use_pkce {
+            let (url, csrf_token, _) = self.get_authorization_url_with_pkce_async(provider).await?;
+            Ok((url, csrf_token))
+        } else {
+            let (url, csrf_token, _) = self.generate_auth_url(provider, false)?;
+            self.store_state_async(provider, csrf_token.secret(), None).await?;
+            Ok((url, csrf_token))
+        }
+    }
+
+    pub async fn get_authorization_url_with_pkce_async(
+        &self,
+        provider: &str,
+    ) -> Result<(String, CsrfToken, PkceCodeVerifier), OAuthError> {
+        let (url, csrf_token, pkce_verifier) = self.generate_auth_url(provider, true)?;
+        let verifier = pkce_verifier.ok_or_else(|| {
+            OAuthError::ConfigError("Failed to generate PKCE verifier".to_string())
+        })?;
+        self.store_state_async(provider, csrf_token.secret(), Some(verifier.secret().clone())).await?;
+        Ok((url, csrf_token, verifier))
+    }
+
+    fn generate_auth_url(
+        &self,
+        provider: &str,
+        use_pkce: bool,
+    ) -> Result<(String, CsrfToken, Option<PkceCodeVerifier>), OAuthError> {
         let client = self.clients.get(provider).ok_or_else(|| {
             OAuthError::ConfigError(format!("Provider {} not configured", provider))
         })?;
@@ -196,16 +517,30 @@ impl OAuthService {
             auth_request = auth_request.add_scope(Scope::new(scope.clone()));
         }
 
+        let pkce_verifier = if use_pkce || config.use_pkce {
+            let (challenge, verifier) = PkceCodeChallenge::new_random_sha256();
+            auth_request = auth_request.set_pkce_challenge(challenge);
+            Some(verifier)
+        } else {
+            None
+        };
+
         let (auth_url, csrf_token) = auth_request.url();
 
-        // Store the CSRF token in the state store for later validation
-        self.store_state(provider, csrf_token.secret())?;
-
-        Ok((auth_url.to_string(), csrf_token))
+        Ok((auth_url.to_string(), csrf_token, pkce_verifier))
     }
 
     /// Store a state token so it can be validated on callback
-    fn store_state(&self, provider: &str, state: &str) -> Result<(), OAuthError> {
+    pub fn store_state(&self, provider: &str, state: &str) -> Result<(), OAuthError> {
+        self.store_state_with_pkce(provider, state, None)
+    }
+
+    pub fn store_state_with_pkce(
+        &self,
+        provider: &str,
+        state: &str,
+        pkce_verifier: Option<String>,
+    ) -> Result<(), OAuthError> {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
@@ -214,6 +549,7 @@ impl OAuthService {
         let entry = StateEntry {
             provider: provider.to_string(),
             expires_at: now + Self::STATE_TTL_SECONDS,
+            pkce_verifier,
         };
 
         let mut store = self.state_store.lock().map_err(|e| {
@@ -224,8 +560,39 @@ impl OAuthService {
         Ok(())
     }
 
+    async fn store_state_async(
+        &self,
+        provider: &str,
+        state: &str,
+        pkce_verifier: Option<String>,
+    ) -> Result<(), OAuthError> {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        let entry = StateEntry {
+            provider: provider.to_string(),
+            expires_at: now + Self::STATE_TTL_SECONDS,
+            pkce_verifier: pkce_verifier.clone(),
+        };
+
+        if let Some(ref custom_store) = self.custom_state_store {
+            custom_store.store_state(state, entry).await?;
+        } else {
+            self.store_state_with_pkce(provider, state, pkce_verifier)?;
+        }
+
+        Ok(())
+    }
+
     /// Validate that a state token exists and has not expired
-    fn validate_state(&self, state: &str) -> Result<String, OAuthError> {
+    pub fn validate_state(&self, state: &str) -> Result<String, OAuthError> {
+        let entry = self.validate_state_entry(state)?;
+        Ok(entry.provider)
+    }
+
+    pub fn validate_state_entry(&self, state: &str) -> Result<StateEntry, OAuthError> {
         let mut store = self.state_store.lock().map_err(|e| {
             OAuthError::ConfigError(format!("Failed to acquire state store lock: {}", e))
         })?;
@@ -241,7 +608,14 @@ impl OAuthService {
             return Err(OAuthError::InvalidState);
         }
 
-        Ok(entry.provider)
+        Ok(entry)
+    }
+
+    pub async fn validate_state_async(&self, state: &str) -> Result<StateEntry, OAuthError> {
+        if let Some(ref custom) = self.custom_state_store {
+            return custom.validate_and_remove_state(state).await;
+        }
+        self.validate_state_entry(state)
     }
 
     /// Clean up expired state tokens
@@ -262,6 +636,14 @@ impl OAuthService {
         Ok(cleaned)
     }
 
+    pub async fn cleanup_expired_states_async(&self) -> Result<usize, OAuthError> {
+        let mut cleaned = self.cleanup_expired_states()?;
+        if let Some(ref custom) = self.custom_state_store {
+            cleaned += custom.cleanup_expired().await?;
+        }
+        Ok(cleaned)
+    }
+
     pub async fn exchange_code_for_token(
         &self,
         provider: &str,
@@ -269,10 +651,42 @@ impl OAuthService {
         state: &str,
     ) -> Result<OAuthUserInfo, OAuthError> {
         // Validate the state parameter to prevent CSRF attacks
-        let stored_provider = self.validate_state(state)?;
+        let entry = self.validate_state_async(state).await?;
 
         // Ensure the state belongs to the expected provider
-        if stored_provider != provider {
+        if entry.provider != provider {
+            return Err(OAuthError::InvalidState);
+        }
+
+        let client = self.clients.get(provider).ok_or_else(|| {
+            OAuthError::ConfigError(format!("Provider {} not configured", provider))
+        })?;
+
+        let mut req = client.exchange_code(oauth2::AuthorizationCode::new(code.to_string()));
+        if let Some(ref verifier_secret) = entry.pkce_verifier {
+            req = req.set_pkce_verifier(PkceCodeVerifier::new(verifier_secret.clone()));
+        }
+
+        let token_response = req
+            .request_async(oauth2::reqwest::async_http_client)
+            .await
+            .map_err(|e| OAuthError::TokenError(format!("Failed to exchange code: {}", e)))?;
+
+        let access_token = token_response.access_token().secret();
+        let user_info = self.get_user_info(provider, access_token).await?;
+
+        Ok(user_info)
+    }
+
+    pub async fn exchange_code_for_token_with_pkce(
+        &self,
+        provider: &str,
+        code: &str,
+        state: &str,
+        pkce_verifier: PkceCodeVerifier,
+    ) -> Result<OAuthUserInfo, OAuthError> {
+        let entry = self.validate_state_async(state).await?;
+        if entry.provider != provider {
             return Err(OAuthError::InvalidState);
         }
 
@@ -282,6 +696,7 @@ impl OAuthService {
 
         let token_response = client
             .exchange_code(oauth2::AuthorizationCode::new(code.to_string()))
+            .set_pkce_verifier(pkce_verifier)
             .request_async(oauth2::reqwest::async_http_client)
             .await
             .map_err(|e| OAuthError::TokenError(format!("Failed to exchange code: {}", e)))?;
@@ -366,6 +781,7 @@ impl OAuthService {
             .await
             .map_err(|e| OAuthError::SerializationError(e.to_string()))?;
 
+        let has_verified = emails.iter().any(|e| e.verified && !e.email.is_empty());
         let primary_email = emails
             .iter()
             .find(|email| email.primary && email.verified)
@@ -380,7 +796,7 @@ impl OAuthService {
             username: Some(user_data.login),
             avatar_url: user_data.avatar_url,
             provider: "github".to_string(),
-            verified: true, // GitHub OAuth requires verified email
+            verified: has_verified,
         })
     }
 
@@ -401,14 +817,19 @@ impl OAuthService {
             .await
             .map_err(|e| OAuthError::SerializationError(e.to_string()))?;
 
+        // In Microsoft Graph, `mail` is the provisioned/verified mailbox address.
+        // If `mail` is missing, user_principal_name is an unconfirmed or tenant-generated UPN.
+        let is_verified = user_data.mail.is_some();
+        let email = user_data.mail.unwrap_or(user_data.user_principal_name);
+
         Ok(OAuthUserInfo {
             id: user_data.id,
-            email: user_data.mail.unwrap_or(user_data.user_principal_name),
+            email,
             name: user_data.display_name,
             username: None,
             avatar_url: None,
             provider: "microsoft".to_string(),
-            verified: true,
+            verified: is_verified,
         })
     }
 
@@ -426,6 +847,9 @@ impl OAuthService {
             .await
             .map_err(|e| OAuthError::SerializationError(e.to_string()))?;
 
+        let has_email = user_data.email.as_ref().map(|e| !e.is_empty()).unwrap_or(false);
+        let is_verified = user_data.verified.unwrap_or(false) && has_email;
+
         Ok(OAuthUserInfo {
             id: user_data.id.clone(),
             email: user_data.email.unwrap_or_default(),
@@ -440,7 +864,7 @@ impl OAuthService {
                 user_data.avatar.unwrap_or_default()
             )),
             provider: "discord".to_string(),
-            verified: user_data.verified,
+            verified: is_verified,
         })
     }
 
@@ -452,7 +876,7 @@ impl OAuthService {
         let response = client
             .get("https://graph.facebook.com/me")
             .query(&[
-                ("fields", "id,name,email,picture"),
+                ("fields", "id,name,email,picture,verified"),
                 ("access_token", access_token),
             ])
             .send()
@@ -464,6 +888,9 @@ impl OAuthService {
             .await
             .map_err(|e| OAuthError::SerializationError(e.to_string()))?;
 
+        let has_email = user_data.email.as_ref().map(|e| !e.is_empty()).unwrap_or(false);
+        let is_verified = user_data.verified.unwrap_or(false) && has_email;
+
         Ok(OAuthUserInfo {
             id: user_data.id,
             email: user_data.email.unwrap_or_default(),
@@ -471,7 +898,7 @@ impl OAuthService {
             username: None,
             avatar_url: user_data.picture.map(|p| p.data.url),
             provider: "facebook".to_string(),
-            verified: true,
+            verified: is_verified,
         })
     }
 
@@ -512,8 +939,10 @@ struct GitHubEmail {
 #[derive(Deserialize)]
 struct MicrosoftUserInfo {
     id: String,
+    #[serde(alias = "displayName")]
     display_name: Option<String>,
     mail: Option<String>,
+    #[serde(alias = "userPrincipalName")]
     user_principal_name: String,
 }
 
@@ -524,7 +953,8 @@ struct DiscordUserInfo {
     discriminator: String,
     email: Option<String>,
     avatar: Option<String>,
-    verified: bool,
+    #[serde(default)]
+    verified: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -533,6 +963,8 @@ struct FacebookUserInfo {
     name: Option<String>,
     email: Option<String>,
     picture: Option<FacebookPicture>,
+    #[serde(default)]
+    verified: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -658,6 +1090,7 @@ mod tests {
                 StateEntry {
                     provider: "google".to_string(),
                     expires_at: past + 1, // expired 3599 seconds ago
+                    pkce_verifier: None,
                 },
             );
         }
@@ -688,6 +1121,7 @@ mod tests {
                 StateEntry {
                     provider: "google".to_string(),
                     expires_at: now - 1800,
+                    pkce_verifier: None,
                 },
             );
             store.insert(
@@ -695,6 +1129,7 @@ mod tests {
                 StateEntry {
                     provider: "github".to_string(),
                     expires_at: now - 3600,
+                    pkce_verifier: None,
                 },
             );
 
@@ -704,6 +1139,7 @@ mod tests {
                 StateEntry {
                     provider: "google".to_string(),
                     expires_at: now + 600,
+                    pkce_verifier: None,
                 },
             );
         }
@@ -736,6 +1172,7 @@ mod tests {
                 StateEntry {
                     provider: "google".to_string(),
                     expires_at: past + 1,
+                    pkce_verifier: None,
                 },
             );
         }
@@ -748,13 +1185,14 @@ mod tests {
     fn test_get_authorization_url_stores_state() {
         let mut service = OAuthService::new();
 
-        let mut config = OAuthConfig {
+        let config = OAuthConfig {
             client_id: "test-client-id".to_string(),
             client_secret: "test-client-secret".to_string(),
             redirect_url: "http://localhost:3000/callback".to_string(),
             auth_url: "https://accounts.google.com/o/oauth2/v2/auth".to_string(),
             token_url: "https://oauth2.googleapis.com/token".to_string(),
             scopes: vec!["email".to_string()],
+            use_pkce: false,
         };
 
         service.add_provider(OAuthProvider::Google, config).unwrap();
@@ -765,5 +1203,159 @@ mod tests {
         // The CSRF token should now be stored and validatable
         let provider = service.validate_state(csrf_token.secret()).unwrap();
         assert_eq!(provider, "google");
+    }
+
+    #[tokio::test]
+    async fn test_pkce_authorization_url_generation() {
+        let mut service = OAuthService::new();
+        let config = OAuthProvider::Google
+            .default_config()
+            .with_pkce();
+
+        service.add_provider(OAuthProvider::Google, config).unwrap();
+
+        // Calling get_authorization_url on a PKCE-enabled config generates challenge
+        let (url, csrf) = service.get_authorization_url("google").unwrap();
+        assert!(url.contains("code_challenge="));
+        assert!(url.contains("code_challenge_method=S256"));
+
+        // Validate state returns Google and cleans up state
+        let provider = service.validate_state(csrf.secret()).unwrap();
+        assert_eq!(provider, "google");
+
+        // Also test get_authorization_url_with_pkce
+        let (pkce_url, pkce_csrf, verifier) = service.get_authorization_url_with_pkce("google").unwrap();
+        assert!(pkce_url.contains("code_challenge="));
+        assert!(!verifier.secret().is_empty());
+        assert_eq!(service.validate_state(pkce_csrf.secret()).unwrap(), "google");
+    }
+
+    #[tokio::test]
+    async fn test_signed_oauth_state_store_flow() {
+        let store = SignedOAuthStateStore::new("super-secure-secret-key-12345");
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        let entry = StateEntry {
+            provider: "github".to_string(),
+            expires_at: now + 300,
+            pkce_verifier: Some("test-verifier-xyz".to_string()),
+        };
+
+        let signed_token = store.generate_signed_state(&entry).unwrap();
+        assert!(signed_token.contains('.'));
+
+        // Validate token
+        let validated = store.validate_and_remove_state(&signed_token).await.unwrap();
+        assert_eq!(validated.provider, "github");
+        assert_eq!(validated.pkce_verifier, Some("test-verifier-xyz".to_string()));
+
+        // Tamper with payload
+        let parts: Vec<&str> = signed_token.split('.').collect();
+        let tampered_token = format!("{}tampered.{}", parts[0], parts[1]);
+        assert!(matches!(
+            store.validate_and_remove_state(&tampered_token).await,
+            Err(OAuthError::InvalidState)
+        ));
+
+        // Tamper with signature
+        let tampered_sig = format!("{}.{}", parts[0], "00".repeat(32));
+        assert!(matches!(
+            store.validate_and_remove_state(&tampered_sig).await,
+            Err(OAuthError::InvalidState)
+        ));
+
+        // Expired token
+        let expired_entry = StateEntry {
+            provider: "github".to_string(),
+            expires_at: now - 10,
+            pkce_verifier: None,
+        };
+        let expired_token = store.generate_signed_state(&expired_entry).unwrap();
+        assert!(matches!(
+            store.validate_and_remove_state(&expired_token).await,
+            Err(OAuthError::InvalidState)
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_in_memory_state_store_expiration_and_removal() {
+        let store = InMemoryOAuthStateStore::new();
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        store
+            .store_state(
+                "token1",
+                StateEntry {
+                    provider: "discord".to_string(),
+                    expires_at: now + 300,
+                    pkce_verifier: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        store
+            .store_state(
+                "token2",
+                StateEntry {
+                    provider: "microsoft".to_string(),
+                    expires_at: now - 50,
+                    pkce_verifier: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        // token1 valid
+        let res1 = store.validate_and_remove_state("token1").await.unwrap();
+        assert_eq!(res1.provider, "discord");
+
+        // replay token1 fails
+        assert!(matches!(
+            store.validate_and_remove_state("token1").await,
+            Err(OAuthError::InvalidState)
+        ));
+
+        // token2 expired
+        assert!(matches!(
+            store.validate_and_remove_state("token2").await,
+            Err(OAuthError::InvalidState)
+        ));
+    }
+
+    #[test]
+    fn test_provider_verification_parsing() {
+        // Facebook user info deserialization
+        let fb_verified_json = r#"{"id":"123","name":"Alice","email":"alice@fb.com","verified":true}"#;
+        let fb_verified: FacebookUserInfo = serde_json::from_str(fb_verified_json).unwrap();
+        assert_eq!(fb_verified.verified, Some(true));
+
+        let fb_unverified_json = r#"{"id":"124","name":"Bob","email":"bob@fb.com","verified":false}"#;
+        let fb_unverified: FacebookUserInfo = serde_json::from_str(fb_unverified_json).unwrap();
+        assert_eq!(fb_unverified.verified, Some(false));
+
+        // Discord user info deserialization
+        let discord_verified_json = r#"{"id":"456","username":"alice","discriminator":"0001","email":"alice@discord.com","verified":true}"#;
+        let discord_verified: DiscordUserInfo = serde_json::from_str(discord_verified_json).unwrap();
+        assert_eq!(discord_verified.verified, Some(true));
+
+        let discord_unverified_json = r#"{"id":"457","username":"bob","discriminator":"0002","email":"bob@discord.com","verified":false}"#;
+        let discord_unverified: DiscordUserInfo = serde_json::from_str(discord_unverified_json).unwrap();
+        assert_eq!(discord_unverified.verified, Some(false));
+
+        // Microsoft user info deserialization
+        let ms_with_mail_json = r#"{"id":"789","displayName":"Charlie","mail":"charlie@ms.com","userPrincipalName":"charlie@ms.com"}"#;
+        let ms_with_mail: MicrosoftUserInfo = serde_json::from_str(ms_with_mail_json).unwrap();
+        assert!(ms_with_mail.mail.is_some());
+
+        let ms_no_mail_json = r#"{"id":"790","displayName":"Dave","mail":null,"userPrincipalName":"dave@ms.com"}"#;
+        let ms_no_mail: MicrosoftUserInfo = serde_json::from_str(ms_no_mail_json).unwrap();
+        assert!(ms_no_mail.mail.is_none());
     }
 }
