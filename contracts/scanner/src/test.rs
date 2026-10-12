@@ -20,7 +20,7 @@ fn setup() -> TestContext<'static> {
 
     let admin = Address::generate(&env);
     let issuer = Address::generate(&env);
-    let token_contract = env.register_stellar_asset_contract(issuer.clone());
+    let token_contract = env.register_stellar_asset_contract_v2(issuer.clone());
     let token_id = token_contract.address();
     let token = token::Client::new(&env, &token_id);
     let token_admin = token::StellarAssetClient::new(&env, &token_id);
@@ -76,7 +76,7 @@ fn initialize_rejects_default_admin() {
     env.mock_all_auths();
 
     let issuer = Address::generate(&env);
-    let token_contract = env.register_stellar_asset_contract(issuer.clone());
+    let token_contract = env.register_stellar_asset_contract_v2(issuer.clone());
     let token_id = token_contract.address();
     let contract_id = env.register(SecurityScannerContract, ());
     let client = SecurityScannerContractClient::new(&env, &contract_id);
@@ -122,7 +122,7 @@ fn initialize_cannot_be_called_twice() {
 fn error_codes_are_structured_and_roundtrip() {
     // The error space scales to 200 distinct codes.
     assert_eq!(ContractError::MAX_ERROR_CODE, 200);
-    assert_eq!(ContractError::COUNT, 30);
+    assert_eq!(ContractError::COUNT, 31);
 
     // Every variant maps to a stable domain-grouped code...
     assert_eq!(ContractError::Unauthorized.code(), 1);
@@ -146,6 +146,7 @@ fn error_codes_are_structured_and_roundtrip() {
     assert_eq!(ContractError::EmergencyModeActive.code(), 140);
     assert_eq!(ContractError::AlreadyVerified.code(), 141);
     assert_eq!(ContractError::Overflow.code(), 160);
+    assert_eq!(ContractError::ReentrancyDetected.code(), 162);
 
     // ...and the reverse mapping round-trips every assigned code.
     let mut seen = 0u32;
@@ -1105,4 +1106,81 @@ fn get_proposal_not_found() {
         ctx.client.try_get_proposal(&999),
         Err(Ok(ContractError::ProposalNotFound))
     );
+}
+
+#[test]
+fn escrow_release_and_refund_enforce_reentrancy_lock() {
+    let ctx = setup();
+    let depositor = ctx.admin.clone();
+    let beneficiary = Address::generate(&ctx.env);
+    ctx.token_admin.mint(&depositor, &500_000);
+
+    let escrow_id = ctx.client.create_escrow(
+        &depositor,
+        &beneficiary,
+        &100_000,
+        &symbol_short!("bounty"),
+        &0,
+        &None,
+    );
+
+    ctx.client
+        .mark_escrow_conditions_met(&escrow_id, &ctx.admin);
+
+    // Simulate an active reentrancy lock in contract storage
+    ctx.env.as_contract(&ctx.contract_id, || {
+        ctx.env.storage().instance().set(&REENTRANCY_GUARD, &true);
+    });
+
+    let res = ctx.client.try_release_escrow(&escrow_id, &depositor, &None);
+    assert_eq!(res, Err(Ok(ContractError::ReentrancyDetected)));
+
+    // Unlock
+    ctx.env.as_contract(&ctx.contract_id, || {
+        ctx.env.storage().instance().set(&REENTRANCY_GUARD, &false);
+    });
+
+    // Release succeeds
+    ctx.client.release_escrow(&escrow_id, &depositor, &None);
+    let escrow = ctx.client.get_escrow(&escrow_id);
+    assert_eq!(escrow.status, STATUS_RELEASED);
+    assert_eq!(ctx.token.balance(&beneficiary), 100_000);
+}
+
+#[test]
+fn escrow_refund_enforces_reentrancy_lock() {
+    let ctx = setup();
+    let depositor = ctx.admin.clone();
+    let beneficiary = Address::generate(&ctx.env);
+    ctx.token_admin.mint(&depositor, &500_000);
+
+    let now = ctx.env.ledger().timestamp();
+    let escrow_id = ctx.client.create_escrow(
+        &depositor,
+        &beneficiary,
+        &100_000,
+        &symbol_short!("bounty"),
+        &1000,
+        &None,
+    );
+
+    ctx.env.ledger().set_timestamp(now + 1001);
+
+    // Simulate an active reentrancy lock in contract storage
+    ctx.env.as_contract(&ctx.contract_id, || {
+        ctx.env.storage().instance().set(&REENTRANCY_GUARD, &true);
+    });
+
+    let res = ctx.client.try_refund_escrow(&escrow_id, &depositor);
+    assert_eq!(res, Err(Ok(ContractError::ReentrancyDetected)));
+
+    // Unlock
+    ctx.env.as_contract(&ctx.contract_id, || {
+        ctx.env.storage().instance().set(&REENTRANCY_GUARD, &false);
+    });
+
+    ctx.client.refund_escrow(&escrow_id, &depositor);
+    let escrow = ctx.client.get_escrow(&escrow_id);
+    assert_eq!(escrow.status, STATUS_REFUNDED);
+    assert_eq!(ctx.token.balance(&depositor), 500_000);
 }

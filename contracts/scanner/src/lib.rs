@@ -27,6 +27,7 @@ const ALERT_COUNTER: Symbol = symbol_short!("ALRTCTR");
 const REPORT_NONCES: Symbol = symbol_short!("RPTNONC");
 const ESCROW_NONCES: Symbol = symbol_short!("ESCNONC");
 const ALERT_NONCES: Symbol = symbol_short!("ALRNONC");
+const REENTRANCY_GUARD: Symbol = symbol_short!("REENT_LK");
 const MAX_TEXT_LEN: u32 = 280;
 
 // Enum-like values are stored as `Symbol`s instead of `String`s. Symbols are
@@ -158,6 +159,7 @@ pub enum ContractError {
     SignatureMissing = 28,
     SignatureInvalid = 29,
     ZeroAmount = 30,
+    ReentrancyDetected = 31,
 }
 
 impl ContractError {
@@ -165,7 +167,7 @@ impl ContractError {
     pub const MAX_ERROR_CODE: u32 = 200;
 
     /// Number of distinct failure states currently defined.
-    pub const COUNT: u32 = 30;
+    pub const COUNT: u32 = 31;
 
     /// Map a failure state to its structured numerical code (`1..=200`).
     /// Codes are stable: adding new errors never renumbers existing ones.
@@ -210,6 +212,7 @@ impl ContractError {
             // Arithmetic (160-179)
             ContractError::Overflow => 160,
             ContractError::ExternalCallFailed => 161,
+            ContractError::ReentrancyDetected => 162,
         }
     }
 
@@ -247,6 +250,7 @@ impl ContractError {
             141 => ContractError::AlreadyVerified,
             160 => ContractError::Overflow,
             161 => ContractError::ExternalCallFailed,
+            162 => ContractError::ReentrancyDetected,
             _ => return None,
         })
     }
@@ -433,6 +437,23 @@ impl SecurityScannerContract {
             return Ok(0);
         }
         u64::try_from(value).map_err(|_| ContractError::Overflow)
+    }
+
+    fn acquire_reentrancy_lock(env: &Env) -> Result<(), ContractError> {
+        let is_locked: bool = env
+            .storage()
+            .instance()
+            .get(&REENTRANCY_GUARD)
+            .unwrap_or(false);
+        if is_locked {
+            return Err(ContractError::ReentrancyDetected);
+        }
+        env.storage().instance().set(&REENTRANCY_GUARD, &true);
+        Ok(())
+    }
+
+    fn release_reentrancy_lock(env: &Env) {
+        env.storage().instance().set(&REENTRANCY_GUARD, &false);
     }
 
     fn next_counter(env: &Env, key: Symbol) -> Result<u64, ContractError> {
@@ -679,6 +700,16 @@ impl SecurityScannerContract {
             (escrow_id, recipient.clone(), amount),
         );
         Ok(())
+    }
+
+    #[allow(dead_code)]
+    fn execute_payout_placeholder(
+        env: &Env,
+        recipient: &Address,
+        amount: i128,
+        escrow_id: u64,
+    ) -> Result<(), ContractError> {
+        Self::execute_payout(env, recipient, amount, escrow_id)
     }
 
     /// Initialize the contract with admin address and payment token
@@ -1167,8 +1198,11 @@ impl SecurityScannerContract {
 
         let verified_signature = Self::verify_release_signature(env, &escrow, release_signature)?;
 
-        Self::execute_payout(env, &escrow.beneficiary, escrow.amount, escrow_id)?;
+        // Acquire reentrancy guard
+        Self::acquire_reentrancy_lock(env)?;
 
+        // CHECKS-EFFECTS-INTERACTIONS:
+        // Update state and pool BEFORE performing the external token transfer
         escrow.status = STATUS_RELEASED;
         escrow.release_signature = verified_signature;
         escrows.set(escrow_id, escrow.clone());
@@ -1178,7 +1212,13 @@ impl SecurityScannerContract {
         escrow_pool = Self::checked_sub_i128(escrow_pool, escrow.amount)?;
         env.storage().instance().set(&ESCROW, &escrow_pool);
 
-        Ok(())
+        // Interaction: execute SAC token transfer to beneficiary
+        let payout_res = Self::execute_payout(env, &escrow.beneficiary, escrow.amount, escrow_id);
+
+        // Release reentrancy guard
+        Self::release_reentrancy_lock(env);
+
+        payout_res
     }
 
     /// Release escrow funds to beneficiary
@@ -1230,9 +1270,11 @@ impl SecurityScannerContract {
             return Err(ContractError::EscrowLocked);
         }
 
-        Self::execute_payout(&env, &escrow.depositor, escrow.amount, escrow_id)?;
+        // Acquire reentrancy guard
+        Self::acquire_reentrancy_lock(&env)?;
 
-        // Update escrow status
+        // CHECKS-EFFECTS-INTERACTIONS:
+        // Update escrow status & pool BEFORE external transfer
         escrow.status = STATUS_REFUNDED;
         escrows.set(escrow_id, escrow.clone());
         env.storage().instance().set(&ESCROWS, &escrows);
@@ -1242,7 +1284,13 @@ impl SecurityScannerContract {
         escrow_pool = Self::checked_sub_i128(escrow_pool, escrow.amount)?;
         env.storage().instance().set(&ESCROW, &escrow_pool);
 
-        Ok(())
+        // Interaction: execute SAC token transfer back to depositor
+        let payout_res = Self::execute_payout(&env, &escrow.depositor, escrow.amount, escrow_id);
+
+        // Release reentrancy guard
+        Self::release_reentrancy_lock(&env);
+
+        payout_res
     }
 
     /// Mark escrow conditions as met (requires EscrowManager role)
