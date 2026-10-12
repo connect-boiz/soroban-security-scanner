@@ -17,6 +17,8 @@ pub struct CacheStats {
     pub loads: u64,
     /// Misses that were absorbed by stampede protection (waited for an in-flight load).
     pub stampede_avoided: u64,
+    /// Stampede events prevented during the cold-start cache warming phase.
+    pub cache_warm_stampede_events: u64,
     /// Invalidations performed.
     pub invalidations: u64,
 }
@@ -45,6 +47,7 @@ pub struct CacheMonitor {
     misses: AtomicU64,
     loads: AtomicU64,
     stampede_avoided: AtomicU64,
+    cache_warm_stampede_events: AtomicU64,
     invalidations: AtomicU64,
 }
 
@@ -74,6 +77,11 @@ impl CacheMonitor {
         self.stampede_avoided.fetch_add(1, Ordering::Relaxed);
     }
 
+    /// Records a stampede event prevented during cache warming / cold start.
+    pub fn record_warm_stampede_event(&self) {
+        self.cache_warm_stampede_events.fetch_add(1, Ordering::Relaxed);
+    }
+
     /// Records an invalidation.
     pub fn record_invalidation(&self, count: u64) {
         self.invalidations.fetch_add(count, Ordering::Relaxed);
@@ -86,6 +94,7 @@ impl CacheMonitor {
             misses: self.misses.load(Ordering::Relaxed),
             loads: self.loads.load(Ordering::Relaxed),
             stampede_avoided: self.stampede_avoided.load(Ordering::Relaxed),
+            cache_warm_stampede_events: self.cache_warm_stampede_events.load(Ordering::Relaxed),
             invalidations: self.invalidations.load(Ordering::Relaxed),
         }
     }
@@ -141,10 +150,12 @@ mod tests {
         let m = CacheMonitor::new();
         m.record_load();
         m.record_stampede_avoided();
+        m.record_warm_stampede_event();
         m.record_invalidation(3);
         let s = m.stats();
         assert_eq!(s.loads, 1);
         assert_eq!(s.stampede_avoided, 1);
+        assert_eq!(s.cache_warm_stampede_events, 1);
         assert_eq!(s.invalidations, 3);
     }
 }

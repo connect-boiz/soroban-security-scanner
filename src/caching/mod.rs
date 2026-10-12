@@ -54,4 +54,4 @@ pub use consistency::{verify, Consistency, VersionRegistry};
 pub use entry::{CacheEntry, Clock};
 pub use monitoring::{CacheMonitor, CacheStats, TARGET_HIT_RATE};
 pub use partition::{Partition, PartitionTtls};
-pub use warming::{CacheWarmer, WarmTask};
+pub use warming::{warm_status_router, CacheWarmer, WarmStatus, WarmTask, WarmerHandle};

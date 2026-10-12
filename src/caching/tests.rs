@@ -147,3 +147,85 @@ fn partition_ttls_differ_by_data_type() {
         Some("pat".to_string())
     );
 }
+
+#[test]
+fn cold_start_warming_coalesces_200_concurrent_requests() {
+    let clock = Clock::fixed(1000);
+    let cache = Arc::new(Cache::<String>::in_memory(clock));
+    let computations = Arc::new(AtomicUsize::new(0));
+
+    let mut warmer = CacheWarmer::new();
+    warmer.add(Partition::ScanResults, "expensive-contract", 1, {
+        let computations = Arc::clone(&computations);
+        move || {
+            computations.fetch_add(1, Ordering::Relaxed);
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            "analysis-result".to_string()
+        }
+    });
+
+    let warmer_handle = warmer.handle();
+    cache.set_warmer_handle(warmer_handle);
+
+    let warmer = Arc::new(std::sync::Mutex::new(Some(warmer)));
+
+    // Spawn 200 concurrent requests arriving during cold-start warming window
+    let mut handles = Vec::with_capacity(200);
+
+    // Background thread performs warming
+    let warmer_clone = Arc::clone(&warmer);
+    let cache_warmer_clone = Arc::clone(&cache);
+    let warmer_thread = thread::spawn(move || {
+        let mut w = warmer_clone.lock().unwrap().take().unwrap();
+        w.warm_all(&cache_warmer_clone)
+    });
+
+    // 200 client threads hammering the exact same key during cold start
+    for _ in 0..200 {
+        let cache = Arc::clone(&cache);
+        let computations = Arc::clone(&computations);
+        handles.push(thread::spawn(move || {
+            cache.get_or_load(Partition::ScanResults, "expensive-contract", 1, || {
+                computations.fetch_add(1, Ordering::Relaxed);
+                "fallback".to_string()
+            })
+        }));
+    }
+
+    assert_eq!(warmer_thread.join().unwrap(), 1);
+    for h in handles {
+        let res = h.join().unwrap();
+        assert_eq!(res, "analysis-result");
+    }
+
+    // The expensive computation was executed at most once per key
+    assert_eq!(computations.load(Ordering::Relaxed), 1);
+    // Stampede events prevented during cold-start cache warming were recorded
+    assert!(cache.stats().cache_warm_stampede_events >= 1);
+}
+
+#[tokio::test]
+async fn warm_status_endpoint_reports_progress_and_eta() {
+    let handle = WarmerHandle::default();
+    handle.total_keys.store(10, Ordering::Relaxed);
+    handle.keys_warmed.store(4, Ordering::Relaxed);
+    *handle.start_time.lock().unwrap() = Some(std::time::Instant::now() - std::time::Duration::from_secs(2));
+
+    let app = warm_status_router(handle);
+
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use tower::ServiceExt;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/cache/warm-status")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+}

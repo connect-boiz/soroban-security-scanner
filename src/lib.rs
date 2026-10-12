@@ -122,6 +122,7 @@ pub use auth::{
 // integration test suite. Wired under default features; the remaining
 // modules stay behind the `broken-modules` feature gate.
 pub mod analysis;
+pub mod caching;
 pub mod config;
 pub mod emergency_stop;
 pub mod event_logging;

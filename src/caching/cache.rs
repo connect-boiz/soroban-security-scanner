@@ -9,18 +9,20 @@ use crate::caching::backend::CacheBackend;
 use crate::caching::entry::{CacheEntry, Clock};
 use crate::caching::monitoring::{CacheMonitor, CacheStats};
 use crate::caching::partition::{Partition, PartitionTtls};
+use crate::caching::warming::WarmerHandle;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 
 /// A multi-level, partitioned cache over value type `V`.
 pub struct Cache<V> {
     /// Ordered cache levels, fastest (L1) first.
     levels: Vec<Box<dyn CacheBackend<V>>>,
     ttls: PartitionTtls,
-    monitor: Arc<CacheMonitor>,
+    pub(crate) monitor: Arc<CacheMonitor>,
     clock: Clock,
     /// Per-key locks providing single-flight loads (stampede protection).
-    locks: Mutex<HashMap<String, Arc<Mutex<()>>>>,
+    pub(crate) locks: Mutex<HashMap<String, Arc<Mutex<()>>>>,
+    warmer_handle: Arc<RwLock<Option<WarmerHandle>>>,
 }
 
 impl<V: Clone + Send + Sync + 'static> Cache<V> {
@@ -34,6 +36,7 @@ impl<V: Clone + Send + Sync + 'static> Cache<V> {
             monitor: Arc::new(CacheMonitor::new()),
             clock,
             locks: Mutex::new(HashMap::new()),
+            warmer_handle: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -95,6 +98,21 @@ impl<V: Clone + Send + Sync + 'static> Cache<V> {
         }
     }
 
+    /// Checks all levels for an unexpired value without recording hit or miss stats.
+    pub fn peek(&self, partition: Partition, key: &str) -> Option<V> {
+        let now = self.clock.now();
+        let composite = PartitionTtls::composite_key(partition, key);
+
+        for level in &self.levels {
+            if let Some(entry) = level.get(&composite) {
+                if !entry.is_expired(now) {
+                    return Some(entry.value);
+                }
+            }
+        }
+        None
+    }
+
     /// Read-through with stampede protection: returns the cached value, or runs
     /// `loader` exactly once across concurrent callers and caches the result.
     pub fn get_or_load<F>(&self, partition: Partition, key: &str, version: u64, loader: F) -> V
@@ -104,6 +122,21 @@ impl<V: Clone + Send + Sync + 'static> Cache<V> {
         // Fast path.
         if let Some(v) = self.get(partition, key) {
             return v;
+        }
+
+        // Await background warming if this key is scheduled or warming
+        if let Ok(guard) = self.warmer_handle.read() {
+            if let Some(handle) = guard.as_ref() {
+                if handle.is_warming_or_scheduled(partition, key) {
+                    if handle.wait_for_key_sync(partition, key) {
+                        if let Some(v) = self.get(partition, key) {
+                            self.monitor.record_stampede_avoided();
+                            self.monitor.record_warm_stampede_event();
+                            return v;
+                        }
+                    }
+                }
+            }
         }
 
         // Single-flight: serialize concurrent misses for this key.
@@ -117,6 +150,13 @@ impl<V: Clone + Send + Sync + 'static> Cache<V> {
         // Double-check: a peer may have populated the cache while we waited.
         if let Some(v) = self.get(partition, key) {
             self.monitor.record_stampede_avoided();
+            if let Ok(guard) = self.warmer_handle.read() {
+                if let Some(handle) = guard.as_ref() {
+                    if handle.was_warmed_or_warming(partition, key) {
+                        self.monitor.record_warm_stampede_event();
+                    }
+                }
+            }
             return v;
         }
 
@@ -131,6 +171,24 @@ impl<V: Clone + Send + Sync + 'static> Cache<V> {
             }
         }
         value
+    }
+
+    /// Sets or attaches a warmer handle for cold-start stampede detection.
+    pub fn set_warmer_handle(&self, handle: WarmerHandle) {
+        if let Ok(mut w) = self.warmer_handle.write() {
+            *w = Some(handle);
+        }
+    }
+
+    /// Builder pattern for setting warmer handle.
+    pub fn with_warmer_handle(self, handle: WarmerHandle) -> Self {
+        self.set_warmer_handle(handle);
+        self
+    }
+
+    /// Records a stampede event prevented during cache cold start / warming.
+    pub fn record_warm_stampede_event(&self) {
+        self.monitor.record_warm_stampede_event();
     }
 
     /// Invalidates a single key across all levels (change-driven invalidation).
