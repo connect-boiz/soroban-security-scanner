@@ -126,4 +126,39 @@ mod tests {
         assert_eq!(regs.len(), 2);
         assert_eq!(regs[0].name, "order_list"); // worst first
     }
+
+    #[test]
+    fn benchmark_1000x_nplus1_triggers_circuit_breaker_before_21st_repeat() {
+        use crate::query_optimization::circuit_breaker::QueryCircuitBreaker;
+
+        let mut breaker = QueryCircuitBreaker::new();
+        let (executed, blocked) = benchmark_1000x_nplus1(&mut breaker);
+
+        // Circuit breaker triggers before the 21st repeated query
+        assert_eq!(executed, 20);
+        assert_eq!(blocked, 980);
+        assert!(breaker.is_tripped());
+        assert_eq!(breaker.metrics().blocked_total(), 980);
+    }
+}
+
+/// Runs a 1000x N+1 pattern benchmark against a `QueryCircuitBreaker`.
+///
+/// Demonstrates that the circuit breaker trips before the 21st repeated query,
+/// blocking the remaining queries and preventing database exhaustion.
+pub fn benchmark_1000x_nplus1(
+    breaker: &mut crate::query_optimization::circuit_breaker::QueryCircuitBreaker,
+) -> (usize, usize) {
+    let mut executed = 0;
+    let mut blocked = 0;
+
+    for i in 0..1000 {
+        let sql = format!("SELECT * FROM users WHERE id = {}", i);
+        match breaker.record_query(&sql) {
+            Ok(()) => executed += 1,
+            Err(_) => blocked += 1,
+        }
+    }
+
+    (executed, blocked)
 }

@@ -56,6 +56,38 @@ pub fn detect(queries: &[&str], threshold: usize) -> Vec<NPlusOneFinding> {
     findings
 }
 
+/// Execution and prevention policy for N+1 query patterns.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum NPlusOnePolicy {
+    /// Allow all queries without warnings or circuit breaker blocks.
+    Allow,
+    /// Log warning and emit alerts when N+1 patterns or thresholds are breached.
+    #[default]
+    Warn,
+    /// Block request execution and trip circuit breaker on excessive N+1 ratios.
+    Block,
+}
+
+/// Automatically rewrites a single-record query pattern into a batch query using `WHERE <col> = ANY($1)`.
+///
+/// Converts queries matching `WHERE <col> = <literal | placeholder>` into `WHERE <col> = ANY($1)`.
+pub fn auto_batch(sql: &str) -> Option<String> {
+    let re = regex::Regex::new(
+        r"(?i)\bWHERE\s+([a-zA-Z_][a-zA-Z0-9_\.]*)\s*=\s*(?:\?|\$\d+|'[^']*'|\d+)(.*)$",
+    )
+    .ok()?;
+
+    if let Some(caps) = re.captures(sql) {
+        let col = &caps[1];
+        let rest = &caps[2];
+        let match_range = caps.get(0).unwrap().range();
+        let prefix = &sql[..match_range.start];
+        Some(format!("{}WHERE {} = ANY($1){}", prefix, col, rest))
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -116,5 +148,29 @@ mod tests {
         assert_eq!(findings.len(), 2);
         assert!(findings[0].fingerprint.contains("x"));
         assert!(findings[1].fingerprint.contains("y"));
+    }
+
+    #[test]
+    fn auto_batch_rewrites_where_equality() {
+        let sql1 = "SELECT * FROM users WHERE id = 1";
+        assert_eq!(
+            auto_batch(sql1).as_deref(),
+            Some("SELECT * FROM users WHERE id = ANY($1)")
+        );
+
+        let sql2 = "SELECT name, email FROM accounts WHERE user_id = 'bob' ORDER BY created_at";
+        assert_eq!(
+            auto_batch(sql2).as_deref(),
+            Some("SELECT name, email FROM accounts WHERE user_id = ANY($1) ORDER BY created_at")
+        );
+
+        let sql3 = "SELECT * FROM items WHERE item_id = ? LIMIT 10";
+        assert_eq!(
+            auto_batch(sql3).as_deref(),
+            Some("SELECT * FROM items WHERE item_id = ANY($1) LIMIT 10")
+        );
+
+        let no_where = "SELECT * FROM contracts";
+        assert!(auto_batch(no_where).is_none());
     }
 }

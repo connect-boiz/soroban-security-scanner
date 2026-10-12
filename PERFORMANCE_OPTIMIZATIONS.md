@@ -251,10 +251,62 @@ frontend/
 - Push notifications for real-time updates
 - Offline-first architecture
 
+## 🛡️ Database Query Circuit Breaker & N+1 Prevention
+
+### Overview
+In microservice and ORM workloads, N+1 query patterns exponentially amplify database load when a loop executes single-row queries for related records. A single request can multiply query load by 1000x, threatening database pool exhaustion.
+
+The `QueryCircuitBreaker` (`src/query_optimization/circuit_breaker.rs`) provides runtime detection, automated prevention, and request protection.
+
+### Configuration Parameters
+```rust
+use soroban_security_scanner::query_optimization::{
+    CircuitBreakerConfig, NPlusOnePolicy, QueryCircuitBreaker,
+};
+
+let config = CircuitBreakerConfig {
+    max_n_plus_one_ratio: 20.0,     // Abort if total / unique queries exceeds 20:1
+    min_queries_threshold: 20,       // Minimum queries executed before evaluation
+    policy: NPlusOnePolicy::Block,   // Enforcement policy (Allow, Warn, Block)
+};
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `max_n_plus_one_ratio` | `f64` | `20.0` | Maximum allowed ratio of total queries to distinct fingerprints. |
+| `min_queries_threshold` | `usize` | `20` | Execution count required before the ratio can trip the breaker. |
+| `policy` | `NPlusOnePolicy` | `Block` | Action when threshold is breached (`Allow`, `Warn`, `Block`). |
+
+### Enforcement Policies & Rollout Strategy
+1. **Phase 1: Observation (`NPlusOnePolicy::Allow`)**:
+   - Collect metrics and ratio baselines across production workloads without alerting.
+2. **Phase 2: Warning & Alerting (`NPlusOnePolicy::Warn`)**:
+   - Emit `CRITICAL` log alerts via `tracing::error!` and Prometheus metrics when ratio exceeds 20:1.
+   - Operators and engineers locate offending call sites.
+3. **Phase 3: Automated Circuit Breaking (`NPlusOnePolicy::Block`)**:
+   - Immediately abort requests with HTTP 429 (`Too Many Requests`) when the circuit breaker trips.
+   - Prevents pathological 1000x queries from bringing down the database.
+
+### Automatic Query Batching (`auto_batch`)
+To remediate N+1 query call sites, `auto_batch` (`src/query_optimization/nplus1.rs`) rewrites single-row lookups into parameterized batch queries:
+```sql
+-- Before (executed N times):
+SELECT * FROM users WHERE id = 1
+
+-- Rewritten by auto_batch():
+SELECT * FROM users WHERE id = ANY($1)
+```
+
+### Prometheus Monitoring
+The circuit breaker exposes metrics for Grafana dashboards and alerting:
+- `n_plus_one_queries_blocked_total`: Counter tracking total blocked queries.
+- `n_plus_one_ratio_current`: Gauge tracking current query multiplication ratio.
+
 ---
 
 ## 🎉 Summary
 
-The implemented performance optimizations provide significant improvements in page load times, bundle size reduction, and overall user experience. The combination of code splitting, lazy loading, image optimization, and performance monitoring creates a fast, responsive, and efficient web application that meets modern performance standards.
+The implemented performance optimizations provide significant improvements in page load times, bundle size reduction, backend database query stability, and overall user experience. The combination of code splitting, lazy loading, image optimization, performance monitoring, and database N+1 circuit breaking creates a fast, responsive, and resilient system that meets modern production standards.
 
 Regular performance monitoring and continuous optimization will ensure the application maintains high performance standards as it evolves and grows.
+

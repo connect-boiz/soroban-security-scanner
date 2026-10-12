@@ -112,3 +112,81 @@ fn benchmark_regression_gate() {
     assert_eq!(regs.len(), 1);
     assert!(!passes(&baseline, &bad, 0.20));
 }
+
+#[test]
+fn circuit_breaker_trips_on_excessive_ratio_and_blocks_execution() {
+    let mut breaker = QueryCircuitBreaker::new();
+
+    // 20 distinct queries: ratio is 1.0 (20/20)
+    for i in 0..20 {
+        let col = (b'a' + i as u8) as char;
+        let sql = format!("SELECT {} FROM table", col);
+        assert!(breaker.record_query(&sql).is_ok());
+    }
+    assert_eq!(breaker.total_queries(), 20);
+    assert_eq!(breaker.unique_queries(), 20);
+    assert!((breaker.current_ratio() - 1.0).abs() < 1e-9);
+
+    breaker.reset();
+
+    // 20 repeated identical queries: ratio is 20.0 (20/1)
+    for i in 0..20 {
+        let sql = format!("SELECT * FROM users WHERE id = {}", i);
+        assert!(breaker.record_query(&sql).is_ok());
+    }
+    assert_eq!(breaker.total_queries(), 20);
+    assert_eq!(breaker.unique_queries(), 1);
+    assert!(!breaker.is_tripped());
+
+    // 21st query: ratio becomes 21.0 > 20.0 -> trips circuit breaker!
+    let err = breaker
+        .record_query("SELECT * FROM users WHERE id = 999")
+        .expect_err("must trip circuit breaker");
+    assert_eq!(err.status_code(), axum::http::StatusCode::TOO_MANY_REQUESTS);
+    assert!(breaker.is_tripped());
+    assert_eq!(breaker.metrics().blocked_total(), 1);
+
+    // Verify Prometheus metric rendering
+    let prom = breaker.metrics().render_prometheus();
+    assert!(prom.contains("n_plus_one_queries_blocked_total 1"));
+    assert!(prom.contains("n_plus_one_ratio_current 21.000"));
+}
+
+#[test]
+fn optimizer_record_with_breaker_stops_pathological_load() {
+    let mut opt = QueryOptimizer::new(IndexAdvisor::new(), SlowQueryMonitor::default());
+
+    // 20 repeated queries pass
+    for i in 0..20 {
+        let sql = format!("SELECT * FROM orders WHERE id = {}", i);
+        let res = opt.record_with_breaker(&sql, 5, 1000 + i as i64);
+        assert!(res.is_ok());
+    }
+
+    // 21st repeated query trips
+    let res = opt.record_with_breaker("SELECT * FROM orders WHERE id = 21", 5, 1021);
+    assert!(res.is_err());
+    assert!(opt.circuit_breaker().is_tripped());
+
+    let report = opt.report();
+    assert!(report.circuit_breaker_tripped);
+    assert!(report.n_plus_one_ratio > 20.0);
+}
+
+#[test]
+fn circuit_breaker_warn_policy_does_not_block() {
+    let mut breaker = QueryCircuitBreaker::with_config(CircuitBreakerConfig {
+        max_n_plus_one_ratio: 20.0,
+        min_queries_threshold: 20,
+        policy: NPlusOnePolicy::Warn,
+    });
+
+    for i in 0..25 {
+        let sql = format!("SELECT * FROM items WHERE id = {}", i);
+        // Under Warn policy, query records without returning Err
+        assert!(breaker.record_query(&sql).is_ok());
+    }
+    assert!(breaker.is_tripped());
+    // Blocked counter remains 0 because policy was Warn
+    assert_eq!(breaker.metrics().blocked_total(), 0);
+}

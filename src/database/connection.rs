@@ -84,9 +84,13 @@ impl DatabaseConfig {
     }
 }
 
+use crate::query_optimization::circuit_breaker::{CircuitBreakerError, QueryCircuitBreaker};
+use std::sync::{Arc, Mutex};
+
 #[derive(Debug, Clone)]
 pub struct Database {
     pool: PgPool,
+    circuit_breaker: Arc<Mutex<QueryCircuitBreaker>>,
 }
 
 impl Database {
@@ -115,11 +119,27 @@ impl Database {
             })?;
 
         info!("Successfully connected to database");
-        Ok(Self { pool })
+        Ok(Self {
+            pool,
+            circuit_breaker: Arc::new(Mutex::new(QueryCircuitBreaker::new())),
+        })
     }
 
     pub fn pool(&self) -> &PgPool {
         &self.pool
+    }
+
+    /// Access the underlying circuit breaker.
+    pub fn circuit_breaker(&self) -> Arc<Mutex<QueryCircuitBreaker>> {
+        Arc::clone(&self.circuit_breaker)
+    }
+
+    /// Checks a query against the N+1 circuit breaker before execution.
+    pub fn check_circuit_breaker(&self, sql: &str) -> Result<(), CircuitBreakerError> {
+        self.circuit_breaker
+            .lock()
+            .expect("circuit breaker poisoned")
+            .record_query(sql)
     }
 
     pub async fn health_check(&self) -> Result<()> {

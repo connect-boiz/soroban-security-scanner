@@ -11,6 +11,10 @@ use crate::query_optimization::nplus1::{detect as detect_nplus1, NPlusOneFinding
 use crate::query_optimization::slow_query::{SlowQuery, SlowQueryMonitor};
 use serde::{Deserialize, Serialize};
 
+use crate::query_optimization::circuit_breaker::{
+    CircuitBreakerConfig, CircuitBreakerError, QueryCircuitBreaker,
+};
+
 /// A performance-dashboard snapshot.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PerformanceReport {
@@ -22,6 +26,10 @@ pub struct PerformanceReport {
     pub slow_queries: u64,
     /// Whether the workload meets the p95 latency target.
     pub meets_p95_target: bool,
+    /// Current N+1 query multiplication ratio.
+    pub n_plus_one_ratio: f64,
+    /// Whether the circuit breaker has tripped.
+    pub circuit_breaker_tripped: bool,
 }
 
 /// The query optimizer / performance instrument.
@@ -29,6 +37,7 @@ pub struct QueryOptimizer {
     metrics: QueryMetrics,
     slow: SlowQueryMonitor,
     advisor: IndexAdvisor,
+    circuit_breaker: QueryCircuitBreaker,
 }
 
 impl QueryOptimizer {
@@ -38,7 +47,24 @@ impl QueryOptimizer {
             metrics: QueryMetrics::new(),
             slow,
             advisor,
+            circuit_breaker: QueryCircuitBreaker::new(),
         }
+    }
+
+    /// Attaches a custom circuit breaker configuration.
+    pub fn with_circuit_breaker_config(mut self, config: CircuitBreakerConfig) -> Self {
+        self.circuit_breaker = QueryCircuitBreaker::with_config(config);
+        self
+    }
+
+    /// Returns a reference to the active circuit breaker.
+    pub fn circuit_breaker(&self) -> &QueryCircuitBreaker {
+        &self.circuit_breaker
+    }
+
+    /// Returns a mutable reference to the active circuit breaker.
+    pub fn circuit_breaker_mut(&mut self) -> &mut QueryCircuitBreaker {
+        &mut self.circuit_breaker
     }
 
     /// Records a query execution, returning a slow-query alert if it crossed
@@ -46,6 +72,18 @@ impl QueryOptimizer {
     pub fn record(&mut self, sql: &str, duration_ms: u64, at: i64) -> Option<SlowQuery> {
         self.metrics.record(sql, duration_ms);
         self.slow.observe(sql, duration_ms, at)
+    }
+
+    /// Records a query through the circuit breaker first. If the N+1 ratio
+    /// trips the breaker, returns an error immediately and blocks recording.
+    pub fn record_with_breaker(
+        &mut self,
+        sql: &str,
+        duration_ms: u64,
+        at: i64,
+    ) -> Result<Option<SlowQuery>, CircuitBreakerError> {
+        self.circuit_breaker.record_query(sql)?;
+        Ok(self.record(sql, duration_ms, at))
     }
 
     /// Index recommendations for a query shape.
@@ -79,6 +117,8 @@ impl QueryOptimizer {
             overall,
             slow_queries: self.slow.total_slow(),
             meets_p95_target: meets,
+            n_plus_one_ratio: self.circuit_breaker.current_ratio(),
+            circuit_breaker_tripped: self.circuit_breaker.is_tripped(),
         }
     }
 }

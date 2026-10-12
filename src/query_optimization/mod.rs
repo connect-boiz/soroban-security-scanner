@@ -36,6 +36,7 @@
 
 pub mod benchmark;
 pub mod cache;
+pub mod circuit_breaker;
 pub mod engine;
 pub mod index;
 pub mod metrics;
@@ -47,13 +48,19 @@ pub mod slow_query;
 #[cfg(test)]
 mod tests;
 
-pub use benchmark::{detect_regressions, passes, Baseline, Regression};
+pub use benchmark::{benchmark_1000x_nplus1, detect_regressions, passes, Baseline, Regression};
 pub use cache::{CacheStats, QueryResultCache};
+pub use circuit_breaker::{
+    CircuitBreakerConfig, CircuitBreakerError, CircuitBreakerMetrics, QueryCircuitBreaker,
+    DEFAULT_MAX_N_PLUS_ONE_RATIO, DEFAULT_MIN_QUERIES_THRESHOLD,
+};
 pub use engine::{PerformanceReport, QueryOptimizer};
 pub use index::{IndexAdvisor, IndexDef, IndexRecommendation, QueryShape};
 pub use metrics::{latency_stats, LatencyStats, QueryMetrics, P95_TARGET_MS};
 pub use normalize::normalize;
-pub use nplus1::{detect as detect_nplus1, NPlusOneFinding, DEFAULT_NPLUS1_THRESHOLD};
+pub use nplus1::{
+    auto_batch, detect as detect_nplus1, NPlusOneFinding, NPlusOnePolicy, DEFAULT_NPLUS1_THRESHOLD,
+};
 pub use plan::{
     analyze as analyze_plan, is_efficient, total_cost, PlanFinding, PlanNode, ScanType,
 };
