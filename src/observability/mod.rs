@@ -36,10 +36,12 @@
 //! ```
 
 pub mod alerting;
+pub mod api;
 pub mod context;
 pub mod level;
 pub mod logger;
 pub mod metrics;
+pub mod middleware;
 pub mod record;
 pub mod retention;
 pub mod search;
@@ -50,10 +52,15 @@ pub mod tracing;
 mod tests;
 
 pub use alerting::{AlertConfig, LogAlert, LogAlerter, PatternRule};
-pub use context::{new_span_id, new_trace_id, CorrelationContext};
+pub use api::{build_observability_routes, CorrelationLogsQuery, ObservabilityApiState};
+pub use context::{
+    new_span_id, new_trace_id, spawn_blocking_correlated, spawn_correlated, CorrelatedFuture,
+    CorrelatedFutureExt, CorrelationContext,
+};
 pub use level::{Environment, LevelConfig, LogLevel};
 pub use logger::{EmitOutcome, Logger};
 pub use metrics::{LogMetrics, LogMetricsCollector};
+pub use middleware::{correlation_middleware, REQUEST_ID_HEADER, TRACEPARENT_HEADER};
 pub use record::LogRecord;
 pub use retention::{apply_retention, Archive, InMemoryArchive, RetentionPolicy};
 pub use search::{LogIndex, LogQuery};

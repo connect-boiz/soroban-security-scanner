@@ -30,7 +30,7 @@ pub struct LogRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub request_id: Option<String>,
     /// Arbitrary structured fields (ordered for stable output).
-    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub fields: BTreeMap<String, String>,
 }
 
