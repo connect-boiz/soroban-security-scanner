@@ -133,6 +133,15 @@ pub mod scanners;
 pub mod secure_id_generation;
 pub mod severity_scoring;
 pub mod vulnerabilities;
+pub mod wallet;
+pub use wallet::{
+    f64_to_stroops, format_stroops, parse_stroops, stroops_to_f64, AssetBalance,
+    CreateWalletRequest, HorizonAccountBalances, HorizonBalanceItem, HorizonClient,
+    HttpHorizonClient, ImportWalletRequest, InMemoryWalletStore, MockHorizonClient,
+    RestoreWalletRequest, Wallet, WalletBalance, WalletError, WalletExport, WalletService,
+    WalletStatus, WalletStore, WalletSyncRecord, WalletType, MAX_STROOPS_DECIMALS,
+    STROOPS_PER_LUMEN,
+};
 
 // === Broken modules gated behind feature flag ===
 // Each module has pre-existing compilation errors (borrow checker violations,
@@ -167,8 +176,6 @@ pub mod session;
 pub mod storage_safety;
 #[cfg(feature = "broken-modules")]
 pub mod time_travel_debugger;
-#[cfg(feature = "broken-modules")]
-pub mod wallet;
 
 // Economic exploit simulation framework (#444).
 // Models DeFi protocols and searches for profitable attack sequences:
@@ -246,12 +253,6 @@ pub use time_travel_debugger::{
 #[cfg(feature = "broken-modules")]
 pub use upload_sanitization::{
     SanitizationPipeline, SignatureValidationResult, SorobanContractInterface,
-};
-#[cfg(feature = "broken-modules")]
-pub use wallet::{
-    CreateWalletRequest, ImportWalletRequest, InMemoryWalletStore, RestoreWalletRequest, Wallet,
-    WalletBalance, WalletError, WalletExport, WalletService, WalletStatus, WalletStore,
-    WalletSyncRecord, WalletType,
 };
 
 #[cfg(feature = "broken-modules")]

@@ -7,7 +7,7 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use rand::RngCore;
 use ring::{
     aead::{
-        self, Aad, BoundKey, Nonce, NonceSequence, OpeningKey, SealingKey, UnboundKey, AES_256_GCM,
+        Aad, BoundKey, Nonce, NonceSequence, OpeningKey, SealingKey, UnboundKey, AES_256_GCM,
     },
     error::Unspecified,
     hmac, pbkdf2,

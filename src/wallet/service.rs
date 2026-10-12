@@ -10,13 +10,16 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
+use serde::{Deserialize, Serialize};
+
 use crate::wallet::{
     crypto::{
         compute_export_hmac, decrypt_seed, encrypt_seed, generate_hmac_key, verify_export_hmac,
     },
     types::{
-        AssetBalance, CreateWalletRequest, ImportWalletRequest, RestoreWalletRequest, Wallet,
-        WalletBalance, WalletError, WalletExport, WalletStatus, WalletSyncRecord, WalletType,
+        format_stroops, parse_stroops, stroops_to_f64, AssetBalance, CreateWalletRequest,
+        ImportWalletRequest, RestoreWalletRequest, Wallet, WalletBalance, WalletError,
+        WalletExport, WalletStatus, WalletSyncRecord, WalletType,
     },
 };
 
@@ -155,16 +158,167 @@ impl WalletStore for InMemoryWalletStore {
 }
 
 // ---------------------------------------------------------------------------
+// Stellar Horizon Client
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HorizonBalanceItem {
+    pub balance: String,
+    pub asset_type: String,
+    #[serde(default)]
+    pub asset_code: Option<String>,
+    #[serde(default)]
+    pub asset_issuer: Option<String>,
+    #[serde(default)]
+    pub limit: Option<String>,
+    #[serde(default)]
+    pub buying_liabilities: Option<String>,
+    #[serde(default)]
+    pub selling_liabilities: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HorizonAccountBalances {
+    pub balances: Vec<HorizonBalanceItem>,
+}
+
+#[async_trait]
+pub trait HorizonClient: Send + Sync {
+    async fn get_account_balances(
+        &self,
+        stellar_address: &str,
+    ) -> Result<Option<HorizonAccountBalances>, WalletError>;
+}
+
+/// HTTP client for Stellar Horizon API
+pub struct HttpHorizonClient {
+    base_url: String,
+    client: reqwest::Client,
+}
+
+impl HttpHorizonClient {
+    pub fn new(base_url: impl Into<String>) -> Self {
+        Self {
+            base_url: base_url.into().trim_end_matches('/').to_string(),
+            client: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(10))
+                .build()
+                .unwrap_or_else(|_| reqwest::Client::new()),
+        }
+    }
+
+    pub fn testnet() -> Self {
+        Self::new("https://horizon-testnet.stellar.org")
+    }
+
+    pub fn public() -> Self {
+        Self::new("https://horizon.stellar.org")
+    }
+}
+
+#[async_trait]
+impl HorizonClient for HttpHorizonClient {
+    async fn get_account_balances(
+        &self,
+        stellar_address: &str,
+    ) -> Result<Option<HorizonAccountBalances>, WalletError> {
+        let url = format!("{}/accounts/{}", self.base_url, stellar_address);
+        let resp = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| WalletError::NetworkError(e.to_string()))?;
+
+        if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp
+                .text()
+                .await
+                .unwrap_or_else(|_| "Failed to read response body".to_string());
+            return Err(WalletError::HorizonError(format!("HTTP {}: {}", status, body)));
+        }
+
+        let account: HorizonAccountBalances = resp
+            .json()
+            .await
+            .map_err(|e| WalletError::HorizonError(format!("Failed to parse Horizon response: {}", e)))?;
+
+        Ok(Some(account))
+    }
+}
+
+/// In-memory mock Horizon client for testing and offline development
+#[derive(Default)]
+pub struct MockHorizonClient {
+    accounts: RwLock<HashMap<String, HorizonAccountBalances>>,
+}
+
+impl MockHorizonClient {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub async fn set_account_balances(&self, address: &str, balances: HorizonAccountBalances) {
+        let mut map = self.accounts.write().await;
+        map.insert(address.to_string(), balances);
+    }
+
+    pub async fn set_xlm_balance(&self, address: &str, stroops: i64) {
+        let balances = HorizonAccountBalances {
+            balances: vec![HorizonBalanceItem {
+                balance: format_stroops(stroops),
+                asset_type: "native".to_string(),
+                asset_code: None,
+                asset_issuer: None,
+                limit: None,
+                buying_liabilities: None,
+                selling_liabilities: None,
+            }],
+        };
+        self.set_account_balances(address, balances).await;
+    }
+
+    pub async fn remove_account(&self, address: &str) {
+        let mut map = self.accounts.write().await;
+        map.remove(address);
+    }
+}
+
+#[async_trait]
+impl HorizonClient for MockHorizonClient {
+    async fn get_account_balances(
+        &self,
+        stellar_address: &str,
+    ) -> Result<Option<HorizonAccountBalances>, WalletError> {
+        let map = self.accounts.read().await;
+        Ok(map.get(stellar_address).cloned())
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Wallet Service
 // ---------------------------------------------------------------------------
 
 pub struct WalletService {
     store: Arc<dyn WalletStore>,
+    horizon_client: Arc<dyn HorizonClient>,
 }
 
 impl WalletService {
     pub fn new(store: Arc<dyn WalletStore>) -> Self {
-        Self { store }
+        Self::with_horizon(store, Arc::new(HttpHorizonClient::testnet()))
+    }
+
+    pub fn with_horizon(store: Arc<dyn WalletStore>, horizon_client: Arc<dyn HorizonClient>) -> Self {
+        Self {
+            store,
+            horizon_client,
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -328,20 +482,67 @@ impl WalletService {
     // Balance
     // -----------------------------------------------------------------------
 
-    /// Fetch the current balance from Stellar Horizon (mock implementation).
-    /// In production, replace with a real Horizon HTTP call.
+    /// Fetch the current balance from Stellar Horizon, update the wallet record
+    /// in the store with the latest balance, and return the balance breakdown.
     pub async fn get_balance(
         &self,
         wallet_id: Uuid,
         user_id: Uuid,
     ) -> Result<WalletBalance, WalletError> {
-        let wallet = self.get_owned_wallet(wallet_id, user_id).await?;
-        // TODO: replace with real Horizon API call
+        let mut wallet = self.get_owned_wallet(wallet_id, user_id).await?;
+
+        let account_info = self
+            .horizon_client
+            .get_account_balances(&wallet.stellar_address)
+            .await?;
+
+        let (xlm_stroops, asset_balances) = match account_info {
+            Some(info) => {
+                let mut xlm_stroops = 0i64;
+                let mut assets = Vec::new();
+
+                for item in info.balances {
+                    let balance_stroops = parse_stroops(&item.balance)?;
+                    let balance_f64 = stroops_to_f64(balance_stroops);
+
+                    if item.asset_type == "native" {
+                        xlm_stroops = balance_stroops;
+                    } else {
+                        let limit_stroops = match &item.limit {
+                            Some(l) => Some(parse_stroops(l)?),
+                            None => None,
+                        };
+                        assets.push(AssetBalance {
+                            asset_code: item.asset_code.unwrap_or_else(|| "UNKNOWN".to_string()),
+                            asset_issuer: item.asset_issuer,
+                            balance: balance_f64,
+                            balance_stroops,
+                            balance_formatted: item.balance.clone(),
+                            limit_stroops,
+                        });
+                    }
+                }
+                (xlm_stroops, assets)
+            }
+            None => {
+                // Account not found / unfunded on Stellar Horizon
+                (0i64, Vec::new())
+            }
+        };
+
+        let now = Utc::now();
+        wallet.balance_stroops = xlm_stroops;
+        wallet.balance_lumens = stroops_to_f64(xlm_stroops);
+        wallet.updated_at = now;
+        self.store.update(&wallet).await?;
+
         Ok(WalletBalance {
             stellar_address: wallet.stellar_address.clone(),
             xlm_balance: wallet.balance_lumens,
-            asset_balances: vec![],
-            fetched_at: Utc::now(),
+            xlm_balance_stroops: xlm_stroops,
+            xlm_balance_formatted: format_stroops(xlm_stroops),
+            asset_balances,
+            fetched_at: now,
         })
     }
 
@@ -400,6 +601,7 @@ impl WalletService {
             wallet_type,
             status: WalletStatus::Active,
             balance_lumens: 0.0,
+            balance_stroops: 0,
             is_primary: set_as_primary,
             is_verified: false,
             verification_level: 0,
@@ -446,7 +648,6 @@ impl WalletService {
     /// Generate a fresh Stellar keypair. Returns (public_address, secret_seed).
     /// Uses ring's Ed25519 key generation and encodes with Stellar's base32 strkey format.
     fn generate_keypair(&self) -> (String, String) {
-        use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
         use rand::RngCore;
         use ring::signature::{Ed25519KeyPair, KeyPair};
 
@@ -561,4 +762,334 @@ fn base32_decode_stellar(s: &str) -> Option<Vec<u8>> {
         }
     }
     Some(result)
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::wallet::types::{f64_to_stroops, format_stroops, parse_stroops, STROOPS_PER_LUMEN};
+
+    #[test]
+    fn test_parse_and_format_stroops_standard() {
+        // Standard 7-decimal Stellar string
+        let stroops = parse_stroops("100.5000000").expect("should parse 100.5000000");
+        assert_eq!(stroops, 1_005_000_000);
+        assert_eq!(format_stroops(stroops), "100.5000000");
+
+        // Smallest unit (1 stroop)
+        let one_stroop = parse_stroops("0.0000001").expect("should parse 1 stroop");
+        assert_eq!(one_stroop, 1);
+        assert_eq!(format_stroops(one_stroop), "0.0000001");
+
+        // Zero
+        let zero = parse_stroops("0.0000000").expect("should parse zero with decimals");
+        assert_eq!(zero, 0);
+        assert_eq!(format_stroops(zero), "0.0000000");
+
+        let zero_int = parse_stroops("0").expect("should parse zero integer");
+        assert_eq!(zero_int, 0);
+        assert_eq!(format_stroops(zero_int), "0.0000000");
+
+        // Exactly 1 Lumen
+        let one_lumen = parse_stroops("1").expect("should parse 1 lumen");
+        assert_eq!(one_lumen, STROOPS_PER_LUMEN);
+        assert_eq!(format_stroops(one_lumen), "1.0000000");
+
+        // Padding partial decimals to 7 places
+        let partial = parse_stroops("12.34").expect("should parse 12.34");
+        assert_eq!(partial, 123_400_000);
+        assert_eq!(format_stroops(partial), "12.3400000");
+
+        // Large number
+        let large = parse_stroops("999999999.9999999").expect("should parse large number");
+        assert_eq!(large, 9_999_999_999_999_999);
+        assert_eq!(format_stroops(large), "999999999.9999999");
+    }
+
+    #[test]
+    fn test_parse_negative_stroops() {
+        let neg = parse_stroops("-10.5000000").expect("should parse negative");
+        assert_eq!(neg, -105_000_000);
+        assert_eq!(format_stroops(neg), "-10.5000000");
+
+        let neg_one = parse_stroops("-0.0000001").expect("should parse negative 1 stroop");
+        assert_eq!(neg_one, -1);
+        assert_eq!(format_stroops(neg_one), "-0.0000001");
+    }
+
+    #[test]
+    fn test_parse_stroops_invalid_inputs() {
+        assert!(parse_stroops("").is_err());
+        assert!(parse_stroops("   ").is_err());
+        assert!(parse_stroops("abc").is_err());
+        assert!(parse_stroops("10.12.34").is_err());
+        assert!(parse_stroops("-").is_err());
+        assert!(parse_stroops("+").is_err());
+        assert!(parse_stroops("10.12345678").is_err()); // 8 decimal places exceeds max 7
+    }
+
+    #[test]
+    fn test_precision_loss_elimination() {
+        // In IEEE 754 float: 0.1 + 0.2 = 0.30000000000000004 != 0.3
+        let float_sum = 0.1f64 + 0.2f64;
+        assert_ne!(float_sum, 0.3f64);
+
+        // In stroops (integer): 1,000,000 + 2,000,000 = 3,000,000 == exact 0.3
+        let s1 = parse_stroops("0.1").unwrap();
+        let s2 = parse_stroops("0.2").unwrap();
+        let s3 = parse_stroops("0.3").unwrap();
+        assert_eq!(s1 + s2, s3);
+        assert_eq!(format_stroops(s1 + s2), "0.3000000");
+    }
+
+    #[test]
+    fn test_stroops_f64_conversions() {
+        assert_eq!(stroops_to_f64(10_000_000), 1.0);
+        assert_eq!(stroops_to_f64(1_005_000_000), 100.5);
+
+        assert_eq!(f64_to_stroops(100.5).unwrap(), 1_005_000_000);
+        assert!(f64_to_stroops(f64::NAN).is_err());
+        assert!(f64_to_stroops(f64::INFINITY).is_err());
+    }
+
+    #[tokio::test]
+    async fn test_wallet_creation_initial_balance_zero() {
+        let store = Arc::new(InMemoryWalletStore::default());
+        let service = WalletService::new(store);
+
+        let user_id = Uuid::new_v4();
+        let wallet = service
+            .create_wallet(CreateWalletRequest {
+                user_id,
+                wallet_name: "Test Wallet".to_string(),
+                description: None,
+                wallet_type: WalletType::Standard,
+                secret_seed: None,
+                set_as_primary: true,
+            })
+            .await
+            .expect("should create wallet");
+
+        assert_eq!(wallet.balance_stroops, 0);
+        assert_eq!(wallet.balance_lumens, 0.0);
+        assert!(wallet.is_primary);
+    }
+
+    #[tokio::test]
+    async fn test_horizon_mock_sync_unfunded_account() {
+        let store = Arc::new(InMemoryWalletStore::default());
+        let mock_horizon = Arc::new(MockHorizonClient::new());
+        let service = WalletService::with_horizon(store.clone(), mock_horizon);
+
+        let user_id = Uuid::new_v4();
+        let wallet = service
+            .create_wallet(CreateWalletRequest {
+                user_id,
+                wallet_name: "Unfunded Wallet".to_string(),
+                description: None,
+                wallet_type: WalletType::Standard,
+                secret_seed: None,
+                set_as_primary: false,
+            })
+            .await
+            .unwrap();
+
+        // Account does not exist in Horizon mock (simulates 404 unfunded)
+        let balance = service
+            .get_balance(wallet.id, user_id)
+            .await
+            .expect("should handle unfunded account gracefully");
+
+        assert_eq!(balance.xlm_balance_stroops, 0);
+        assert_eq!(balance.xlm_balance, 0.0);
+        assert_eq!(balance.xlm_balance_formatted, "0.0000000");
+        assert!(balance.asset_balances.is_empty());
+
+        // Verify stored wallet in store reflects 0
+        let stored = service.get_wallet(wallet.id, user_id).await.unwrap();
+        assert_eq!(stored.balance_stroops, 0);
+        assert_eq!(stored.balance_lumens, 0.0);
+    }
+
+    #[tokio::test]
+    async fn test_horizon_mock_sync_funded_account_updates_store() {
+        let store = Arc::new(InMemoryWalletStore::default());
+        let mock_horizon = Arc::new(MockHorizonClient::new());
+        let service = WalletService::with_horizon(store.clone(), mock_horizon.clone());
+
+        let user_id = Uuid::new_v4();
+        let wallet = service
+            .create_wallet(CreateWalletRequest {
+                user_id,
+                wallet_name: "Funded Wallet".to_string(),
+                description: None,
+                wallet_type: WalletType::Standard,
+                secret_seed: None,
+                set_as_primary: false,
+            })
+            .await
+            .unwrap();
+
+        // Initially wallet has 0 balance
+        assert_eq!(wallet.balance_stroops, 0);
+
+        // Fund account on Horizon with 250.75 XLM (2,507,500,000 stroops)
+        mock_horizon
+            .set_xlm_balance(&wallet.stellar_address, 2_507_500_000)
+            .await;
+
+        // Fetch balance via service
+        let balance = service
+            .get_balance(wallet.id, user_id)
+            .await
+            .expect("should fetch balance from Horizon");
+
+        assert_eq!(balance.xlm_balance_stroops, 2_507_500_000);
+        assert_eq!(balance.xlm_balance, 250.75);
+        assert_eq!(balance.xlm_balance_formatted, "250.7500000");
+
+        // Verify that wallet record in the store has been updated and is no longer stale!
+        let stored_wallet = service
+            .get_wallet(wallet.id, user_id)
+            .await
+            .expect("wallet should exist");
+
+        assert_eq!(stored_wallet.balance_stroops, 2_507_500_000);
+        assert_eq!(stored_wallet.balance_lumens, 250.75);
+    }
+
+    #[tokio::test]
+    async fn test_horizon_mock_sync_multi_asset_account() {
+        let store = Arc::new(InMemoryWalletStore::default());
+        let mock_horizon = Arc::new(MockHorizonClient::new());
+        let service = WalletService::with_horizon(store.clone(), mock_horizon.clone());
+
+        let user_id = Uuid::new_v4();
+        let wallet = service
+            .create_wallet(CreateWalletRequest {
+                user_id,
+                wallet_name: "Multi-Asset Wallet".to_string(),
+                description: None,
+                wallet_type: WalletType::Standard,
+                secret_seed: None,
+                set_as_primary: false,
+            })
+            .await
+            .unwrap();
+
+        let account_balances = HorizonAccountBalances {
+            balances: vec![
+                HorizonBalanceItem {
+                    balance: "100.0000000".to_string(),
+                    asset_type: "native".to_string(),
+                    asset_code: None,
+                    asset_issuer: None,
+                    limit: None,
+                    buying_liabilities: None,
+                    selling_liabilities: None,
+                },
+                HorizonBalanceItem {
+                    balance: "50.1234567".to_string(),
+                    asset_type: "credit_alphanum4".to_string(),
+                    asset_code: Some("USDC".to_string()),
+                    asset_issuer: Some("GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5".to_string()),
+                    limit: Some("1000.0000000".to_string()),
+                    buying_liabilities: None,
+                    selling_liabilities: None,
+                },
+            ],
+        };
+
+        mock_horizon
+            .set_account_balances(&wallet.stellar_address, account_balances)
+            .await;
+
+        let balance = service
+            .get_balance(wallet.id, user_id)
+            .await
+            .expect("should fetch multi-asset balance");
+
+        assert_eq!(balance.xlm_balance_stroops, 1_000_000_000);
+        assert_eq!(balance.xlm_balance, 100.0);
+        assert_eq!(balance.asset_balances.len(), 1);
+
+        let usdc = &balance.asset_balances[0];
+        assert_eq!(usdc.asset_code, "USDC");
+        assert_eq!(usdc.balance_stroops, 501_234_567);
+        assert_eq!(usdc.balance_formatted, "50.1234567");
+        assert_eq!(usdc.limit_stroops, Some(10_000_000_000));
+    }
+
+    #[tokio::test]
+    async fn test_balance_update_propagation() {
+        let store = Arc::new(InMemoryWalletStore::default());
+        let mock_horizon = Arc::new(MockHorizonClient::new());
+        let service = WalletService::with_horizon(store.clone(), mock_horizon.clone());
+
+        let user_id = Uuid::new_v4();
+        let wallet = service
+            .create_wallet(CreateWalletRequest {
+                user_id,
+                wallet_name: "Dynamic Wallet".to_string(),
+                description: None,
+                wallet_type: WalletType::Standard,
+                secret_seed: None,
+                set_as_primary: false,
+            })
+            .await
+            .unwrap();
+
+        // 1st fetch: 100 XLM
+        mock_horizon
+            .set_xlm_balance(&wallet.stellar_address, 1_000_000_000)
+            .await;
+        let b1 = service.get_balance(wallet.id, user_id).await.unwrap();
+        assert_eq!(b1.xlm_balance_stroops, 1_000_000_000);
+
+        // 2nd fetch after new deposit: 500.5 XLM
+        mock_horizon
+            .set_xlm_balance(&wallet.stellar_address, 5_005_000_000)
+            .await;
+        let b2 = service.get_balance(wallet.id, user_id).await.unwrap();
+        assert_eq!(b2.xlm_balance_stroops, 5_005_000_000);
+
+        // Verify stored wallet is updated to 500.5 XLM
+        let stored = service.get_wallet(wallet.id, user_id).await.unwrap();
+        assert_eq!(stored.balance_stroops, 5_005_000_000);
+        assert_eq!(stored.balance_lumens, 500.5);
+    }
+
+    #[tokio::test]
+    async fn test_unauthorized_balance_access() {
+        let store = Arc::new(InMemoryWalletStore::default());
+        let service = WalletService::new(store);
+
+        let user1 = Uuid::new_v4();
+        let user2 = Uuid::new_v4();
+
+        let wallet = service
+            .create_wallet(CreateWalletRequest {
+                user_id: user1,
+                wallet_name: "User 1 Wallet".to_string(),
+                description: None,
+                wallet_type: WalletType::Standard,
+                secret_seed: None,
+                set_as_primary: false,
+            })
+            .await
+            .unwrap();
+
+        let err = service.get_balance(wallet.id, user2).await.unwrap_err();
+        match err {
+            WalletError::Unauthorized(u, w) => {
+                assert_eq!(u, user2);
+                assert_eq!(w, wallet.id);
+            }
+            other => panic!("expected Unauthorized error, got {:?}", other),
+        }
+    }
 }
