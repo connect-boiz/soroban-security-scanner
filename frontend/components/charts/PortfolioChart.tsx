@@ -20,6 +20,7 @@ import {
 } from 'recharts';
 import { PortfolioData, ChartConfig, ChartDataPoint } from '@/types/charts';
 import { TrendingUp, TrendingDown, DollarSign, PieChartIcon } from 'lucide-react';
+import EmptyChartState from './EmptyChartState';
 
 interface PortfolioChartProps {
   data: PortfolioData[];
@@ -95,9 +96,10 @@ export const PortfolioChart: React.FC<PortfolioChartProps> = ({
     responsive = true,
   } = config;
 
-  const totalValue = data.reduce((sum, item) => sum + item.value, 0);
-  const totalChange = data.reduce((sum, item) => sum + item.change, 0);
-  const totalChangePercent = (totalChange / totalValue) * 100;
+  const isEmpty = !data || data.length === 0;
+  const totalValue = data ? data.reduce((sum, item) => sum + item.value, 0) : 0;
+  const totalChange = data ? data.reduce((sum, item) => sum + item.change, 0) : 0;
+  const totalChangePercent = totalValue > 0 ? (totalChange / totalValue) * 100 : 0;
 
   const renderPieChart = () => (
     <div className="space-y-4">
@@ -120,36 +122,48 @@ export const PortfolioChart: React.FC<PortfolioChartProps> = ({
         </div>
       </div>
 
-      <ResponsiveContainer width="100%" height={height}>
-        <PieChart>
-          <Pie
-            data={data}
-            cx="50%"
-            cy="50%"
-            labelLine={false}
-            label={CustomLabel}
-            outerRadius={80}
-            fill="#8884d8"
-            dataKey="value"
-          >
-            {data.map((entry, index) => (
-              <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
-            ))}
-          </Pie>
-          <Tooltip content={<CustomTooltip />} />
-          {showLegend && (
-            <Legend
-              verticalAlign="bottom"
-              height={36}
-              formatter={(value, entry: any) => (
-                <span className="text-sm text-gray-700">
-                  {value} ({entry.payload.percentage.toFixed(1)}%)
-                </span>
-              )}
-            />
-          )}
-        </PieChart>
-      </ResponsiveContainer>
+      {isEmpty ? (
+        <EmptyChartState
+          title={title}
+          message="No portfolio assets yet"
+          description="Connect a wallet or run a scan to populate your portfolio distribution."
+          icon={PieChartIcon}
+          height={height}
+          actionText="Run a Scan"
+          actionHref="/scan"
+        />
+      ) : (
+        <ResponsiveContainer width="100%" height={height}>
+          <PieChart>
+            <Pie
+              data={data}
+              cx="50%"
+              cy="50%"
+              labelLine={false}
+              label={CustomLabel}
+              outerRadius={80}
+              fill="#8884d8"
+              dataKey="value"
+            >
+              {data.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
+              ))}
+            </Pie>
+            <Tooltip content={<CustomTooltip />} />
+            {showLegend && (
+              <Legend
+                verticalAlign="bottom"
+                height={36}
+                formatter={(value, entry: any) => (
+                  <span className="text-sm text-gray-700">
+                    {value} ({entry.payload.percentage.toFixed(1)}%)
+                  </span>
+                )}
+              />
+            )}
+          </PieChart>
+        </ResponsiveContainer>
+      )}
     </div>
   );
 
@@ -163,32 +177,44 @@ export const PortfolioChart: React.FC<PortfolioChartProps> = ({
         </div>
       </div>
 
-      <ResponsiveContainer width="100%" height={height}>
-        <BarChart data={data}>
-          {showGrid && <CartesianGrid strokeDasharray="3 3" className="opacity-30" />}
-          <XAxis dataKey="asset" tick={{ fontSize: 12 }} className="text-gray-600" />
-          <YAxis
-            tick={{ fontSize: 12 }}
-            className="text-gray-600"
-            tickFormatter={value => `$${(value / 1000).toFixed(0)}k`}
-          />
-          <Tooltip content={<CustomTooltip />} />
-          <Bar dataKey="value" radius={[8, 8, 0, 0]}>
-            {data.map((entry, index) => (
-              <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
-            ))}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
+      {isEmpty ? (
+        <EmptyChartState
+          title={title}
+          message="No portfolio assets yet"
+          description="Connect a wallet or run a scan to populate your portfolio distribution."
+          icon={PieChartIcon}
+          height={height}
+          actionText="Run a Scan"
+          actionHref="/scan"
+        />
+      ) : (
+        <ResponsiveContainer width="100%" height={height}>
+          <BarChart data={data}>
+            {showGrid && <CartesianGrid strokeDasharray="3 3" className="opacity-30" />}
+            <XAxis dataKey="asset" tick={{ fontSize: 12 }} className="text-gray-600" />
+            <YAxis
+              tick={{ fontSize: 12 }}
+              className="text-gray-600"
+              tickFormatter={value => `$${(value / 1000).toFixed(0)}k`}
+            />
+            <Tooltip content={<CustomTooltip />} />
+            <Bar dataKey="value" radius={[8, 8, 0, 0]}>
+              {data.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      )}
     </div>
   );
 
   const renderAreaChart = () => {
-    const cumulativeData = data.reduce((acc: any[], item, index) => {
+    const cumulativeData = data ? data.reduce((acc: any[], item, index) => {
       const cumulativeValue =
         acc.length > 0 ? acc[acc.length - 1].cumulativeValue + item.value : item.value;
       return [...acc, { ...item, cumulativeValue }];
-    }, []);
+    }, []) : [];
 
     return (
       <div className="space-y-4">
@@ -202,26 +228,38 @@ export const PortfolioChart: React.FC<PortfolioChartProps> = ({
           </div>
         </div>
 
-        <ResponsiveContainer width="100%" height={height}>
-          <AreaChart data={cumulativeData}>
-            {showGrid && <CartesianGrid strokeDasharray="3 3" className="opacity-30" />}
-            <XAxis dataKey="asset" tick={{ fontSize: 12 }} className="text-gray-600" />
-            <YAxis
-              tick={{ fontSize: 12 }}
-              className="text-gray-600"
-              tickFormatter={value => `$${(value / 1000).toFixed(0)}k`}
-            />
-            <Tooltip content={<CustomTooltip />} />
-            <Area
-              type="monotone"
-              dataKey="cumulativeValue"
-              stroke={colors[0]}
-              fill={colors[0]}
-              fillOpacity={0.6}
-              strokeWidth={2}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
+        {isEmpty ? (
+          <EmptyChartState
+            title={title}
+            message="No portfolio assets yet"
+            description="Connect a wallet or run a scan to populate your portfolio distribution."
+            icon={PieChartIcon}
+            height={height}
+            actionText="Run a Scan"
+            actionHref="/scan"
+          />
+        ) : (
+          <ResponsiveContainer width="100%" height={height}>
+            <AreaChart data={cumulativeData}>
+              {showGrid && <CartesianGrid strokeDasharray="3 3" className="opacity-30" />}
+              <XAxis dataKey="asset" tick={{ fontSize: 12 }} className="text-gray-600" />
+              <YAxis
+                tick={{ fontSize: 12 }}
+                className="text-gray-600"
+                tickFormatter={value => `$${(value / 1000).toFixed(0)}k`}
+              />
+              <Tooltip content={<CustomTooltip />} />
+              <Area
+                type="monotone"
+                dataKey="cumulativeValue"
+                stroke={colors[0]}
+                fill={colors[0]}
+                fillOpacity={0.6}
+                strokeWidth={2}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
       </div>
     );
   };

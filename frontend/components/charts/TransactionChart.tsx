@@ -29,6 +29,7 @@ import {
   Clock,
 } from 'lucide-react';
 import { format, subDays, isAfter, isBefore } from 'date-fns';
+import EmptyChartState from './EmptyChartState';
 
 interface TransactionChartProps {
   data: TransactionData[];
@@ -200,6 +201,20 @@ export const TransactionChart: React.FC<TransactionChartProps> = ({
   const successRate =
     totalTransactions > 0 ? (successfulTransactions / totalTransactions) * 100 : 0;
 
+  const isEmpty = !data || data.length === 0 || filteredData.length === 0;
+
+  const renderEmptyState = () => (
+    <EmptyChartState
+      title={title}
+      message="No transactions yet"
+      description="Run vulnerability scans or execute contract interactions to see transaction history."
+      icon={Activity}
+      height={height}
+      actionText="Run a Scan"
+      actionHref="/scan"
+    />
+  );
+
   const renderLineChart = () => (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -212,7 +227,10 @@ export const TransactionChart: React.FC<TransactionChartProps> = ({
         </div>
       </div>
 
-      <ResponsiveContainer width="100%" height={height}>
+      {isEmpty ? (
+        renderEmptyState()
+      ) : (
+        <ResponsiveContainer width="100%" height={height}>
         <LineChart data={timeSeriesData}>
           {showGrid && <CartesianGrid strokeDasharray="3 3" className="opacity-30" />}
           <XAxis
@@ -269,51 +287,55 @@ export const TransactionChart: React.FC<TransactionChartProps> = ({
         </div>
       </div>
 
-      <ResponsiveContainer width="100%" height={height}>
-        <AreaChart data={timeSeriesData}>
-          {showGrid && <CartesianGrid strokeDasharray="3 3" className="opacity-30" />}
-          <XAxis
-            dataKey="date"
-            tick={{ fontSize: 12 }}
-            className="text-gray-600"
-            tickFormatter={value => format(new Date(value), 'MMM dd')}
-          />
-          <YAxis
-            tick={{ fontSize: 12 }}
-            className="text-gray-600"
-            tickFormatter={value => `$${(value / 1000).toFixed(0)}k`}
-          />
-          <Tooltip content={<CustomTooltip />} />
-          {showLegend && <Legend />}
-          <Area
-            type="monotone"
-            dataKey="deposit"
-            stackId="1"
-            stroke={DEFAULT_COLORS.deposit}
-            fill={DEFAULT_COLORS.deposit}
-            fillOpacity={0.6}
-            name="Deposits"
-          />
-          <Area
-            type="monotone"
-            dataKey="reward"
-            stackId="1"
-            stroke={DEFAULT_COLORS.reward}
-            fill={DEFAULT_COLORS.reward}
-            fillOpacity={0.6}
-            name="Rewards"
-          />
-          <Area
-            type="monotone"
-            dataKey="withdrawal"
-            stackId="1"
-            stroke={DEFAULT_COLORS.withdrawal}
-            fill={DEFAULT_COLORS.withdrawal}
-            fillOpacity={0.6}
-            name="Withdrawals"
-          />
-        </AreaChart>
-      </ResponsiveContainer>
+      {isEmpty ? (
+        renderEmptyState()
+      ) : (
+        <ResponsiveContainer width="100%" height={height}>
+          <AreaChart data={timeSeriesData}>
+            {showGrid && <CartesianGrid strokeDasharray="3 3" className="opacity-30" />}
+            <XAxis
+              dataKey="date"
+              tick={{ fontSize: 12 }}
+              className="text-gray-600"
+              tickFormatter={value => format(new Date(value), 'MMM dd')}
+            />
+            <YAxis
+              tick={{ fontSize: 12 }}
+              className="text-gray-600"
+              tickFormatter={value => `$${(value / 1000).toFixed(0)}k`}
+            />
+            <Tooltip content={<CustomTooltip />} />
+            {showLegend && <Legend />}
+            <Area
+              type="monotone"
+              dataKey="deposit"
+              stackId="1"
+              stroke={DEFAULT_COLORS.deposit}
+              fill={DEFAULT_COLORS.deposit}
+              fillOpacity={0.6}
+              name="Deposits"
+            />
+            <Area
+              type="monotone"
+              dataKey="reward"
+              stackId="1"
+              stroke={DEFAULT_COLORS.reward}
+              fill={DEFAULT_COLORS.reward}
+              fillOpacity={0.6}
+              name="Rewards"
+            />
+            <Area
+              type="monotone"
+              dataKey="withdrawal"
+              stackId="1"
+              stroke={DEFAULT_COLORS.withdrawal}
+              fill={DEFAULT_COLORS.withdrawal}
+              fillOpacity={0.6}
+              name="Withdrawals"
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      )}
     </div>
   );
 
@@ -327,39 +349,43 @@ export const TransactionChart: React.FC<TransactionChartProps> = ({
         </div>
       </div>
 
-      <ResponsiveContainer width="100%" height={height}>
-        <PieChart>
-          <Pie
-            data={typeDistribution}
-            cx="50%"
-            cy="50%"
-            labelLine={false}
-            label={({ name, percent }: any) => `${name} ${(percent! * 100).toFixed(0)}%`}
-            outerRadius={80}
-            fill="#8884d8"
-            dataKey="totalAmount"
-          >
-            {typeDistribution.map((entry: any, index: number) => (
-              <Cell
-                key={`cell-${index}`}
-                fill={DEFAULT_COLORS[entry.type as keyof typeof DEFAULT_COLORS]}
+      {isEmpty ? (
+        renderEmptyState()
+      ) : (
+        <ResponsiveContainer width="100%" height={height}>
+          <PieChart>
+            <Pie
+              data={typeDistribution}
+              cx="50%"
+              cy="50%"
+              labelLine={false}
+              label={({ name, percent }: any) => `${name} ${(percent! * 100).toFixed(0)}%`}
+              outerRadius={80}
+              fill="#8884d8"
+              dataKey="totalAmount"
+            >
+              {typeDistribution.map((entry: any, index: number) => (
+                <Cell
+                  key={`cell-${index}`}
+                  fill={DEFAULT_COLORS[entry.type as keyof typeof DEFAULT_COLORS]}
+                />
+              ))}
+            </Pie>
+            <Tooltip content={<TransactionTypeTooltip />} />
+            {showLegend && (
+              <Legend
+                verticalAlign="bottom"
+                height={36}
+                formatter={(value, entry: any) => (
+                  <span className="text-sm text-gray-700 capitalize">
+                    {value} (${entry.payload.totalAmount.toLocaleString()})
+                  </span>
+                )}
               />
-            ))}
-          </Pie>
-          <Tooltip content={<TransactionTypeTooltip />} />
-          {showLegend && (
-            <Legend
-              verticalAlign="bottom"
-              height={36}
-              formatter={(value, entry: any) => (
-                <span className="text-sm text-gray-700 capitalize">
-                  {value} (${entry.payload.totalAmount.toLocaleString()})
-                </span>
-              )}
-            />
-          )}
-        </PieChart>
-      </ResponsiveContainer>
+            )}
+          </PieChart>
+        </ResponsiveContainer>
+      )}
     </div>
   );
 
@@ -375,43 +401,47 @@ export const TransactionChart: React.FC<TransactionChartProps> = ({
         </div>
       </div>
 
-      <ResponsiveContainer width="100%" height={height}>
-        <BarChart data={statusDistribution}>
-          {showGrid && <CartesianGrid strokeDasharray="3 3" className="opacity-30" />}
-          <XAxis
-            dataKey="status"
-            tick={{ fontSize: 12 }}
-            className="text-gray-600"
-            tickFormatter={value => value.charAt(0).toUpperCase() + value.slice(1)}
-          />
-          <YAxis tick={{ fontSize: 12 }} className="text-gray-600" />
-          <Tooltip
-            content={({ active, payload }: any) => {
-              if (active && payload && payload.length) {
-                const data = payload[0].payload;
-                return (
-                  <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
-                    <p className="font-semibold text-gray-900 capitalize">{data.status}</p>
-                    <p className="text-sm text-gray-600">Count: {data.count}</p>
-                    <p className="text-sm text-gray-600">
-                      Amount: ${data.totalAmount.toLocaleString()}
-                    </p>
-                  </div>
-                );
-              }
-              return null;
-            }}
-          />
-          <Bar dataKey="count" radius={[8, 8, 0, 0]}>
-            {statusDistribution.map((entry: any, index: number) => (
-              <Cell
-                key={`cell-${index}`}
-                fill={STATUS_COLORS[entry.status as keyof typeof STATUS_COLORS]}
-              />
-            ))}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
+      {isEmpty ? (
+        renderEmptyState()
+      ) : (
+        <ResponsiveContainer width="100%" height={height}>
+          <BarChart data={statusDistribution}>
+            {showGrid && <CartesianGrid strokeDasharray="3 3" className="opacity-30" />}
+            <XAxis
+              dataKey="status"
+              tick={{ fontSize: 12 }}
+              className="text-gray-600"
+              tickFormatter={value => value.charAt(0).toUpperCase() + value.slice(1)}
+            />
+            <YAxis tick={{ fontSize: 12 }} className="text-gray-600" />
+            <Tooltip
+              content={({ active, payload }: any) => {
+                if (active && payload && payload.length) {
+                  const data = payload[0].payload;
+                  return (
+                    <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
+                      <p className="font-semibold text-gray-900 capitalize">{data.status}</p>
+                      <p className="text-sm text-gray-600">Count: {data.count}</p>
+                      <p className="text-sm text-gray-600">
+                        Amount: ${data.totalAmount.toLocaleString()}
+                      </p>
+                    </div>
+                  );
+                }
+                return null;
+              }}
+            />
+            <Bar dataKey="count" radius={[8, 8, 0, 0]}>
+              {statusDistribution.map((entry: any, index: number) => (
+                <Cell
+                  key={`cell-${index}`}
+                  fill={STATUS_COLORS[entry.status as keyof typeof STATUS_COLORS]}
+                />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      )}
     </div>
   );
 

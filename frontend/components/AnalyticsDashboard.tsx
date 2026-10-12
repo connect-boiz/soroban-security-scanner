@@ -12,13 +12,11 @@ import {
   Calendar,
   Download,
   RefreshCw,
+  ArrowRight,
 } from 'lucide-react';
+import Link from 'next/link';
 
-interface AnalyticsDashboardProps {
-  className?: string;
-}
-
-interface AnalyticsData {
+export interface AnalyticsData {
   totalScans: number;
   vulnerabilitiesFound: number;
   contractsAnalyzed: number;
@@ -35,6 +33,30 @@ interface AnalyticsData {
     vulnerabilities: number;
   }[];
 }
+
+export interface AnalyticsDashboardProps {
+  className?: string;
+  portfolioData?: PortfolioData[];
+  transactionData?: TransactionData[];
+  performanceData?: PerformanceMetrics[];
+  analyticsData?: AnalyticsData;
+}
+
+export const hasAnyData = (
+  analytics?: AnalyticsData | null,
+  portfolio?: PortfolioData[] | null,
+  transactions?: TransactionData[] | null,
+  performance?: PerformanceMetrics[] | null
+): boolean => {
+  const hasAnalytics = Boolean(
+    analytics && (analytics.totalScans > 0 || (analytics.weeklyData && analytics.weeklyData.length > 0))
+  );
+  const hasPortfolio = Boolean(portfolio && portfolio.length > 0);
+  const hasTransactions = Boolean(transactions && transactions.length > 0);
+  const hasPerformance = Boolean(performance && performance.length > 0);
+
+  return hasAnalytics || hasPortfolio || hasTransactions || hasPerformance;
+};
 
 const mockAnalyticsData: AnalyticsData = {
   totalScans: 1250,
@@ -105,7 +127,13 @@ const mockPerformanceData: PerformanceMetrics[] = [
   },
 ];
 
-const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ className = '' }) => {
+const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
+  className = '',
+  portfolioData = mockPortfolioData,
+  transactionData = mockTransactionData,
+  performanceData = mockPerformanceData,
+  analyticsData = mockAnalyticsData,
+}) => {
   const [dashboardView, setDashboardView] = useState<'security' | 'marketplace'>('security');
   const [selectedMetric, setSelectedMetric] = useState<'overview' | 'trends' | 'severity'>(
     'overview'
@@ -114,18 +142,47 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ className = '' 
   const [isLoading, setIsLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
+  const isAllEmpty = !hasAnyData(analyticsData, portfolioData, transactionData, performanceData);
+
+  const renderDashboardEmptyState = () => (
+    <div
+      role="region"
+      aria-label="Welcome to Analytics empty state"
+      className="flex flex-col items-center justify-center text-center p-12 bg-white rounded-lg border border-gray-200 shadow-sm"
+    >
+      <div className="w-16 h-16 rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-4">
+        <BarChart3 className="w-8 h-8 text-blue-600 dark:text-blue-400" aria-hidden="true" />
+      </div>
+      <h3 className="text-xl font-bold text-gray-900 mb-2">Welcome to Analytics</h3>
+      <p className="text-sm font-medium text-gray-600 max-w-md mb-6 leading-relaxed">
+        No scan data for this period — run your first scan to populate your security and marketplace analytics here.
+      </p>
+      <Link
+        href="/scan"
+        aria-label="Run your first scan"
+        className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded-lg transition-colors shadow-sm"
+      >
+        <span>Run Your First Scan</span>
+        <ArrowRight className="w-4 h-4" aria-hidden="true" />
+      </Link>
+    </div>
+  );
+
   const metrics = useMemo(
     () => ({
-      vulnerabilityRate: (
-        (mockAnalyticsData.vulnerabilitiesFound / mockAnalyticsData.totalScans) *
-        100
-      ).toFixed(1),
-      contractsPerScan: (
-        mockAnalyticsData.contractsAnalyzed / mockAnalyticsData.totalScans
-      ).toFixed(2),
-      totalIssues: Object.values(mockAnalyticsData.severityBreakdown).reduce((a, b) => a + b, 0),
+      vulnerabilityRate:
+        analyticsData.totalScans > 0
+          ? ((analyticsData.vulnerabilitiesFound / analyticsData.totalScans) * 100).toFixed(1)
+          : '0.0',
+      contractsPerScan:
+        analyticsData.totalScans > 0
+          ? (analyticsData.contractsAnalyzed / analyticsData.totalScans).toFixed(2)
+          : '0.00',
+      totalIssues: analyticsData.severityBreakdown
+        ? Object.values(analyticsData.severityBreakdown).reduce((a, b) => a + b, 0)
+        : 0,
     }),
-    []
+    [analyticsData]
   );
 
   useEffect(() => {
@@ -149,7 +206,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ className = '' 
         <div className="card border-l-4 border-l-blue-600 bg-white p-6 rounded-lg shadow-sm">
           <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Total Scans</p>
           <div className="flex items-end justify-between mt-2">
-            <h3 className="text-3xl font-bold">{mockAnalyticsData.totalScans.toLocaleString()}</h3>
+            <h3 className="text-3xl font-bold">{analyticsData.totalScans.toLocaleString()}</h3>
             <span className="text-green-500 text-sm font-bold">↑ 12%</span>
           </div>
         </div>
@@ -158,7 +215,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ className = '' 
             Vulnerabilities
           </p>
           <div className="flex items-end justify-between mt-2">
-            <h3 className="text-3xl font-bold">{mockAnalyticsData.vulnerabilitiesFound}</h3>
+            <h3 className="text-3xl font-bold">{analyticsData.vulnerabilitiesFound}</h3>
             <span className="text-red-500 text-sm font-bold">↑ 5%</span>
           </div>
         </div>
@@ -172,7 +229,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ className = '' 
         <div className="card border-l-4 border-l-purple-600 bg-white p-6 rounded-lg shadow-sm">
           <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Avg Scan Time</p>
           <div className="flex items-end justify-between mt-2">
-            <h3 className="text-3xl font-bold">{mockAnalyticsData.averageScanTime}s</h3>
+            <h3 className="text-3xl font-bold">{analyticsData.averageScanTime}s</h3>
             <span className="text-green-500 text-sm font-bold">↓ 0.2s</span>
           </div>
         </div>
@@ -183,7 +240,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ className = '' 
           <h3 className="text-lg font-bold mb-6">Scan Activity Trends</h3>
           <div className="space-y-4 h-[300px] flex flex-col justify-end">
             <div className="flex items-end justify-between gap-2 h-full">
-              {mockAnalyticsData.weeklyData.map((week, i) => (
+              {analyticsData.weeklyData.map((week, i) => (
                 <div key={i} className="flex-1 flex flex-col items-center group">
                   <div className="relative w-full flex items-end justify-center gap-1 h-full pb-2">
                     <div
@@ -207,7 +264,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ className = '' 
         <div className="card bg-white p-6 rounded-lg shadow-sm">
           <h3 className="text-lg font-bold mb-6">Severity Distribution</h3>
           <div className="space-y-6">
-            {Object.entries(mockAnalyticsData.severityBreakdown).map(([severity, count]) => {
+            {Object.entries(analyticsData.severityBreakdown).map(([severity, count]) => {
               const total = metrics.totalIssues;
               const percentage = (count / total) * 100;
               const colors = {
@@ -279,21 +336,21 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ className = '' 
       {/* Charts Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <PortfolioChart
-          data={mockPortfolioData}
+          data={portfolioData}
           config={{ type: 'pie', title: 'Portfolio Distribution', showLegend: true, height: 350 }}
         />
         <TransactionChart
-          data={mockTransactionData}
+          data={transactionData}
           config={{ type: 'area', title: 'Transaction Volume', showLegend: true, height: 350 }}
           timeRange={timeFilter}
         />
         <PerformanceChart
-          data={mockPerformanceData}
+          data={performanceData}
           config={{ type: 'line', title: 'Performance Trends', showLegend: true, height: 350 }}
           metrics={['reputation', 'completedBounties', 'totalEarned']}
         />
         <PerformanceChart
-          data={mockPerformanceData}
+          data={performanceData}
           config={{ type: 'radar', title: 'Overall Performance', showLegend: false, height: 350 }}
           metrics={[
             'reputation',
@@ -372,7 +429,11 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ className = '' 
 
         {/* Content */}
         <div>
-          {dashboardView === 'security' ? renderSecurityOverview() : renderMarketplaceAnalytics()}
+          {isAllEmpty
+            ? renderDashboardEmptyState()
+            : dashboardView === 'security'
+              ? renderSecurityOverview()
+              : renderMarketplaceAnalytics()}
         </div>
       </div>
     </LoadingOverlay>

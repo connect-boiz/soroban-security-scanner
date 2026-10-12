@@ -91,4 +91,70 @@ describe('AnalyticsDashboard', () => {
     });
     expect(screen.getByRole('button', { name: /export/i })).toBeInTheDocument();
   });
+
+  it('correctly evaluates hasAnyData utility', () => {
+    const { hasAnyData } = require('../components/AnalyticsDashboard');
+    expect(hasAnyData(null, null, null, null)).toBe(false);
+    expect(
+      hasAnyData(
+        {
+          totalScans: 0,
+          vulnerabilitiesFound: 0,
+          contractsAnalyzed: 0,
+          averageScanTime: 0,
+          severityBreakdown: { critical: 0, high: 0, medium: 0, low: 0 },
+          weeklyData: [],
+        },
+        [],
+        [],
+        []
+      )
+    ).toBe(false);
+
+    expect(
+      hasAnyData(
+        {
+          totalScans: 10,
+          vulnerabilitiesFound: 1,
+          contractsAnalyzed: 5,
+          averageScanTime: 1,
+          severityBreakdown: { critical: 0, high: 0, medium: 0, low: 0 },
+          weeklyData: [],
+        },
+        [],
+        [],
+        []
+      )
+    ).toBe(true);
+
+    expect(hasAnyData(null, [{ asset: 'XLM', value: 100, percentage: 100, change: 0, changePercent: 0 }], [], [])).toBe(true);
+  });
+
+  it('renders a single Welcome to Analytics empty state with link to scan page when all data sources are empty', async () => {
+    render(
+      <AnalyticsDashboard
+        portfolioData={[]}
+        transactionData={[]}
+        performanceData={[]}
+        analyticsData={{
+          totalScans: 0,
+          vulnerabilitiesFound: 0,
+          contractsAnalyzed: 0,
+          averageScanTime: 0,
+          severityBreakdown: { critical: 0, high: 0, medium: 0, low: 0 },
+          weeklyData: [],
+        }}
+      />
+    );
+    await act(async () => {
+      jest.advanceTimersByTime(1100);
+    });
+
+    expect(screen.getByText('Welcome to Analytics')).toBeInTheDocument();
+    expect(
+      screen.getByText(/No scan data for this period — run your first scan to populate your security and marketplace analytics here/i)
+    ).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: /Welcome to Analytics empty state/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Run your first scan/i })).toHaveAttribute('href', '/scan');
+  });
 });

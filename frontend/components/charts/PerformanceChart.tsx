@@ -32,8 +32,8 @@ import {
   Award,
   Activity,
   Zap,
-} from 'lucide-react';
 import { format } from 'date-fns';
+import EmptyChartState from './EmptyChartState';
 
 interface PerformanceChartProps {
   data: PerformanceMetrics[];
@@ -171,6 +171,20 @@ export const PerformanceChart: React.FC<PerformanceChartProps> = ({
     return ((current - previous) / previous) * 100;
   };
 
+  const isEmpty = !data || data.length === 0;
+
+  const renderEmptyState = () => (
+    <EmptyChartState
+      title={title}
+      message="No performance metrics yet"
+      description="Complete scans and audits to start tracking your security performance metrics."
+      icon={Trophy}
+      height={height}
+      actionText="Start Scanning"
+      actionHref="/scan"
+    />
+  );
+
   const renderLineChart = () => (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -181,74 +195,78 @@ export const PerformanceChart: React.FC<PerformanceChartProps> = ({
         </div>
       </div>
 
-      <ResponsiveContainer width="100%" height={height}>
-        <LineChart data={data}>
-          {showGrid && <CartesianGrid strokeDasharray="3 3" className="opacity-30" />}
-          <XAxis
-            dataKey="date"
-            tick={{ fontSize: 12 }}
-            className="text-gray-600"
-            tickFormatter={value => format(new Date(value), 'MMM dd')}
-          />
-          <YAxis yAxisId="left" tick={{ fontSize: 12 }} className="text-gray-600" />
-          <YAxis
-            yAxisId="right"
-            orientation="right"
-            tick={{ fontSize: 12 }}
-            className="text-gray-600"
-          />
-          <Tooltip content={<CustomTooltip />} />
-          {showLegend && <Legend />}
-
-          {metrics.includes('reputation') && (
-            <Line
-              yAxisId="left"
-              type="monotone"
-              dataKey="reputation"
-              stroke={METRIC_COLORS.reputation}
-              strokeWidth={2}
-              dot={{ r: 4 }}
-              name="Reputation"
+      {isEmpty ? (
+        renderEmptyState()
+      ) : (
+        <ResponsiveContainer width="100%" height={height}>
+          <LineChart data={data}>
+            {showGrid && <CartesianGrid strokeDasharray="3 3" className="opacity-30" />}
+            <XAxis
+              dataKey="date"
+              tick={{ fontSize: 12 }}
+              className="text-gray-600"
+              tickFormatter={value => format(new Date(value), 'MMM dd')}
             />
-          )}
-
-          {metrics.includes('completedBounties') && (
-            <Line
-              yAxisId="left"
-              type="monotone"
-              dataKey="completedBounties"
-              stroke={METRIC_COLORS.completedBounties}
-              strokeWidth={2}
-              dot={{ r: 4 }}
-              name="Completed"
-            />
-          )}
-
-          {metrics.includes('totalEarned') && (
-            <Line
+            <YAxis yAxisId="left" tick={{ fontSize: 12 }} className="text-gray-600" />
+            <YAxis
               yAxisId="right"
-              type="monotone"
-              dataKey="totalEarned"
-              stroke={METRIC_COLORS.totalEarned}
-              strokeWidth={2}
-              dot={{ r: 4 }}
-              name="Earned ($)"
+              orientation="right"
+              tick={{ fontSize: 12 }}
+              className="text-gray-600"
             />
-          )}
+            <Tooltip content={<CustomTooltip />} />
+            {showLegend && <Legend />}
 
-          {metrics.includes('successRate') && (
-            <Line
-              yAxisId="left"
-              type="monotone"
-              dataKey="successRate"
-              stroke={METRIC_COLORS.successRate}
-              strokeWidth={2}
-              dot={{ r: 4 }}
-              name="Success %"
-            />
-          )}
-        </LineChart>
-      </ResponsiveContainer>
+            {metrics.includes('reputation') && (
+              <Line
+                yAxisId="left"
+                type="monotone"
+                dataKey="reputation"
+                stroke={METRIC_COLORS.reputation}
+                strokeWidth={2}
+                dot={{ r: 4 }}
+                name="Reputation"
+              />
+            )}
+
+            {metrics.includes('completedBounties') && (
+              <Line
+                yAxisId="left"
+                type="monotone"
+                dataKey="completedBounties"
+                stroke={METRIC_COLORS.completedBounties}
+                strokeWidth={2}
+                dot={{ r: 4 }}
+                name="Completed"
+              />
+            )}
+
+            {metrics.includes('totalEarned') && (
+              <Line
+                yAxisId="right"
+                type="monotone"
+                dataKey="totalEarned"
+                stroke={METRIC_COLORS.totalEarned}
+                strokeWidth={2}
+                dot={{ r: 4 }}
+                name="Earned ($)"
+              />
+            )}
+
+            {metrics.includes('successRate') && (
+              <Line
+                yAxisId="left"
+                type="monotone"
+                dataKey="successRate"
+                stroke={METRIC_COLORS.successRate}
+                strokeWidth={2}
+                dot={{ r: 4 }}
+                name="Success %"
+              />
+            )}
+          </LineChart>
+        </ResponsiveContainer>
+      )}
     </div>
   );
 
@@ -262,42 +280,46 @@ export const PerformanceChart: React.FC<PerformanceChartProps> = ({
         </div>
       </div>
 
-      <ResponsiveContainer width="100%" height={height}>
-        <AreaChart data={data}>
-          {showGrid && <CartesianGrid strokeDasharray="3 3" className="opacity-30" />}
-          <XAxis
-            dataKey="date"
-            tick={{ fontSize: 12 }}
-            className="text-gray-600"
-            tickFormatter={value => format(new Date(value), 'MMM dd')}
-          />
-          <YAxis tick={{ fontSize: 12 }} className="text-gray-600" />
-          <Tooltip content={<CustomTooltip />} />
-          {showLegend && <Legend />}
-
-          {metrics.includes('totalEarned') && (
-            <Area
-              type="monotone"
-              dataKey="totalEarned"
-              stroke={METRIC_COLORS.totalEarned}
-              fill={METRIC_COLORS.totalEarned}
-              fillOpacity={0.6}
-              name="Total Earned"
+      {isEmpty ? (
+        renderEmptyState()
+      ) : (
+        <ResponsiveContainer width="100%" height={height}>
+          <AreaChart data={data}>
+            {showGrid && <CartesianGrid strokeDasharray="3 3" className="opacity-30" />}
+            <XAxis
+              dataKey="date"
+              tick={{ fontSize: 12 }}
+              className="text-gray-600"
+              tickFormatter={value => format(new Date(value), 'MMM dd')}
             />
-          )}
+            <YAxis tick={{ fontSize: 12 }} className="text-gray-600" />
+            <Tooltip content={<CustomTooltip />} />
+            {showLegend && <Legend />}
 
-          {metrics.includes('completedBounties') && (
-            <Area
-              type="monotone"
-              dataKey="completedBounties"
-              stroke={METRIC_COLORS.completedBounties}
-              fill={METRIC_COLORS.completedBounties}
-              fillOpacity={0.6}
-              name="Completed Bounties"
-            />
-          )}
-        </AreaChart>
-      </ResponsiveContainer>
+            {metrics.includes('totalEarned') && (
+              <Area
+                type="monotone"
+                dataKey="totalEarned"
+                stroke={METRIC_COLORS.totalEarned}
+                fill={METRIC_COLORS.totalEarned}
+                fillOpacity={0.6}
+                name="Total Earned"
+              />
+            )}
+
+            {metrics.includes('completedBounties') && (
+              <Area
+                type="monotone"
+                dataKey="completedBounties"
+                stroke={METRIC_COLORS.completedBounties}
+                fill={METRIC_COLORS.completedBounties}
+                fillOpacity={0.6}
+                name="Completed Bounties"
+              />
+            )}
+          </AreaChart>
+        </ResponsiveContainer>
+      )}
     </div>
   );
 
@@ -321,27 +343,31 @@ export const PerformanceChart: React.FC<PerformanceChartProps> = ({
           </div>
         </div>
 
-        <ResponsiveContainer width="100%" height={height}>
-          <RadarChart data={radarData}>
-            <PolarGrid strokeDasharray="3 3" className="opacity-30" />
-            <PolarAngleAxis dataKey="metric" tick={{ fontSize: 11 }} className="text-gray-600" />
-            <PolarRadiusAxis
-              angle={90}
-              domain={[0, 100]}
-              tick={{ fontSize: 10 }}
-              className="text-gray-600"
-            />
-            <Radar
-              name="Performance"
-              dataKey="value"
-              stroke="#3b82f6"
-              fill="#3b82f6"
-              fillOpacity={0.6}
-              strokeWidth={2}
-            />
-            <Tooltip content={<RadarTooltip />} />
-          </RadarChart>
-        </ResponsiveContainer>
+        {isEmpty ? (
+          renderEmptyState()
+        ) : (
+          <ResponsiveContainer width="100%" height={height}>
+            <RadarChart data={radarData}>
+              <PolarGrid strokeDasharray="3 3" className="opacity-30" />
+              <PolarAngleAxis dataKey="metric" tick={{ fontSize: 11 }} className="text-gray-600" />
+              <PolarRadiusAxis
+                angle={90}
+                domain={[0, 100]}
+                tick={{ fontSize: 10 }}
+                className="text-gray-600"
+              />
+              <Radar
+                name="Performance"
+                dataKey="value"
+                stroke="#3b82f6"
+                fill="#3b82f6"
+                fillOpacity={0.6}
+                strokeWidth={2}
+              />
+              <Tooltip content={<RadarTooltip />} />
+            </RadarChart>
+          </ResponsiveContainer>
+        )}
       </div>
     );
   };
@@ -356,32 +382,36 @@ export const PerformanceChart: React.FC<PerformanceChartProps> = ({
         </div>
       </div>
 
-      <ResponsiveContainer width="100%" height={height}>
-        <BarChart data={data}>
-          {showGrid && <CartesianGrid strokeDasharray="3 3" className="opacity-30" />}
-          <XAxis
-            dataKey="date"
-            tick={{ fontSize: 12 }}
-            className="text-gray-600"
-            tickFormatter={value => format(new Date(value), 'MMM dd')}
-          />
-          <YAxis tick={{ fontSize: 12 }} className="text-gray-600" />
-          <Tooltip content={<CustomTooltip />} />
-          {showLegend && <Legend />}
-
-          {metrics.includes('completedBounties') && (
-            <Bar
-              dataKey="completedBounties"
-              fill={METRIC_COLORS.completedBounties}
-              name="Completed"
+      {isEmpty ? (
+        renderEmptyState()
+      ) : (
+        <ResponsiveContainer width="100%" height={height}>
+          <BarChart data={data}>
+            {showGrid && <CartesianGrid strokeDasharray="3 3" className="opacity-30" />}
+            <XAxis
+              dataKey="date"
+              tick={{ fontSize: 12 }}
+              className="text-gray-600"
+              tickFormatter={value => format(new Date(value), 'MMM dd')}
             />
-          )}
+            <YAxis tick={{ fontSize: 12 }} className="text-gray-600" />
+            <Tooltip content={<CustomTooltip />} />
+            {showLegend && <Legend />}
 
-          {metrics.includes('reputation') && (
-            <Bar dataKey="reputation" fill={METRIC_COLORS.reputation} name="Reputation" />
-          )}
-        </BarChart>
-      </ResponsiveContainer>
+            {metrics.includes('completedBounties') && (
+              <Bar
+                dataKey="completedBounties"
+                fill={METRIC_COLORS.completedBounties}
+                name="Completed"
+              />
+            )}
+
+            {metrics.includes('reputation') && (
+              <Bar dataKey="reputation" fill={METRIC_COLORS.reputation} name="Reputation" />
+            )}
+          </BarChart>
+        </ResponsiveContainer>
+      )}
     </div>
   );
 

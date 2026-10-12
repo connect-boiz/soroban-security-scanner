@@ -124,6 +124,10 @@ describe('TransactionChart', () => {
   it('renders an empty state for an empty data set', () => {
     render(<TransactionChart data={[]} />);
     expect(screen.getByText('0 transactions')).toBeInTheDocument();
+    expect(screen.getByText('No transactions yet')).toBeInTheDocument();
+    expect(screen.getByText(/Run vulnerability scans/i)).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: /Transaction Analytics empty state/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Run a Scan/i })).toHaveAttribute('href', '/scan');
     expect(screen.getByText('$0')).toBeInTheDocument();
   });
 
@@ -182,9 +186,13 @@ describe('PerformanceChart', () => {
     expect(screen.getByText('-37.5%')).toBeInTheDocument();
   });
 
-  it('renders no metric cards when data is empty', () => {
+  it('renders an empty state with EmptyChartState when data is empty', () => {
     render(<PerformanceChart data={[]} />);
     expect(screen.getByText('0 data points')).toBeInTheDocument();
+    expect(screen.getByText('No performance metrics yet')).toBeInTheDocument();
+    expect(screen.getByText(/Complete scans and audits/i)).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: /Performance Metrics empty state/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Start Scanning/i })).toHaveAttribute('href', '/scan');
     expect(screen.queryByText('Reputation')).not.toBeInTheDocument();
   });
 });
@@ -218,8 +226,12 @@ describe('PortfolioChart', () => {
     expect(screen.getAllByText('$10,000').length).toBeGreaterThan(0);
   });
 
-  it('renders an empty portfolio', () => {
+  it('renders an empty state with EmptyChartState when data is empty', () => {
     render(<PortfolioChart data={[]} />);
+    expect(screen.getByText('No portfolio assets yet')).toBeInTheDocument();
+    expect(screen.getByText(/Connect a wallet or run a scan/i)).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: /Portfolio Distribution empty state/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Run a Scan/i })).toHaveAttribute('href', '/scan');
     expect(screen.getByText('$0')).toBeInTheDocument();
   });
 });
