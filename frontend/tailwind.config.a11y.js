@@ -143,5 +143,43 @@ module.exports = {
         },
       });
     }),
+
+    // ── Plugin: RTL / LTR variants and bidirectional utilities ──────────────
+    plugin(function ({ addVariant, addUtilities }) {
+      // Support rtl: and ltr: variant prefixes
+      addVariant('rtl', ['[dir="rtl"] &', '[dir="rtl"]&', ':dir(rtl) &']);
+      addVariant('ltr', ['[dir="ltr"] &', '[dir="ltr"]&', ':dir(ltr) &']);
+
+      // Bidirectional layout utility helpers
+      addUtilities({
+        '.text-start': {
+          'text-align': 'start',
+        },
+        '.text-end': {
+          'text-align': 'end',
+        },
+        '.flip-rtl': {
+          '[dir="rtl"] &': {
+            transform: 'scaleX(-1)',
+          },
+        },
+        '.no-flip-rtl': {
+          '[dir="rtl"] &': {
+            transform: 'none',
+          },
+        },
+      });
+    }),
+  ],
+
+  // Safelist RTL variants and utilities for dynamic usage
+  safelist: [
+    {
+      pattern: /^(rtl|ltr):/,
+    },
+    'text-start',
+    'text-end',
+    'flip-rtl',
+    'no-flip-rtl',
   ],
 };

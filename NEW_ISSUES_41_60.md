@@ -317,13 +317,13 @@ The `AnomalyDetector` in `src/security_monitoring/anomaly.rs` identifies anomalo
 The internationalization system (`src/i18n/config.js`, `component-library/src/i18n/config.ts`) supports 15 locales with translation files for UI labels and content. However, the frontend layout (`frontend/app/layout.tsx`) does not support right-to-left (RTL) text direction for Arabic (`ar`), Hebrew (`he`), or other RTL languages. The HTML root element always uses `dir="ltr"`, and the Tailwind CSS configuration (`tailwind.config.a11y.js`) does not enable RTL variants (`rtl:` prefix) for margin, padding, text alignment, and flexbox direction utilities. When a user selects Arabic as their locale, the translated text renders correctly from right to left (because the browser handles Unicode bidirectional text), but the entire page layout remains left-to-right — the sidebar is on the left, navigation flows left-to-right, form labels are left-aligned, and icons point in the wrong direction. This creates a disjointed and unprofessional experience for RTL users where text flows right-to-left but the visual hierarchy still assumes LTR reading patterns. The `I18N_README.md` documents translation coverage but does not address layout direction.
 
 **Acceptance Criteria:**
-- [ ] Add `dir` attribute to the `<html>` element in `layout.tsx` that changes to `"rtl"` when the active locale is Arabic or Hebrew, based on a `RTL_LOCALES` constant
-- [ ] Enable `rtl:` variants in Tailwind CSS configuration (using `tailwindcss-rtl` plugin or manual `safelist`)
-- [ ] Implement a `useTextDirection()` hook in `frontend/hooks/` that returns `"ltr"` or `"rtl"` based on the active locale
-- [ ] Create RTL-aware wrapper components in `component-library/src/components/` for layout primitives: `RtlContainer` (applies `dir` and swaps flex direction), `RtlAwareIcon` (mirrors directional icons like arrows)
-- [ ] Update `A11yPrimitives.tsx` to swap `left`/`right` ARIA attributes based on text direction
-- [ ] Verify with a visual test: Arabic locale with sidebar on the right, content flowing RTL, form labels right-aligned, and arrow icons pointing correctly
-- [ ] Document RTL support setup in `I18N_README.md` with a section on adding new RTL locales
+- [x] Add `dir` attribute to the `<html>` element in `layout.tsx` that changes to `"rtl"` when the active locale is Arabic or Hebrew, based on a `RTL_LOCALES` constant
+- [x] Enable `rtl:` variants in Tailwind CSS configuration (using `tailwindcss-rtl` plugin or manual `safelist`)
+- [x] Implement a `useTextDirection()` hook in `frontend/hooks/` that returns `"ltr"` or `"rtl"` based on the active locale
+- [x] Create RTL-aware wrapper components in `component-library/src/components/` for layout primitives: `RtlContainer` (applies `dir` and swaps flex direction), `RtlAwareIcon` (mirrors directional icons like arrows)
+- [x] Update `A11yPrimitives.tsx` to swap `left`/`right` ARIA attributes based on text direction
+- [x] Verify with a visual test: Arabic locale with sidebar on the right, content flowing RTL, form labels right-aligned, and arrow icons pointing correctly
+- [x] Document RTL support setup in `I18N_README.md` with a section on adding new RTL locales
 
 ---
 

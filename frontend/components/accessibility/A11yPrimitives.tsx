@@ -27,20 +27,28 @@ import {
 export function SkipLink({
   targetId = 'main-content',
   label = 'Skip to main content',
+  dir,
 }: {
   targetId?: string;
   label?: string;
+  dir?: 'ltr' | 'rtl';
 }) {
   const { skipLinkProps } = useSkipLink(targetId);
+
+  const placementClass =
+    dir === 'rtl'
+      ? 'focus:fixed focus:top-4 focus:right-4 focus:z-[9999]'
+      : 'focus:fixed focus:top-4 focus:left-4 rtl:focus:right-4 rtl:focus:left-auto focus:z-[9999]';
 
   return (
     <a
       {...skipLinkProps}
+      dir={dir}
       className={[
         // Visually hidden until focused
         'sr-only focus:not-sr-only',
-        // Visible styling when focused
-        'focus:fixed focus:top-4 focus:left-4 focus:z-[9999]',
+        // Visible styling when focused (swaps left/right based on text direction)
+        placementClass,
         'focus:rounded-lg focus:bg-cyan-400 focus:px-4 focus:py-2',
         'focus:text-sm focus:font-bold focus:text-gray-950',
         'focus:shadow-lg focus:outline-none',
@@ -73,6 +81,7 @@ interface DialogProps {
   description?: string;
   children: React.ReactNode;
   size?: 'sm' | 'md' | 'lg';
+  dir?: 'ltr' | 'rtl';
 }
 
 export function AccessibleDialog({
@@ -82,6 +91,7 @@ export function AccessibleDialog({
   description,
   children,
   size = 'md',
+  dir,
 }: DialogProps) {
   const { containerRef } = useFocusTrap<HTMLDivElement>(isOpen);
   useEscapeKey(onClose, isOpen);
@@ -97,6 +107,7 @@ export function AccessibleDialog({
     // action must be keyboard accessible (Escape key handled above).
     <div
       role="presentation"
+      dir={dir}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
       onClick={e => {
         if (e.target === e.currentTarget) onClose();
@@ -105,6 +116,7 @@ export function AccessibleDialog({
       <div
         ref={containerRef}
         role="dialog"
+        dir={dir}
         aria-modal="true"
         aria-labelledby={labelId}
         aria-describedby={description ? descId : undefined}
@@ -185,6 +197,7 @@ interface FormFieldProps {
   hint?: string;
   error?: string;
   required?: boolean;
+  dir?: 'ltr' | 'rtl';
   children: (props: {
     inputProps: {
       'aria-labelledby': string;
@@ -192,6 +205,7 @@ interface FormFieldProps {
       'aria-required': boolean;
       'aria-invalid': boolean;
       id: string;
+      dir?: 'ltr' | 'rtl';
     };
   }) => React.ReactNode;
 }
@@ -201,22 +215,24 @@ export function AccessibleFormField({
   hint,
   error,
   required = false,
+  dir,
   children,
 }: FormFieldProps) {
   const { labelId, descId, errorId } = useAriaIds('field');
   const inputId = `input-${labelId}`;
 
   const describedBy = [hint ? descId : '', error ? errorId : ''].filter(Boolean).join(' ');
+  const asteriskMarginClass = dir === 'rtl' ? 'mr-1 text-cyan-400' : 'ml-1 rtl:mr-1 rtl:ml-0 text-cyan-400';
 
   return (
-    <div className="flex flex-col gap-1.5">
+    <div dir={dir} className="flex flex-col gap-1.5 text-start">
       {/* Label — WCAG 1.3.1, 3.3.2 */}
       <label id={labelId} htmlFor={inputId} className="text-sm font-semibold text-gray-200">
         {label}
         {required && (
           <>
             {/* Screen reader: "required" */}
-            <span aria-hidden="true" className="ml-1 text-cyan-400">
+            <span aria-hidden="true" className={asteriskMarginClass}>
               *
             </span>
             <span className="sr-only"> (required)</span>
@@ -239,6 +255,7 @@ export function AccessibleFormField({
           'aria-describedby': describedBy,
           'aria-required': required,
           'aria-invalid': !!error,
+          dir,
         },
       })}
 
@@ -449,3 +466,123 @@ export function LoadingSpinner({
     </div>
   );
 }
+
+// ── 7. Directional ARIA Helpers (WCAG 1.3.2, 2.1.1, 4.1.2) ───────────────────
+/**
+ * Maps physical "left" and "right" ARIA attributes and keyboard controls to
+ * logical inline-start and inline-end based on active text direction.
+ */
+export interface DirectionalAriaOptions {
+  direction?: 'ltr' | 'rtl';
+  labelLeft?: string;
+  labelRight?: string;
+}
+
+export function getDirectionalAria({
+  direction = 'ltr',
+  labelLeft = 'Previous',
+  labelRight = 'Next',
+}: DirectionalAriaOptions = {}) {
+  const isRtl = direction === 'rtl';
+
+  return {
+    direction,
+    isRtl,
+    // Keyboard navigation keys for roving tabindex
+    previousKey: isRtl ? 'ArrowRight' : 'ArrowLeft',
+    nextKey: isRtl ? 'ArrowLeft' : 'ArrowRight',
+    // Physical-to-logical placement mapping
+    startPlacement: isRtl ? 'right' : 'left',
+    endPlacement: isRtl ? 'left' : 'right',
+    // Swapped ARIA labels for directional triggers
+    startLabel: isRtl ? labelRight : labelLeft,
+    endLabel: isRtl ? labelLeft : labelRight,
+    // Swapped alignment classes
+    textAlignClass: isRtl ? 'text-right' : 'text-left',
+    // Arrow symbols
+    prevArrow: isRtl ? '→' : '←',
+    nextArrow: isRtl ? '←' : '→',
+  };
+}
+
+/**
+ * DirectionalNavigationButton: Renders an accessible directional button
+ * that automatically swaps its ARIA label, arrow direction, and icon orientation
+ * based on text direction (LTR vs RTL).
+ */
+export interface DirectionalNavigationButtonProps
+  extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  direction?: 'ltr' | 'rtl';
+  action: 'previous' | 'next';
+  label?: string;
+}
+
+export function DirectionalNavigationButton({
+  direction = 'ltr',
+  action,
+  label,
+  className = '',
+  ...props
+}: DirectionalNavigationButtonProps) {
+  const dirInfo = getDirectionalAria({ direction });
+  const isPrev = action === 'previous';
+  const defaultLabel = isPrev ? 'Previous' : 'Next';
+  const accessibleLabel = label || defaultLabel;
+  const arrow = isPrev ? dirInfo.prevArrow : dirInfo.nextArrow;
+
+  return (
+    <button
+      type="button"
+      aria-label={accessibleLabel}
+      data-action={action}
+      data-direction={direction}
+      className={[
+        'inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium',
+        'bg-gray-800 text-gray-200 hover:bg-gray-700',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400',
+        'transition-colors',
+        className,
+      ].join(' ')}
+      {...props}
+    >
+      <span aria-hidden="true">{arrow}</span>
+      <span>{accessibleLabel}</span>
+    </button>
+  );
+}
+
+/**
+ * DirectionalToolbar: ARIA toolbar widget that swaps ArrowLeft and ArrowRight
+ * key navigation and flex row layout based on text direction.
+ */
+export function DirectionalToolbar({
+  children,
+  direction = 'ltr',
+  'aria-label': ariaLabel = 'Actions',
+  className = '',
+}: {
+  children: React.ReactNode;
+  direction?: 'ltr' | 'rtl';
+  'aria-label'?: string;
+  className?: string;
+}) {
+  const isRtl = direction === 'rtl';
+
+  return (
+    <div
+      role="toolbar"
+      aria-label={ariaLabel}
+      aria-orientation="horizontal"
+      dir={direction}
+      data-direction={direction}
+      className={[
+        'flex items-center gap-2',
+        isRtl ? 'flex-row-reverse' : 'flex-row',
+        className,
+      ].join(' ')}
+    >
+      {children}
+    </div>
+  );
+}
+

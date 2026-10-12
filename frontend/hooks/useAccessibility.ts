@@ -105,7 +105,8 @@ export function useReducedMotion(): boolean {
  */
 export function useKeyboardNavigation<T extends HTMLElement = HTMLUListElement>(
   orientation: 'horizontal' | 'vertical' | 'both' = 'horizontal',
-  wrap = true
+  wrap = true,
+  direction?: 'ltr' | 'rtl'
 ): { containerRef: RefObject<T> } {
   const containerRef = useRef<T>(null);
 
@@ -131,12 +132,17 @@ export function useKeyboardNavigation<T extends HTMLElement = HTMLUListElement>(
       const isHoriz = orientation === 'horizontal' || orientation === 'both';
       const isVert = orientation === 'vertical' || orientation === 'both';
 
+      const isRtl =
+        direction === 'rtl' ||
+        container.getAttribute('dir') === 'rtl' ||
+        (typeof document !== 'undefined' && document.documentElement.dir === 'rtl');
+
       switch (e.key) {
         case 'ArrowRight':
-          if (isHoriz) goTo(currentIndex + 1);
+          if (isHoriz) goTo(isRtl ? currentIndex - 1 : currentIndex + 1);
           break;
         case 'ArrowLeft':
-          if (isHoriz) goTo(currentIndex - 1);
+          if (isHoriz) goTo(isRtl ? currentIndex + 1 : currentIndex - 1);
           break;
         case 'ArrowDown':
           if (isVert) goTo(currentIndex + 1);
@@ -155,7 +161,7 @@ export function useKeyboardNavigation<T extends HTMLElement = HTMLUListElement>(
 
     container.addEventListener('keydown', handler);
     return () => container.removeEventListener('keydown', handler);
-  }, [orientation, wrap]);
+  }, [orientation, wrap, direction]);
 
   return { containerRef };
 }

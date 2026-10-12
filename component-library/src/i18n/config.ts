@@ -8,11 +8,16 @@ import enTranslations from '../../../locales/en/common.json';
 import esTranslations from '../../../locales/es/common.json';
 import arTranslations from '../../../locales/ar/common.json';
 
+// RTL Locales constant
+export const RTL_LOCALES = ['ar', 'he', 'fa', 'ur'] as const;
+export type RtlLocale = (typeof RTL_LOCALES)[number];
+
 // Supported languages
 export const supportedLanguages = [
   { code: 'en', name: 'English', dir: 'ltr' },
   { code: 'es', name: 'Español', dir: 'ltr' },
-  { code: 'ar', name: 'العربية', dir: 'rtl' }
+  { code: 'ar', name: 'العربية', dir: 'rtl' },
+  { code: 'he', name: 'עברית', dir: 'rtl' },
 ];
 
 // Resources object
@@ -90,7 +95,10 @@ export default i18n;
 
 // Utility functions
 export const isRTL = (language: string): boolean => {
-  const lang = supportedLanguages.find(l => l.code === language);
+  if (!language) return false;
+  const code = language.toLowerCase().split('-')[0].split('_')[0].trim();
+  if ((RTL_LOCALES as readonly string[]).includes(code)) return true;
+  const lang = supportedLanguages.find(l => l.code === code);
   return lang?.dir === 'rtl' || false;
 };
 

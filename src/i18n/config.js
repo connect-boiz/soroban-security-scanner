@@ -72,12 +72,15 @@ function t(key, options = {}) {
   return i18next.t(key, options);
 }
 
+const RTL_LOCALES = ['ar', 'he', 'fa', 'ur'];
+
 /**
  * Check if language is RTL
  */
 function isRTL(language) {
-  const rtlLanguages = ['ar', 'he', 'fa', 'ur'];
-  return rtlLanguages.includes(language);
+  if (!language) return false;
+  const code = language.toLowerCase().split('-')[0].split('_')[0].trim();
+  return RTL_LOCALES.includes(code);
 }
 
 /**
@@ -129,6 +132,7 @@ module.exports = {
   initializeI18n,
   t,
   i18nConfig,
+  RTL_LOCALES,
   isRTL,
   getTextDirection,
   formatCurrency,
