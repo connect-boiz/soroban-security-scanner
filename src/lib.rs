@@ -123,6 +123,7 @@ pub use auth::{
 // modules stay behind the `broken-modules` feature gate.
 pub mod analysis;
 pub mod config;
+pub mod coverage_guided_fuzzer;
 pub mod emergency_stop;
 pub mod event_logging;
 pub mod gas_limits;
@@ -133,6 +134,14 @@ pub mod scanners;
 pub mod secure_id_generation;
 pub mod severity_scoring;
 pub mod vulnerabilities;
+
+pub use coverage_guided_fuzzer::{
+    Corpus, CorpusEntry, CorpusStats, CoverageFuzzer, CoverageMap, CrashGroup, CrashReport,
+    CrashTriageEngine, FuzzCiConfig, FuzzCiResult, FuzzCiRunner, FuzzerConfig, FuzzerDashboard,
+    FuzzerReport, FuzzerStatus, FuzzerStatusSnapshot, InstrumentationStats, MutationScheduler,
+    MutationStrategy, MutatorConfig, PersistentVm, SorobanInputGen, SorobanValue, SorobanValueType,
+    VmResetError, VmSnapshot, WasmInstrumenter, COVERAGE_MAP_SIZE,
+};
 
 // === Broken modules gated behind feature flag ===
 // Each module has pre-existing compilation errors (borrow checker violations,
