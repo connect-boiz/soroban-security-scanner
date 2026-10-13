@@ -132,7 +132,14 @@ pub mod report;
 pub mod scanners;
 pub mod secure_id_generation;
 pub mod severity_scoring;
+pub mod symbolic_execution;
 pub mod vulnerabilities;
+
+pub use symbolic_execution::{
+    AccessControlChecker, ConstraintSolver, ExplorationStrategy, IntegerOverflowChecker,
+    ReentrancyChecker, SolverResult, SymbolicEngine, SymbolicEngineConfig, SymbolicScanOptions,
+    SymbolicState, VulnerabilityChecker,
+};
 
 // === Broken modules gated behind feature flag ===
 // Each module has pre-existing compilation errors (borrow checker violations,
