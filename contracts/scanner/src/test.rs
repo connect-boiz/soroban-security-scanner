@@ -20,7 +20,7 @@ fn setup() -> TestContext<'static> {
 
     let admin = Address::generate(&env);
     let issuer = Address::generate(&env);
-    let token_contract = env.register_stellar_asset_contract(issuer.clone());
+    let token_contract = env.register_stellar_asset_contract_v2(issuer.clone());
     let token_id = token_contract.address();
     let token = token::Client::new(&env, &token_id);
     let token_admin = token::StellarAssetClient::new(&env, &token_id);
@@ -76,7 +76,7 @@ fn initialize_rejects_default_admin() {
     env.mock_all_auths();
 
     let issuer = Address::generate(&env);
-    let token_contract = env.register_stellar_asset_contract(issuer.clone());
+    let token_contract = env.register_stellar_asset_contract_v2(issuer.clone());
     let token_id = token_contract.address();
     let contract_id = env.register(SecurityScannerContract, ());
     let client = SecurityScannerContractClient::new(&env, &contract_id);
@@ -385,6 +385,41 @@ fn fund_bounty_pool_rejects_zero_amount() {
     let ctx = setup();
     let result = ctx.client.try_fund_bounty_pool(&ctx.admin, &0);
     assert_eq!(result, Err(Ok(ContractError::ZeroAmount)));
+}
+
+#[test]
+fn treasury_manager_can_fund_bounty_pool() {
+    let ctx = setup();
+    let treasurer = Address::generate(&ctx.env);
+    grant_roles_direct(&ctx, &treasurer, vec![&ctx.env, Role::TreasuryManager]);
+    let stranger = Address::generate(&ctx.env);
+
+    ctx.token_admin.mint(&treasurer, &1_000_000);
+    ctx.token_admin.mint(&stranger, &500_000);
+
+    // Stranger without TreasuryManager permission is rejected
+    let denied = ctx.client.try_fund_bounty_pool(&stranger, &100_000);
+    assert_eq!(denied, Err(Ok(ContractError::InsufficientPermissions)));
+
+    assert_eq!(ctx.client.get_bounty_pool(), 0);
+    assert_eq!(ctx.token.balance(&ctx.contract_id), 0);
+    assert_eq!(ctx.token.balance(&stranger), 500_000);
+
+    let before_contract_bal = ctx.token.balance(&ctx.contract_id);
+    let before_treasurer_bal = ctx.token.balance(&treasurer);
+
+    // TreasuryManager succeeds and actual tokens are transferred to contract custody
+    ctx.client.fund_bounty_pool(&treasurer, &250_000);
+
+    assert_eq!(ctx.client.get_bounty_pool(), 250_000);
+    assert_eq!(
+        ctx.token.balance(&ctx.contract_id),
+        before_contract_bal + 250_000
+    );
+    assert_eq!(
+        ctx.token.balance(&treasurer),
+        before_treasurer_bal - 250_000
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1105,4 +1140,83 @@ fn get_proposal_not_found() {
         ctx.client.try_get_proposal(&999),
         Err(Ok(ContractError::ProposalNotFound))
     );
+}
+
+// A token that debits the requested amount but credits only half. This exercises
+// the custody check after a successful external call, including host rollback.
+mod short_credit_token {
+    use soroban_sdk::{contract, contractimpl, Address, Env};
+
+    #[contract]
+    pub struct ShortCreditToken;
+
+    #[contractimpl]
+    impl ShortCreditToken {
+        pub fn mint(env: Env, owner: Address, amount: i128) {
+            env.storage().instance().set(&owner, &amount);
+        }
+
+        pub fn balance(env: Env, owner: Address) -> i128 {
+            env.storage().instance().get(&owner).unwrap_or(0)
+        }
+
+        pub fn transfer(env: Env, from: Address, to: Address, amount: i128) {
+            from.require_auth();
+            let source = Self::balance(env.clone(), from.clone());
+            assert!(source >= amount);
+            let destination = Self::balance(env.clone(), to.clone());
+            env.storage().instance().set(&from, &(source - amount));
+            env.storage()
+                .instance()
+                .set(&to, &(destination + amount / 2));
+        }
+    }
+}
+
+#[test]
+fn bounty_funding_rejects_short_credit_and_rolls_back_token_transfer() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let token_id = env.register(short_credit_token::ShortCreditToken, ());
+    let token = short_credit_token::ShortCreditTokenClient::new(&env, &token_id);
+    token.mint(&admin, &1_000);
+    let contract_id = env.register(SecurityScannerContract, ());
+    let client = SecurityScannerContractClient::new(&env, &contract_id);
+    client.initialize(&admin, &token_id);
+
+    assert_eq!(
+        client.try_fund_bounty_pool(&admin, &100),
+        Err(Ok(ContractError::ExternalCallFailed))
+    );
+    assert_eq!(client.get_bounty_pool(), 0);
+    assert_eq!(token.balance(&admin), 1_000);
+    assert_eq!(token.balance(&contract_id), 0);
+}
+
+#[test]
+fn bounty_funding_insufficient_balance_preserves_existing_pool() {
+    let ctx = setup();
+    ctx.token_admin.mint(&ctx.admin, &150);
+    ctx.client.fund_bounty_pool(&ctx.admin, &100);
+    assert!(ctx.client.try_fund_bounty_pool(&ctx.admin, &100).is_err());
+    assert_eq!(ctx.client.get_bounty_pool(), 100);
+    assert_eq!(ctx.token.balance(&ctx.contract_id), 100);
+    assert_eq!(ctx.token.balance(&ctx.admin), 50);
+}
+
+#[test]
+fn bounty_funding_overflow_rolls_back_successful_token_transfer() {
+    let ctx = setup();
+    ctx.token_admin.mint(&ctx.admin, &100);
+    ctx.env.as_contract(&ctx.contract_id, || {
+        ctx.env.storage().instance().set(&BOUNTY_POOL, &i128::MAX);
+    });
+    assert_eq!(
+        ctx.client.try_fund_bounty_pool(&ctx.admin, &100),
+        Err(Ok(ContractError::Overflow))
+    );
+    assert_eq!(ctx.client.get_bounty_pool(), i128::MAX);
+    assert_eq!(ctx.token.balance(&ctx.contract_id), 0);
+    assert_eq!(ctx.token.balance(&ctx.admin), 100);
 }

@@ -380,14 +380,31 @@ impl SecurityScannerContract {
     fn receive_tokens(env: &Env, from: &Address, amount: i128) -> Result<(), ContractError> {
         Self::require_positive_amount(amount)?;
         let contract = env.current_contract_address();
-        Self::token_client(env).transfer(from, &contract, &amount);
+        let client = Self::token_client(env);
+        let before_balance = client.balance(&contract);
+        client.transfer(from, &contract, &amount);
+        let after_balance = client.balance(&contract);
+        let received = Self::checked_sub_i128(after_balance, before_balance)?;
+        if received < amount {
+            return Err(ContractError::ExternalCallFailed);
+        }
         Ok(())
     }
 
     fn transfer_tokens(env: &Env, to: &Address, amount: i128) -> Result<(), ContractError> {
         Self::require_positive_amount(amount)?;
         let contract = env.current_contract_address();
-        Self::token_client(env).transfer(&contract, to, &amount);
+        let client = Self::token_client(env);
+        let before_balance = client.balance(&contract);
+        if before_balance < amount {
+            return Err(ContractError::InsufficientFunds);
+        }
+        client.transfer(&contract, to, &amount);
+        let after_balance = client.balance(&contract);
+        let sent = Self::checked_sub_i128(before_balance, after_balance)?;
+        if sent < amount {
+            return Err(ContractError::ExternalCallFailed);
+        }
         Ok(())
     }
 
@@ -981,11 +998,14 @@ impl SecurityScannerContract {
             .ok_or(ContractError::NotFound)
     }
 
-    /// Add funds to bounty pool
+    /// Add funds to bounty pool (requires TreasuryManager or SuperAdmin role)
     pub fn fund_bounty_pool(env: Env, funder: Address, amount: i128) -> Result<(), ContractError> {
         funder.require_auth();
         Self::require_non_default_address(&env, &funder)?;
         Self::require_positive_amount(amount)?;
+
+        // Check role-based permissions (parity with fund_emergency_pool)
+        Self::require_permission(&env, &funder, Permission::ManageTreasury)?;
 
         Self::receive_tokens(&env, &funder, amount)?;
 
