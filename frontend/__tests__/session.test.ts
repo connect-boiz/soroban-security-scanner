@@ -1,69 +1,98 @@
 import { persistSession, loadSession, clearSession } from '../lib/auth/session';
 
-describe('session persistence (rememberMe semantics)', () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-    window.sessionStorage.clear();
+/**
+ * The client session module now delegates to the server-side session
+ * endpoint (httpOnly cookie) instead of client storages. The token must
+ * never be written to localStorage/sessionStorage, so these tests assert
+ * the fetch contract against `/api/auth/session` and verify that client
+ * storages stay untouched.
+ */
+
+const SESSION_ENDPOINT = '/api/auth/session';
+
+function mockFetchResponse(body: unknown, ok = true, status = ok ? 200 : 401) {
+  return Promise.resolve({
+    ok,
+    status,
+    json: () => Promise.resolve(body),
+  } as Response);
+}
+
+let fetchMock: jest.Mock;
+
+beforeEach(() => {
+  window.localStorage.clear();
+  window.sessionStorage.clear();
+  fetchMock = jest.fn();
+  globalThis.fetch = fetchMock as unknown as typeof fetch;
+});
+
+afterEach(() => {
+  delete (globalThis as { fetch?: typeof fetch }).fetch;
+});
+
+describe('session persistence (server-backed httpOnly cookie)', () => {
+  it('persistSession POSTs the user and rememberMe flag to the session endpoint', async () => {
+    fetchMock.mockResolvedValueOnce(mockFetchResponse({ ok: true, user: { email: 'a@b.c' } }));
+
+    await persistSession({ email: 'demo@example.com' }, true);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe(SESSION_ENDPOINT);
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toEqual({
+      user: { email: 'demo@example.com' },
+      rememberMe: true,
+    });
   });
 
-  it('stores the session in localStorage when rememberMe is true', () => {
-    persistSession({ email: 'demo@example.com' }, true);
+  it('never writes the session token to localStorage or sessionStorage', async () => {
+    fetchMock.mockResolvedValueOnce(mockFetchResponse({ ok: true, user: { email: 'a@b.c' } }));
 
-    expect(window.localStorage.getItem('soroban_auth_session')).not.toBeNull();
-    expect(window.sessionStorage.getItem('soroban_auth_session')).toBeNull();
+    await persistSession({ email: 'demo@example.com' }, true);
+
+    expect(window.localStorage.length).toBe(0);
+    expect(window.sessionStorage.length).toBe(0);
   });
 
-  it('stores the session in sessionStorage when rememberMe is false', () => {
-    persistSession({ email: 'demo@example.com' }, false);
+  it('throws when the server rejects a session write', async () => {
+    fetchMock.mockResolvedValueOnce(mockFetchResponse({ error: 'bad' }, false, 400));
 
-    expect(window.sessionStorage.getItem('soroban_auth_session')).not.toBeNull();
-    expect(window.localStorage.getItem('soroban_auth_session')).toBeNull();
+    await expect(persistSession({ email: 'demo@example.com' }, false)).rejects.toThrow(
+      'Failed to establish a server-side session'
+    );
   });
 
-  it('round-trips the stored user and rememberMe flag through loadSession', () => {
-    persistSession({ email: 'demo@example.com' }, true);
+  it('loadSession returns the user from the server when a session exists', async () => {
+    fetchMock.mockResolvedValueOnce(
+      mockFetchResponse({ user: { email: 'demo@example.com', name: 'Demo' } })
+    );
 
-    const session = loadSession<{ email: string }>();
-
-    expect(session).not.toBeNull();
-    expect(session?.user).toEqual({ email: 'demo@example.com' });
-    expect(session?.rememberMe).toBe(true);
-    expect(typeof session?.storedAt).toBe('number');
+    const session = await loadSession<{ email: string }>();
+    expect(session).toEqual({ email: 'demo@example.com', name: 'Demo' });
+    expect(fetchMock).toHaveBeenCalledWith(SESSION_ENDPOINT, { method: 'GET' });
   });
 
-  it('clears any prior session from the other storage when rememberMe changes', () => {
-    persistSession({ email: 'demo@example.com' }, true);
-    expect(window.localStorage.getItem('soroban_auth_session')).not.toBeNull();
+  it('loadSession returns null when the server reports no session', async () => {
+    fetchMock.mockResolvedValueOnce(mockFetchResponse({ user: null }, false, 401));
 
-    persistSession({ email: 'demo@example.com' }, false);
-
-    expect(window.localStorage.getItem('soroban_auth_session')).toBeNull();
-    expect(window.sessionStorage.getItem('soroban_auth_session')).not.toBeNull();
+    expect(await loadSession()).toBeNull();
   });
 
-  it('returns null when no session has been persisted', () => {
-    expect(loadSession()).toBeNull();
+  it('clearSession DELETEs the server-side session', async () => {
+    fetchMock.mockResolvedValueOnce(mockFetchResponse({ ok: true }));
+
+    await clearSession();
+    expect(fetchMock).toHaveBeenCalledWith(SESSION_ENDPOINT, { method: 'DELETE' });
   });
 
-  it('clearSession removes the session from both storages', () => {
-    persistSession({ email: 'demo@example.com' }, true);
-    persistSession({ email: 'demo@example.com' }, false);
+  it('does not read a forged entry from client storages', async () => {
+    // Even if an attacker planted a token in storage, loadSession must only
+    // trust the server.
+    window.localStorage.setItem('soroban_auth_session', JSON.stringify({ user: { email: 'x' } }));
+    fetchMock.mockResolvedValueOnce(mockFetchResponse({ user: null }, false, 401));
 
-    // Manually seed both storages to verify clearSession wipes both.
-    window.localStorage.setItem('soroban_auth_session', JSON.stringify({ user: {} }));
-
-    clearSession();
-
-    expect(window.localStorage.getItem('soroban_auth_session')).toBeNull();
-    expect(window.sessionStorage.getItem('soroban_auth_session')).toBeNull();
-    expect(loadSession()).toBeNull();
-  });
-
-  it('discards and cleans up a corrupted session entry instead of throwing', () => {
-    window.localStorage.setItem('soroban_auth_session', '{not valid json');
-
-    expect(() => loadSession()).not.toThrow();
-    expect(loadSession()).toBeNull();
-    expect(window.localStorage.getItem('soroban_auth_session')).toBeNull();
+    expect(await loadSession()).toBeNull();
   });
 });

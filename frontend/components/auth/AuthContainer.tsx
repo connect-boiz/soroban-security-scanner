@@ -74,7 +74,7 @@ export default function AuthContainer({
         setCurrentView('mfa');
         handleSuccess('Login successful! Please complete two-factor authentication.');
       } else {
-        persistSession(result.user, credentials.rememberMe);
+        await persistSession(result.user, credentials.rememberMe);
         handleSuccess('Login successful!');
         onAuthSuccess?.(result.user);
       }
@@ -129,7 +129,7 @@ export default function AuthContainer({
     try {
       await verifyMfa(code, method);
       const user = { email: userEmail, verified: true };
-      persistSession(user, rememberMe);
+      await persistSession(user, rememberMe);
       setDemoMfaCode(null);
       handleSuccess('Authentication successful!');
       onAuthSuccess?.(user);
