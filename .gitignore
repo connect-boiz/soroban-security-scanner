@@ -22,7 +22,6 @@ lcov.info
 *.tsbuildinfo
 
 # IDE files
-.vscode/
 .idea/
 *.swp
 *.swo
@@ -48,8 +47,6 @@ target/
 test_snapshots/
 
 # Environment files
-.env
-.env.local
 .env.development.local
 .env.test.local
 .env.production.local
@@ -72,4 +69,4 @@ stellar-scanner.toml
 PULL_REQUEST_TEMPLATE.md
 whitelist.md
 .vercel
-.env*
+config.bat

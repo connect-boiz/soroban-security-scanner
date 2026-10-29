@@ -93,6 +93,11 @@ pub mod db_pool;
 // Compiles cleanly without any feature gates.
 pub mod protocol_analysis;
 
+// SMT-Based Formal Verification of Smart Contract Invariants Using Z3 (Issue #445)
+// Self-contained formal verification engine with bitvector arithmetic, Soroban host modeling,
+// modular contract summaries, loop invariant unrolling, and counterexample generation.
+pub mod formal_verification;
+
 // Real-time security monitoring, alerting, SIEM and incident response
 // (issue #333). Self-contained and compiles cleanly under default features.
 pub mod security_monitoring;
